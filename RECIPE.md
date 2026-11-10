@@ -2,7 +2,7 @@
 
 A high-fantasy MMO village for Herdr. One big terminal sits in a carved oak and gold
 frame. Below it, Valbrume, an isometric pixel-art village, shows every coding agent as
-a hero of a race and a class, working at its building. The top bar is a strategy-game
+a hero of a race and a class, working wherever it stands. The top bar is a strategy-game
 resource bar, spaces are heraldic districts on the left, and day turns to night with
 the clock. The art is original: it imitates no existing game.
 
@@ -66,12 +66,14 @@ the clock. The art is original: it imitates no existing game.
 - **Race and name** come from a hash of the terminal address. The races are Elf, Orc,
   Human, Undead and Dwarf.
 - **States:**
-  - **working**: the hero plays its `work` animation at its building. Every 30 to 60 s (staggered per hero
-    and per stop) it walks to another free spot of the same group within 300 px (that building's `SPOTS`, or
-    `LISIERE` while scouting), never one another hero is heading for. It waits for a calm moment: not during
-    meditation or tests, not while a creature is hurt but not yet felled (the move comes after the puff), and
-    not while a hit, a test result, a seal or the pigeon shows. No chronicle line; the camera follows a
-    selected hero's walk. Blocked and done heroes stay put; with animations off nobody moves.
+  - **working**: the hero plays its `work` animation where it stands when it turns working (mid-walk: at its
+    point on the road), with no walk first; when another hero holds or heads for that exact point it is nudged
+    to the nearest free walkable point. Every 30 to 60 s (staggered per hero and per stop) it walks to another
+    free walkable point within 300 px (any `FLANE` or `SPOTS` point, or a `ROAD` point), never one another hero
+    is heading for. It waits for a calm moment: not during meditation or tests, not while a creature is hurt
+    but not yet felled (the move comes after the puff), and not while a hit, a test result, a seal or the
+    pigeon shows. No chronicle line; the camera follows a selected hero's walk. Blocked and done heroes stay
+    put; with animations off nobody moves. Only the demo heroes work at their class building (`SPOTS`).
   - **idle**: it strolls (`idle` while standing): it walks to a spot in the village or the western
     farmland or, over the footbridge, the east lands (lake shore, by the jetty, along the lane: `FLANE` in
     lieux.js), stands 15 to 40 s (staggered per hero), then picks another. With animations off it stands still
@@ -99,7 +101,8 @@ the clock. The art is original: it imitates no existing game.
 - **Day and night:** night tiles crossfade over day tiles (opacity 1 at night, 0.55 at
   dawn and dusk). Window and forge glows pulse, and chimneys smoke.
 - **Chronicle:** it logs arrivals, departures and state changes ("[Mage Tower] Gromdal,
-  Dwarf mage (Claude Code) sets out on a quest"); the tag names the building the hero is sent to for its task. It is kept in the store key
+  Dwarf mage (Claude Code) sets out on a quest"); the tag names the building (or the market) nearest to where
+  the hero stands, within 200 px, else the village. It is kept in the store key
   `wocc.chronicle`.
 - **Language:** French or English, detected once per start (see `i18n.js`): `WOCC_LANG`
   if set, else macOS `AppleLanguages`, else `LC_ALL` / `LC_MESSAGES` / `LANG`; French when
@@ -120,8 +123,7 @@ the clock. The art is original: it imitates no existing game.
   `outil`, `coups`, `err` / `errT`, `errTache`, `subs`, `tache`, `essai {ok, t}`,
   `commitT`, `pushT`. Without them heroes keep the plain status behaviour.
   - thinking: `idle` + a "· · ·" bubble;
-  - reading / searching / web: walks to a scout spot at the forest edge near its building
-    (`LISIERE` in lieux.js), two ravens circling;
+  - reading / searching / web: `idle` where it stands, two ravens circling above it;
   - editing code or running commands: fights a creature drawn per task (mages: imp, wolf, goblin, boar, rust
     golem, spectre; other classes: their district's beasts, `DISTRICT` in activite.js). Each
     successful edit or command is a blow (hit pose + flash), 4 fell it (puff) and the next one comes;
@@ -262,7 +264,7 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
 
 - `herdr-app check mods/world-of-codecraft` passes and `herdr-app status` shows no
   errors.
-- Each agent appears at its class building. Blocked shows `!` and a red ring. Focusing
+- A hero turning working works where it stands, without walking off. Blocked shows `!` and a red ring. Focusing
   another agent glides the camera, and a minimap click moves it.
 - Without cduo files, the top bar shows no empty quota plaques.
 - With a French system the whole interface is in French, otherwise English.

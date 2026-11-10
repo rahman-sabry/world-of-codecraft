@@ -2,7 +2,7 @@
 // (integrations/claude-code/wocc-activity.py and integrations/opencode/wocc-activity.js in the repo
 // → ~/.local/state/world-of-codecraft/<terminal>.json), and the scenes it plays:
 //   pense    thinking            idle pose + "…" bubble
-//   eclaire  reading, searching  walks to the forest edge near its building, ravens circling
+//   eclaire  reading, searching  idle pose where it stands, ravens circling above it
 //   combat   editing code        fights a creature drawn for the task (imp, wolf, goblin); every successful
 //                                edit is a blow, 4 blows fell it and the next one comes; a failed tool = the
 //                                hero is hit (red flash, recoil, "Ouch!")
@@ -29,8 +29,8 @@ const CRE = `${ART}/creatures`;
 const POLL = 1000;
 const STABLE = 8000; // the new scene must be asked for this long
 const HOLD = 15000; // and the current one must have lasted this long
-const STABLE_WALK = 20000; // a scene that makes the hero walk (to or from the forest edge) is stickier:
-const HOLD_WALK = 40000; // otherwise read / run / read loops send it back and forth
+const STABLE_WALK = 20000; // switching into or out of scouting is stickier:
+const HOLD_WALK = 40000; // otherwise read / run / read loops flicker the ravens on and off
 const FRESH = 15 * 60_000; // an activity file older than this is ignored
 const BLOWS = 4; // successful edits to fell a creature
 const BOSS_BLOWS = 8; // the troll's

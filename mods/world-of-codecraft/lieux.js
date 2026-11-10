@@ -5,7 +5,8 @@
 
 import { t } from "./i18n.js";
 
-/** Feet points where the heroes of each class stand while working / blocked / done (first free wins). */
+/** Feet points where the demo heroes of each class stand while working / blocked / done (first free wins); with
+ *  FLANE and ROAD, the walkable points a working hero moves between. */
 export const SPOTS = {
   tour: [[690, 372], [640, 342], [745, 352], [470, 338], [600, 390]], // mage tower (mage)
   atelier: [[1010, 300], [935, 290], [1060, 272], [820, 296], [1090, 312]], // forge-workshop (artificer)
@@ -13,16 +14,6 @@ export const SPOTS = {
   temple: [[2190, 372], [2235, 338], [2110, 388], [2290, 362], [2160, 330]], // temple (priest)
   grange: [[420, 345], [290, 300], [520, 312], [350, 378], [470, 380]], // barn and archery spot (ranger)
   etal1: [[2020, 395], [1735, 320], [1040, 318], [960, 316], [1190, 392]], // market stalls (rogue)
-};
-
-/** Scout spots at the forest edge near each class building (the "éclaireur" scene: reading, searching). */
-export const LISIERE = {
-  tour: [[455, 212], [480, 250], [430, 240]],
-  atelier: [[1060, 172], [1095, 208], [1035, 210]],
-  caserne: [[2640, 252], [2610, 215], [2690, 238]],
-  temple: [[1722, 168], [1692, 202], [1750, 205]],
-  grange: [[322, 182], [350, 226], [300, 222]],
-  etal1: [[2250, 205], [2282, 242], [2225, 240]],
 };
 
 /** Where idle heroes stroll (feet points on open ground, in front of every object of the new lands): the
@@ -54,8 +45,9 @@ export const BUILDINGS = {
   temple: { get nom() { return t("building").temple; }, box: [1890, 10, 270, 350] },
   caserne: { get nom() { return t("building").caserne; }, box: [2330, 100, 240, 220] },
 };
-/** The market's name in the current language. */
+/** The market's name in the current language, and its box [x, y, w, h] (the red and blue stalls). */
 export const market = () => t("market");
+export const MARCHE = [1647, 309, 317, 91];
 
 /** Chimney tops (smoke) and live glows [x, y, size, color, period] (night only). */
 export const SMOKE = [[827, 95], [1590, 47], [1639, 100]];

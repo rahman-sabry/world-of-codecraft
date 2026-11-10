@@ -17,7 +17,7 @@ import { agents, spaces, run, setAgentOrder, props, layout, shared, setShared } 
 import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress } from "./kit.js";
 import { WORLD, TILES, FRONTS } from "./monde-data.js";
 import { HEROES } from "./heros-data.js";
-import { SPOTS, FLANE, ROAD, BUILDINGS, market, SMOKE, GLOWS, LISIERE } from "./lieux.js";
+import { SPOTS, FLANE, ROAD, BUILDINGS, MARCHE, market, SMOKE, GLOWS } from "./lieux.js";
 import { t as tr, detectLang } from "./i18n.js";
 import { Activites } from "./activite.js";
 import { Ambiance, behind } from "./ambiance.js";
@@ -36,9 +36,8 @@ const PAUSE = (addr, n) => 15000 + (hash(`${addr}:pause:${n}`) % 25000); // an i
 const STAY = (addr, n) => 30000 + (hash(`${addr}:poste:${n}`) % 30000); // a working hero's stay on each spot
 const NEAR = 300; // a working hero moves on only to a spot this close (px)
 
-// Where each class works.
+// Where each class works (demo heroes only: the others work where they stand).
 const WORK = { mage: "tour", artificier: "atelier", guerrier: "caserne", pretre: "temple", rodeur: "grange", voleur: "etal1" };
-const LIEUX_TRAVAIL = Object.keys(SPOTS); // every building with work spots, where agents scatter
 const RECRUIT = {
   tour: { argv: ["claude"], get what() { return tr("recruit").tour; } },
   atelier: { argv: ["claude"], get what() { return tr("recruit").atelier; } },
@@ -77,6 +76,23 @@ function route(a, b) {
   else for (let i = ra.i; i > rb.i; i--) pts.push(ROAD[i]);
   pts.push(rb.p, b);
   return pts.filter((p, i) => i === 0 || dist(p, pts[i - 1]) > 2);
+}
+
+// Every known walkable point (stroll spots, work spots, the road inside the world's ends): where a working hero
+// is nudged to when another holds its point, and where it moves on to.
+const POSTES = [...FLANE, ...Object.values(SPOTS).flat(), ...ROAD.filter(([x]) => x > WORLD.x && x < WORLD.x + WORLD.w)];
+
+/** p, or the nearest walkable point no other hero holds or heads for when one does. */
+function libre(p, taken) {
+  if (!taken.has(p.join())) return p;
+  return POSTES.filter((s) => !taken.has(s.join())).sort((a, b) => dist(a, p) - dist(b, p))[0] ?? p;
+}
+
+/** The chronicle tag for a feet point: the nearest building (or the market) within 200 px, else the village. */
+function quartier(x, y) {
+  const d = ([bx, by, bw, bh]) => Math.hypot(Math.max(bx - x, 0, x - bx - bw), Math.max(by - y, 0, y - by - bh));
+  const [near] = [...Object.values(BUILDINGS).map((b) => [d(b.box), b.nom]), [d(MARCHE), market()]].sort((p, q) => p[0] - q[0]);
+  return near[0] < 200 ? near[1] : tr("villageTag");
 }
 
 /** Walk anim for a step: towards the viewer = walk_dl (mirrored: walk_dr), away = walk_ur (walk_ul). */
@@ -120,7 +136,9 @@ export default class Place {
       for (const a of list) {
         const was = this.prev.get(a.address);
         const h = heroOf(a.address, a.program);
-        const where = a.status === "idle" ? tr("villageTag") : BUILDINGS[this.lieu(a, h)]?.nom ?? market();
+        const m = this.mob.get(a.address);
+        const here = m && this.pos(m, Date.now());
+        const where = a.status === "idle" || !here ? tr("villageTag") : quartier(here.x, here.y);
         const quest = a.tab_name && !/^\d+$/.test(a.tab_name) ? tr("quoted", clip(a.tab_name, 34)) : "";
         if (!was) this.say(`[${where}] ${tr("arrives", heroTitle(h), h.prog)}`, a.status, a.address);
         else if (was.status !== a.status) {
@@ -160,19 +178,13 @@ export default class Place {
     if (w.at === null) w.at = t;
     else if (t - w.at >= PAUSE(addr, w.n)) {
       const busy = new Set([...this.flanes.values()].map((o) => o.i));
+      const held = new Set([...this.mob].filter(([k]) => k !== addr).map(([, o]) => o.goal.join())); // working heroes stand on stroll spots too
       let i = hash(`${addr}:${++w.n}`) % FLANE.length;
-      for (let k = 0; k < FLANE.length && busy.has(i); k++) i = (i + 1) % FLANE.length;
+      for (let k = 0; k < FLANE.length && (busy.has(i) || held.has(FLANE[i].join())); k++) i = (i + 1) % FLANE.length;
       w.i = i;
       w.at = null;
     }
     return w;
-  }
-
-  /** Where an agent works: somewhere new each task (the hook's prompt counter), so agents scatter across the
-   *  village; shells (on guard) and demo heroes at their class building. */
-  lieu(a, h) {
-    const tache = this.act.file(a.address)?.tache ?? 0;
-    return a.guard || a.demoHero ? WORK[h.cls] : LIEUX_TRAVAIL[hash(`${a.address}:${tache}`) % LIEUX_TRAVAIL.length];
   }
 
   /** A working hero's next spot among its group's (another one near it, no other hero's goal) once it has stood
@@ -199,15 +211,16 @@ export default class Place {
     this.wake = null; // when a standing idle hero moves on (the ambient timer redraws then)
     const want = list.map((a) => {
       const h = a.demoHero ? { ...heroOf(a.address, a.program), race: RACE_FR[a.demoHero.split("-")[0]], cls: CLS_FR[a.demoHero.split("-")[1]] } : heroOf(a.address, a.program);
-      const where = this.lieu(a, h);
-      const scout = a.status === "working" && this.act.scene(a.address) === "eclaire" && LISIERE[where];
-      const group = a.status === "idle" || a.guard ? "flane" : scout ? `lisiere-${where}` : where; // shells stroll like idle heroes
+      // shells stroll like idle heroes; a working, blocked or done hero stays where it is (demo heroes: at
+      // their class building)
+      const group = a.status === "idle" || a.guard ? "flane" : a.demoHero ? WORK[h.cls] : "poste";
       if (group === "flane") {
         const w = this.flane(a.address, t);
         goals.set(a.address, FLANE[w.i]);
+        taken.add(FLANE[w.i].join());
         if (w.at !== null) this.wake = Math.min(this.wake ?? Infinity, w.at + PAUSE(a.address, w.n));
       }
-      return { a, h, group, spots: scout ? LISIERE[where] : SPOTS[group] };
+      return { a, h, group, spots: group === "poste" ? POSTES : SPOTS[group] };
     });
     // keep a unit on its current spot when it stays in the same group (no shuffling); a working one moves on
     // now and then to another spot of its group
@@ -222,6 +235,13 @@ export default class Place {
     }
     for (const u of want) {
       if (goals.has(u.a.address)) continue;
+      if (u.group === "poste") { // where it stands now (mid-walk: its point on the leg), or a free point near it
+        const m = this.mob.get(u.a.address), p = m && this.pos(m, t);
+        const g = libre(p ? [p.x, p.y] : FLANE[hash(u.a.address) % FLANE.length], taken);
+        taken.add(g.join());
+        goals.set(u.a.address, g);
+        continue;
+      }
       let g = u.spots.find((p) => !taken.has(p.join()));
       if (!g) { const k = taken.size; const base = u.spots[k % u.spots.length]; g = [base[0] + 18 * (1 + Math.floor(k / u.spots.length)), base[1] + 6]; }
       taken.add(g.join());
