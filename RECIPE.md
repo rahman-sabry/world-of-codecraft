@@ -120,8 +120,13 @@ the clock. The art is original: it imitates no existing game.
   Code hook; `integrations/opencode/wocc-activity.js`, an OpenCode plugin). Tests, commits
   and pushes are recognised only as real commands (start of line or after `;` `&` `|` `(`),
   with heredoc bodies and quoted strings removed first, so "git push" in a message doesn't count. Fields: `act`,
-  `outil`, `coups`, `err` / `errT`, `errTache`, `subs`, `tache`, `essai {ok, t}`,
+  `outil`, `coups`, `err` / `errT`, `errTache`, `subs`, `subIds`, `tache`, `essai {ok, t}`,
   `commitT`, `pushT`. Without them heroes keep the plain status behaviour.
+  Running subagents are tracked by id (`subIds`: `agent_id` -> `{t0, t, act, outil}`: start, last event, and what
+  it does, `pense` at the start then the kind of its tools, as the main hero's): added on `SubagentStart`,
+  removed on `SubagentStop`, refreshed by the subagent's own tool events, kept when the main turn ends (`Stop`)
+  so background subagents stay counted, cleared by a new session (`SessionStart` other than `compact`) or
+  `SessionEnd`, and dropped after 30 min with no event (a missed stop). `subs` = how many ids are left.
   - thinking: `idle` + a "· · ·" bubble;
   - reading / searching / web: `idle` where it stands, two ravens circling above it;
   - editing code or running commands: fights a creature drawn per task (mages: imp, wolf, goblin, boar, rust
@@ -133,7 +138,21 @@ the clock. The art is original: it imitates no existing game.
     5 s: knocked over + "Tests passed!", or "Tests failing";
   - compacting: sits cross-legged (`rest`), sparks orbit, a crystal pulses;
   - git commit: a seal and "Sealed!"; git push: a carrier pigeon flies off east;
-  - subagents: one wisp per running subagent.
+  - subagents: apprentices, one hero at half size per running subagent (up to 4, no more sprites past that),
+    whatever the hero's status (not shells). Each is tied to its subagent id (oldest first): its race and class
+    (any of the 30, by hash of the hero and the id, independent of the hero) and its slot stay while it runs.
+    Half size maps one art pixel to one screen pixel, so they stay sharp. They animate with the heroes' stacked
+    frames on the same frame timer, showing what their own subagent does (`subIds[id].act`): `work` while it
+    edits, runs commands or tests; `idle` while it thinks, with a small scroll over the head while it reads,
+    searches or browses. Slots: 50 and 100 px to each side, alternating, 6 to 30 px in front or behind (the first
+    on the side away from the creature), each on walkable ground (`walkable` in lieux.js: the road, the bridge
+    deck, or near a stroll or work spot outside the building boxes, never the river or the lake, measured on the
+    bake) at least 30 px from the others: else mirrored, pulled in, or the first free point around the hero. On
+    the hero's walks they step onto its path, follow it in single file 0.9 to 3.6 s late (walk frames by
+    direction) and step out to their slots at the end. Night frames at night. Depth by feet y with the heroes,
+    behind front cut-outs like the walkers; not clickable, no chronicle line. When a subagent ends its
+    apprentice disappears. The activity file is read while the hero works, once when it is first seen, and
+    while it has subagents (and an event in the last 30 min), so they stay after the main turn ends.
   - **Anti-zapping:** a scene changes only when asked for 8 s and the current one is 15 s
     old (20 s / 40 s to or from the forest edge); meditation, tests and the end switch at once.
 - **Village life** (`ambiance.js`): walkers with pauses on the road (a peasant woman and a
@@ -141,8 +160,18 @@ the clock. The art is original: it imitates no existing game.
   barn, the tavern cat, a stag at dawn and dusk, sparrows over the fields, fish leaping in the
   river, a treasury of up to 5 coins (account A's week left, cduo only) and fair pennants the
   day before the weekly reset.
+  - **Roaming cats** (`CATS`): three cats, each with its own stops (windmill fields and barn;
+    barn, tavern and market; market, jetty and lake shore). A cat walks to its next stop along
+    the road the heroes use (`route` from place.js: over the footbridge, never through water or
+    buildings; `marche`, mirrored by direction, with a 1 px native bob), sits there (`assis`)
+    20-60 s (per cat and stop, by hash), then moves on. One time in three it goes instead to the
+    nearest calm hero within 800 px (idle, or a shell on guard, standing, no other cat's), sits
+    22 px beside its feet facing it, and gets up early when the hero walks off, starts working
+    or leaves. Never by working, blocked or done heroes. Night sprites at night; depth by feet y
+    with the heroes, behind front cut-outs like the walkers. The 1 s ambient timer starts each
+    leg; no chronicle line, no click.
 - **« Animations » toggle** under the minimap (store key `wocc.anim`, default on). Off:
-  heroes stand on still frames, no walking, no scenes, enemies, village life or smoke, and
+  heroes stand on still frames, no walking, no scenes, enemies, apprentices, village life or smoke, and
   no activity polling (about 10 % of a core instead of 27 % on an M2 Pro).
 
 ## Immersive mode

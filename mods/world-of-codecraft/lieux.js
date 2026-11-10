@@ -45,6 +45,37 @@ export const BUILDINGS = {
   temple: { get nom() { return t("building").temple; }, box: [1890, 10, 270, 350] },
   caserne: { get nom() { return t("building").caserne; }, box: [2330, 100, 240, 220] },
 };
+// The water, measured on the baked world (tools/bake_wide.py): the river's centre line and half width, the lake's
+// ellipse [cx, cy, rx, ry], and the footbridge's deck (walkable over the river).
+const RIVER = [[3420, 20], [3300, 110], [3130, 190], [3070, 260], [3020, 330], [2860, 380], [2740, 410]];
+const RIVER_R = 36;
+const LAKE = [3570, 165, 245, 130];
+const DECK = [[3054, 201], [3168, 259]];
+const SPOT_R = 60, ROAD_R = 30;
+
+/** Distance from p to the polyline pts. */
+function toLine([x, y], pts) {
+  let best = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+    const dx = bx - ax, dy = by - ay, k = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
+    best = Math.min(best, Math.hypot(ax + k * dx - x, ay + k * dy - y));
+  }
+  return best;
+}
+
+/** Open ground a unit may stand on (there is no ground map at run time): the bridge's deck, the road, or near a
+ *  known standing spot outside every building's box (hit boxes: larger than the buildings, they overlap the road);
+ *  never the water. */
+export function walkable(p) {
+  const [x, y] = p;
+  if (toLine(p, DECK) < 14) return true;
+  if (toLine(p, RIVER) < RIVER_R || ((x - LAKE[0]) / LAKE[2]) ** 2 + ((y - LAKE[1]) / LAKE[3]) ** 2 < 1) return false;
+  if (toLine(p, ROAD) < ROAD_R) return true;
+  if (Object.values(BUILDINGS).some(({ box: [bx, by, bw, bh] }) => x > bx && x < bx + bw && y > by && y < by + bh)) return false;
+  return [...FLANE, ...Object.values(SPOTS).flat()].some(([sx, sy]) => Math.hypot(sx - x, sy - y) < SPOT_R);
+}
+
 /** The market's name in the current language, and its box [x, y, w, h] (the red and blue stalls). */
 export const market = () => t("market");
 export const MARCHE = [1647, 309, 317, 91];

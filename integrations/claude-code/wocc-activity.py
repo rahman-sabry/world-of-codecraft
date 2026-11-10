@@ -9,7 +9,10 @@ Claude Code hook (async, never blocks). Writes ~/.local/state/world-of-codecraft
   outil    last tool name          t      last event (ms)       depuis  when act started (ms)
   coups    successful edits and commands this task (each one = a blow on the creature)
   err      consecutive tool failures, errT the last one (ms)
-  subs     running subagents       tache  prompt counter (seeds the creature drawn for the task)
+  subs     running subagents (len(subIds))
+  subIds   {agent id: {t0 start, t last event (ms), act what it does (pense, then its tools' kind), outil}}, kept
+           across turns until SubagentStop, a new session, or 30 min with no event from that subagent
+  tache    prompt counter (seeds the creature drawn for the task)
   errTache tool failures this task (3+ = the next creature is a boss)
   essai    last test run {ok, t} (act "test" while it runs)   commitT / pushT  last git commit / push (ms)
 
@@ -47,6 +50,7 @@ PUSH = re.compile(AT + r"git\s+(-C\s+\S+\s+)?push\b", re.M)
 READ = {"Read", "Grep", "Glob", "LS", "NotebookRead", "LSP", "ToolSearch"}
 EDIT = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 WEB = {"WebSearch", "WebFetch"}
+SUB_TTL = 30 * 60_000  # a subagent silent this long is dropped (its SubagentStop was missed)
 
 
 def kind(t):
@@ -78,17 +82,26 @@ with open(os.path.join(DIR, ".lock"), "w") as lk:
     except Exception:
         s = {}
     s.setdefault("tache", 0)
-    s.setdefault("subs", 0)
+    aid = ev.get("agent_id")
+    subIds = {}
+    for k, v in (s.get("subIds") or {}).items():
+        v = v if isinstance(v, dict) else {"t0": v, "t": v}  # older files: {id: ms}
+        if now - v["t"] < SUB_TTL:
+            subIds[k] = v
+    if name == "SubagentStart" and aid:
+        subIds[aid] = {"t0": now, "t": now, "act": "pense"}
+    elif name == "SubagentStop":
+        subIds.pop(aid, None)
+    elif aid in subIds:  # its own tool calls: still running, and what it does
+        subIds[aid]["t"] = now
+        if name == "PreToolUse" and kind(tool):
+            subIds[aid].update(act=kind(tool), outil=tool)
 
     def act(a):
         if s.get("act") != a:
             s["act"], s["depuis"] = a, now
 
-    if name in ("SubagentStart",):
-        s["subs"] = s["subs"] + 1
-    elif name == "SubagentStop":
-        s["subs"] = max(0, s["subs"] - 1)
-    elif sub:
+    if name in ("SubagentStart", "SubagentStop") or sub:
         pass  # a subagent's own tools: the main hero's scene stays
     elif name == "UserPromptSubmit":
         s.update(tache=s["tache"] + 1, coups=0, err=0, errTache=0)
@@ -120,11 +133,12 @@ with open(os.path.join(DIR, ".lock"), "w") as lk:
         if ev.get("source") == "compact":
             act("pense")
         else:
-            s.update(subs=0, err=0, coups=0)
+            subIds = {}
+            s.update(err=0, coups=0)
             act("fini")
     elif name == "Stop":
-        s["subs"] = 0
-        act("fini")
+        act("fini")  # background subagents keep running: subIds stays
+    s["subIds"], s["subs"] = subIds, len(subIds)
     s["t"] = now
     tmp = path + ".tmp"
     with open(tmp, "w") as f:

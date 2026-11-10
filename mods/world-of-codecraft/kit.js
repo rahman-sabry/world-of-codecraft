@@ -35,6 +35,9 @@ export function hash(s) {
   return h >>> 0;
 }
 
+/** Walk anim for a step: towards the viewer = walk_dl (mirrored: walk_dr), away = walk_ur (walk_ul). */
+export const walkAnim = (dx, dy) => (dy > 0 || (dy === 0 && dx < 0) ? (dx <= 0 ? "walk_dl" : "walk_dr") : (dx >= 0 ? "walk_ur" : "walk_ul"));
+
 export function clip(s, n) {
   s = String(s ?? "");
   return s.length > n ? s.slice(0, Math.max(1, n - 1)) + "…" : s;

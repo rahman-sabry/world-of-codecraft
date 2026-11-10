@@ -10,8 +10,8 @@
 //   test     running tests       strikes a training dummy; passed = the dummy falls + "Tests passed!",
 //                                failed = "Tests failing" (the result stays 5 s, whatever the scene)
 //   travail  bash and the rest   the usual `work` loop
-// plus, whatever the scene: familiars (one wisp per running subagent), a wax seal and "Sealed!" on a
-// git commit, a carrier pigeon flying off east on a git push.
+// plus, whatever the scene: a wax seal and "Sealed!" on a git commit, a carrier pigeon flying off east on a
+// git push; and, whatever the status, apprentices (one half-size hero per running subagent) trailing the hero.
 // Lot 2: six creatures in the draw (imp, wolf, goblin, boar, rust golem, spectre); a task with 3+ failed
 // tools brings the forest troll, a boss of 8 blows.
 // Anti-zapping: a scene changes only when the new one has been asked for 8 s and the current one has
@@ -20,8 +20,10 @@
 
 import { div, image } from "gpui-kit";
 import { home, readTextFile } from "herdr";
-import { hash, UI, C, heroOf } from "./kit.js";
+import { hash, UI, C, heroOf, walkAnim } from "./kit.js";
+import { walkable } from "./lieux.js";
 import { CREATURES } from "./creatures-data.js";
+import { HEROES } from "./heros-data.js";
 import { t as tr } from "./i18n.js";
 
 const ART = "mods/world-of-codecraft/art";
@@ -42,7 +44,46 @@ export const DISTRICT = { atelier: ["golem", "gobelin"], grange: ["loup", "sangl
 const HOME = { artificier: "atelier", rodeur: "grange", pretre: "temple", voleur: "etal1" };
 const clsOf = (a) => (a.demoHero ? { mage: "mage", artificer: "artificier", ranger: "rodeur", priest: "pretre", rogue: "voleur", warrior: "guerrier" }[a.demoHero.split("-")[1]] : heroOf(a.address, a.program).cls);
 const RESULT = 5000; // a test result stays on screen this long
+const STUCK = 20000; // a fight with no blow for this long (delegating to subagents) no longer holds the hero
 const SCENE_OF = { pense: "pense", eclaire: "eclaire", web: "eclaire", code: "combat", commande: "combat", medite: "medite", test: "test" };
+const SUB_TTL = 30 * 60_000; // an activity file silent this long has no running subagents (as the hook drops them)
+const subsOf = (s) => (s && Date.now() - (s.t ?? 0) < SUB_TTL ? s.subs ?? 0 : 0);
+const KINDS = Object.keys(HEROES); // any race x class, for the apprentices
+// Apprentice slots: [dx (positive = away from the creature's side), dy, lag (ms) behind the hero in single file]
+const SLOTS = [[50, 12, 900], [-50, -20, 1800], [100, -6, 2700], [-100, -30, 3600]];
+const STEP = 40; // px/s an apprentice walks onto the hero's path and back out to its slot
+export const TRAIL = 3600 + (110 / STEP) * 1000; // the last apprentice ends its walk this long after the hero
+const WORKS = new Set(["code", "commande", "test"]); // a subagent's acts shown with `work`
+const READS = new Set(["eclaire", "web"]); // and with the scroll over the head
+
+/** Where slot k stands by a hero standing at p: its offset, else mirrored, else pulled in (mirrored too), the first
+ *  on walkable ground at least 30 px from the apprentices placed before it; else the first such point around the
+ *  hero; else a quarter of its offset. */
+function spot(p, k, side, taken) {
+  const [dx0, dy] = SLOTS[k], dx = -side * dx0;
+  for (const f of [1, 0.75, 0.5, 0.35]) for (const ox of [dx * f, -dx * f]) {
+    const q = [p[0] + ox, p[1] + dy * Math.max(f, 0.5)];
+    if (walkable(q) && !taken.some((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) < 30)) return q;
+  }
+  // a cramped spot (a shore, the bridge): the first free ground around the hero
+  for (const r of [30, 45, 60]) for (let i = 0; i < 12; i++) {
+    const q = [p[0] + r * Math.cos((i * Math.PI) / 6), p[1] + r * Math.sin((i * Math.PI) / 6)];
+    if (walkable(q) && !taken.some((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) < 30)) return q;
+  }
+  return [p[0] + dx / 4, p[1] + dy / 4];
+}
+
+/** An apprentice's walk for the hero's legs: from its slot by the start onto the path, the hero's legs `lag` ms
+ *  late (later when the step onto the path is longer), then out to its slot by the goal: { legs, x, y } (Place.pos). */
+function trail(legs, from, to, lag) {
+  if (!legs.length) return { legs: [], x: to[0], y: to[1] };
+  const a = legs[0].a, z = legs[legs.length - 1].b, T0 = legs[0].t0;
+  const L = Math.max(lag, (Math.hypot(a[0] - from[0], a[1] - from[1]) / STEP) * 1000);
+  const T1 = legs[legs.length - 1].t1 + L;
+  return { x: to[0], y: to[1], legs: [{ a: from, b: a, t0: T0, t1: T0 + L },
+    ...legs.map((l) => ({ a: l.a, b: l.b, t0: l.t0 + L, t1: l.t1 + L })),
+    { a: z, b: to, t0: T1, t1: T1 + (Math.hypot(to[0] - z[0], to[1] - z[1]) / STEP) * 1000 }] };
+}
 const boss = (s) => (s?.errTache ?? 0) >= BOSS_AFTER;
 const blowsFor = (s) => (boss(s) ? BOSS_BLOWS : BLOWS);
 const recent = (t, ms) => Boolean(t) && Date.now() - t < ms;
@@ -58,6 +99,7 @@ export class Activites {
     this.files = new Map(); // address -> parsed activity file
     this.scenes = new Map(); // address -> { scene, since, cand, candSince }
     this.hits = new Map(); // address -> { coups, at, felled: [{ species, at }] }
+    this.slots = new Map(); // address -> Map(subagent id -> apprentice slot)
     this.timer = null;
     this.busy = false;
   }
@@ -72,11 +114,16 @@ export class Activites {
     return this.files.get(addr) ?? null;
   }
 
-  /** Polls the activity files while some agent works; notifies only when something visible changes. */
+  /** True when a hero's file is read: while it works, once when first seen, and while it has subagents running. */
+  reads(a) {
+    return !a.guard && !a.demoAct && (a.status === "working" || !this.files.has(a.address) || subsOf(this.files.get(a.address)) > 0);
+  }
+
+  /** Polls the activity files while some agent works or has subagents; notifies only when something visible changes. */
   watch(cx, list, hidden, off = false) {
     this.list = list;
     this.off = off;
-    const need = !hidden && !off && list.some((a) => a.status === "working" || this.scenes.has(a.address));
+    const need = !hidden && !off && list.some((a) => this.reads(a) || this.scenes.has(a.address));
     if (need && !this.timer) this.timer = cx.timer.every(POLL, (cx) => this.poll(cx));
     else if (!need && this.timer) { this.timer.cancel(); this.timer = null; }
   }
@@ -90,7 +137,7 @@ export class Activites {
       const dir = `${home()}/.local/state/world-of-codecraft`;
       for (const a of this.list ?? []) {
         if (a.demoAct) { changed = this.apply(a, a.demoAct, now) || changed; continue; }
-        if (a.guard || a.status !== "working") { changed = this.apply(a, null, now) || changed; continue; }
+        if (!this.reads(a)) { changed = this.apply(a, null, now) || changed; continue; }
         let s = null;
         try { s = JSON.parse((await readTextFile(`${dir}/${a.address}.json`)) ?? "null"); } catch { s = null; }
         const old = this.files.get(a.address);
@@ -105,6 +152,7 @@ export class Activites {
       }
       const alive = new Set((this.list ?? []).map((a) => a.address));
       for (const k of [...this.scenes.keys()]) if (!alive.has(k)) { this.scenes.delete(k); changed = true; }
+      for (const k of [...this.slots.keys()]) if (!alive.has(k)) this.slots.delete(k);
       // a felled creature's puff lasts 1.2 s
       for (const h of this.hits.values()) {
         const n = h.felled.length;
@@ -159,7 +207,7 @@ export class Activites {
     const h = this.hits.get(a.address);
     if (sc === "medite" || sc === "test" || (h && (h.felled.length || Date.now() - h.at < 900))) return false;
     if (!s) return true;
-    if (sc === "combat" && (s.coups ?? 0) % blowsFor(s) !== 0) return false;
+    if (sc === "combat" && (s.coups ?? 0) % blowsFor(s) !== 0 && !(h && Date.now() - h.at > STUCK)) return false;
     return !(recent(s.essai?.t, RESULT) || recent(s.commitT, 4000) || recent(s.pushT, 7000) || (s.errT && (s.err ?? 0) > 0 && recent(s.errT, 1500)));
   }
 
@@ -211,16 +259,6 @@ export class Activites {
       out.push(div().absolute().left(-4).top(head - 14).w(8).h(12).rounded(2).bg("#c9a7ff").border_1().border_color("#5b2ca8")
         .loop("top", { from: head - 12, to: head - 18, period: 1800 }).loop("opacity", { from: 0.55, to: 1, period: 1200 }));
     }
-    // familiars: one wisp per running subagent (any scene)
-    const subs = Math.min(4, s?.subs ?? 0);
-    for (let k = 0; k < subs; k++) {
-      const per = 4200 + k * 900, far = (k % 2 ? -1 : 1) * (90 + k * 40), y0 = head + 10 - k * 9;
-      out.push(div().absolute().left(0).top(y0).size(14).rounded_full().bg("#9ff3ff33")
-        .loop("left", { from: -7, to: far, period: per })
-        .loop("top", { from: y0, to: y0 - 22, period: per / 3 })
-        .child(div().absolute().left(4).top(4).size(6).rounded_full().bg("#e6fdff")
-          .loop("opacity", { from: 0.6, to: 1, period: 500 + k * 90 })));
-    }
     const says = []; // short bubbles, stacked upwards so they never cover each other
     // git commit: a wax seal pops over the head, "Sealed!"
     if (recent(s?.commitT, 4000)) {
@@ -252,6 +290,63 @@ export class Activites {
         .flex().items_center().font_family(UI).text_size(15).text_color(C.wax).whitespace_nowrap().child(tr("ouch")));
     }
     return out;
+  }
+
+  /** A hero's running subagents, oldest first: [{ id, act }] (demo heroes: as many as their `subs`, no act). */
+  subagents(s) {
+    if (!subsOf(s)) return [];
+    if (!s.subIds) return Array.from({ length: s.subs }, (_, i) => ({ id: `demo${i}`, act: null }));
+    return Object.entries(s.subIds).map(([id, v]) => (typeof v === "object" ? { id, ...v } : { id, t0: v, t: v }))
+      .filter((v) => Date.now() - v.t < SUB_TTL).sort((p, q) => p.t0 - q.t0);
+  }
+
+  /** Apprentices: one hero of any race and class at half size per running subagent (up to 4), each tied to its
+   *  subagent id (its look, and its slot while it runs). Standing by the hero in its slot (on walkable ground), it
+   *  plays what its subagent does: `work` while it edits, runs commands or tests, `idle` otherwise, with a small
+   *  scroll over its head while it reads or searches. On the hero's walks they step onto its path, follow it in
+   *  single file (walk frames by direction) and step out to their slots at the end. m = the hero's mob entry,
+   *  pos(trail, t) = Place.pos, side = the creature's side (1 = right), animate = its frames run (else frame 0).
+   *  Depth-sorted world elements: [{ z, el, box, addr, anim }], anim = its frame timer entry (fps, n, ph, trail). */
+  apprentis(u, m, pos, side, night, t, animate) {
+    const addr = u.a.address;
+    const subs = this.subagents(this.file(addr) ?? u.a.demoAct);
+    const slots = this.slots.get(addr) ?? new Map(); // subagent id -> slot, kept while it runs
+    this.slots.set(addr, slots);
+    for (const id of [...slots.keys()]) if (!subs.some((x) => x.id === id)) slots.delete(id);
+    for (const x of subs) {
+      const used = new Set(slots.values());
+      const k = SLOTS.findIndex((_, k) => !used.has(k));
+      if (!slots.has(x.id) && k >= 0) slots.set(x.id, k);
+    }
+    const drawn = subs.filter((x) => slots.has(x.id)).sort((p, q) => slots.get(p.id) - slots.get(q.id));
+    // the slots by the hero's goal and, on a walk, by its starting point
+    const at = (p) => { const taken = []; return drawn.map((x) => { const q = spot(p, slots.get(x.id), side, taken); taken.push(q); return q; }); };
+    const ends = at([m.x, m.y]), starts = m.legs.length ? at(m.legs[0].a) : ends;
+    const sfx = night ? "-n" : "";
+    return drawn.map((x, i) => {
+      const k = slots.get(x.id);
+      const tr = trail(m.legs, starts[i], ends[i], SLOTS[k][2]);
+      const p = pos(tr, t), leg = p.leg && (p.leg.a[0] !== p.leg.b[0] || p.leg.a[1] !== p.leg.b[1]) ? p.leg : null;
+      const name = leg ? walkAnim(leg.b[0] - leg.a[0], leg.b[1] - leg.a[1]) : WORKS.has(x.act) ? "work" : "idle";
+      const key = KINDS[hash(`${addr}:${x.id}`) % KINDS.length];
+      const A = HEROES[key]?.anims?.[name];
+      if (!A) return null;
+      const ph = hash(x.id) % 997;
+      const f = animate ? Math.floor(((t + ph) / 1000) * A.fps) % A.n : 0;
+      // half size: the art is 2x, so one art pixel lands on one screen pixel and stays sharp
+      const w = A.w / 2, h = A.h / 2, ax = A.ax / 2, ay = A.ay / 2;
+      const dir = `${ART}/heros/${key}/${name}`;
+      const [gx, gy] = p.leg ? p.leg.b : [p.x, p.y];
+      // the feet point glides to the end of its leg (transition always declared, as the heroes')
+      const dur = p.leg ? Math.max(16, p.leg.t1 - t) : 16;
+      const el = div().id(`apprenti-${addr}-${x.id}`).absolute().left(Math.round(gx)).top(Math.round(gy)).w(0).h(0)
+        .transition("left", { duration: dur, easing: "linear" }).transition("top", { duration: dur, easing: "linear" })
+        .child(div().absolute().left(-ax).top(-ay).w(w).h(h)
+          .children(Array.from({ length: A.n }, (_, i) =>
+            image(`${dir}/${String(i).padStart(2, "0")}${sfx}.png`).absolute().left(0).top(0).w(w).h(h).opacity(i === f ? 1 : 0))))
+        .when(!leg && READS.has(x.act), (e) => e.child(image(`${ART}/ic-parchemin.svg`).absolute().left(-5).top(-ay - 13).size(10)));
+      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, anim: { fps: animate ? A.fps : 0, n: A.n, ph, trail: tr } };
+    }).filter(Boolean);
   }
 
   /** The creature a fighting unit faces, as its own depth-sorted world element: { z, el } or null. */

@@ -14,12 +14,12 @@
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, spaces, run, setAgentOrder, props, layout, shared, setShared } from "herdr";
-import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress } from "./kit.js";
+import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim } from "./kit.js";
 import { WORLD, TILES, FRONTS } from "./monde-data.js";
 import { HEROES } from "./heros-data.js";
 import { SPOTS, FLANE, ROAD, BUILDINGS, MARCHE, market, SMOKE, GLOWS } from "./lieux.js";
 import { t as tr, detectLang } from "./i18n.js";
-import { Activites } from "./activite.js";
+import { Activites, TRAIL } from "./activite.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
 import { commandPanel, MINI_INSET, watchStat } from "./commande.js";
@@ -95,9 +95,6 @@ function quartier(x, y) {
   return near[0] < 200 ? near[1] : tr("villageTag");
 }
 
-/** Walk anim for a step: towards the viewer = walk_dl (mirrored: walk_dr), away = walk_ur (walk_ul). */
-const walkAnim = (dx, dy) => (dy > 0 || (dy === 0 && dx < 0) ? (dx <= 0 ? "walk_dl" : "walk_dr") : (dx >= 0 ? "walk_ur" : "walk_ul"));
-
 export default class Place {
   init(_p, cx) {
     detectLang(cx);
@@ -115,7 +112,7 @@ export default class Place {
     this.timer = null;
     this.sig = "";
     this.act = new Activites(); // what each hero does while working (Claude Code hook)
-    this.amb = new Ambiance(); // village life: walkers, animals, treasury, fair (only when animated)
+    this.amb = new Ambiance(route); // village life: walkers, animals, treasury, fair (only when animated)
     this.live = true; // the « Animations » toggle (shared wocc.anim): off = still images, no walk, no scenes
     try { this.log = JSON.parse(localStorage.getItem(LOG_KEY) ?? "[]"); } catch { this.log = []; }
     cx.timer.every(60_000, (cx) => { this.now = new Date(); cx.notify(); });
@@ -269,7 +266,7 @@ export default class Place {
         }
         m.x = goal[0]; m.y = goal[1]; m.goal = goal; m.group = u.group;
       }
-      if (m.legs.length && t >= m.legs[m.legs.length - 1].t1) m.legs = [];
+      if (m.legs.length && t >= m.legs[m.legs.length - 1].t1 + TRAIL) m.legs = []; // kept while its apprentices still walk them
       const p = this.pos(m, t);
       out.push({ a: u.a, h: u.h, x: p.x, y: p.y, leg: p.leg, key: `${RACE_EN[u.h.race]}-${CLS_EN[u.h.cls]}` });
     }
@@ -370,9 +367,9 @@ export default class Place {
     for (const u of this.anims ?? []) {
       const m = this.mob.get(u.addr);
       if (!m) continue;
-      const p = this.pos(m, t);
+      const p = this.pos(u.trail ?? m, t); // an apprentice: its own walk
       const k = u.fps ? Math.floor(((t + u.ph) / 1000) * u.fps) % u.n : 0;
-      s += `${u.addr}:${k}:${p.leg ? p.leg.t0 : "-"};`;
+      s += `${u.addr}:${u.ph}:${k}:${p.leg ? p.leg.t0 : "-"};`;
     }
     return s;
   }
@@ -506,7 +503,7 @@ export default class Place {
       ["working", "gemini", "human-priest"], ["working", "claude", "elf-mage"], ["blocked", "aider", "undead-rogue"], ["working", "codex", "orc-artificer"],
       ["working", "claude", "human-mage"], ["working", "claude", "undead-mage"]];
     // demo activities (props.demo): combat with a blow every 2.5 s and a failed tool every 20 s, a scout with
-    // two familiars, a meditation, a thinker; the scene changes immediately (no file, no anti-zapping wait)
+    // two apprentices, a meditation, a thinker; the scene changes immediately (no file, no anti-zapping wait)
     const n = Date.now();
     const ACT = {
       0: { act: "code", tache: 1, coups: Math.floor(n / 2500) % 400, subs: 0, err: 1, errT: n - (n % 20000), t: n },
@@ -570,6 +567,13 @@ export default class Place {
       u.animate = animate;
       if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997 });
     }
+    // apprentices (one half-size hero per running subagent) by their heroes, on the side away from the creature;
+    // their frames and their walks (in single file on the hero's path) run on the same frame timer
+    const apps = this.live ? units.flatMap((u) => {
+      const m = this.mob.get(u.a.address);
+      return u.a.guard ? [] : this.act.apprentis(u, m, (tr, at) => this.pos(tr, at), m.x > 2700 ? -1 : 1, nightHeroes, t, !hidden && visible(u));
+    }) : [];
+    for (const ap of apps) if (ap.anim.fps || ap.anim.trail.legs.length) this.anims.push({ addr: ap.addr, ...ap.anim });
     this.tick(cx, !hidden && this.anims.length > 0);
     this.sig = this.frameSig(t);
 
@@ -578,15 +582,16 @@ export default class Place {
     for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); }
     const working = list.filter((a) => a.status === "working").length;
     this.amb.watch(cx, this.live && !hidden, { phase: sk.phase, wake: this.wake });
-    const life = this.live ? this.amb.things(nightHeroes, sk.phase, working) : [];
+    const life = this.live ? this.amb.things(nightHeroes, sk.phase, working, units) : [];
     things.push(...life);
+    things.push(...apps);
     for (const fr of FRONTS) {
       const over = units.some((u) => {
         const an = this.anim(u);
         const x0 = u.x - an.info.ax, y0 = u.y - an.info.ay;
         return u.y + 3 < fr.z && x0 < fr.x + fr.w && x0 + an.info.w > fr.x && y0 < fr.y + fr.h && u.y > fr.y;
       });
-      const walkerBehind = life.some((th) => th.box && behind(th.box).includes(fr));
+      const walkerBehind = [...life, ...apps].some((th) => th.box && behind(th.box).includes(fr));
       if (over || walkerBehind) things.push({ z: fr.z, el: this.front(fr, nightK) });
     }
     things.sort((p, q) => p.z - q.z);
