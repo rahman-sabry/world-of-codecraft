@@ -9,7 +9,8 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { spaces, agents, run, props, layout, nextCommand, window as appWindow } from "herdr";
+import { spaces, agents, focused, run, props, layout, nextCommand, window as appWindow } from "herdr";
+import { freshStat } from "./commande.js";
 import { VILLAGE, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left } from "./kit.js";
 import { P, DECO, TEXTE, bar, pic, txt, button, mark, banner } from "./ui.js";
 import { DEMO_SPACES } from "./demo.js";
@@ -65,6 +66,17 @@ export default class Fronton {
     return this.plaque(`res-${acc}`, icon, `${t("pct", rem)}${q.stale ? " ?" : ""}`, five, tip, rem <= 20);
   }
 
+  /** The selected hero's context window: a mana gauge filling up, the %, and the model. Hidden without a fresh
+   *  status file (see watchStat in commande.js). */
+  contexte() {
+    const s = freshStat(focused()?.agent);
+    if (!s || s.ctx == null) return null;
+    const pct = Math.max(0, Math.min(100, s.ctx));
+    const gauge = div().relative().w(12).h(26).bg("#0c0a0e").border_1().border_color(P.goldLo).rounded(2).overflow_hidden()
+      .child(div().absolute().left(0).right(0).bottom(0).h(Math.round((24 * pct) / 100)).bg(pct >= 80 ? P.blocked : "#5f8fe8"));
+    return this.plaque("res-contexte", gauge, t("pct", pct), s.model ? `${t("context")} · ${s.model}` : t("context"), t("contextTip", pct, s.model), pct >= 80);
+  }
+
   /** The immersive-mode switch: swaps the village (big) and the terminal (below), in the same layout. */
   mode() {
     const on = immersive();
@@ -88,6 +100,7 @@ export default class Fronton {
     const fair = resets.length ? left(Math.min(...resets)) : "";
     const gold = this.quota("A", t("gold"), pic("ic-or", 32, 24));
     const wood = this.quota("B", t("wood"), pic("ic-bois", 36, 28));
+    const contexte = this.contexte();
 
     const waiting = blocked.length ? blocked : done;
     let alert = null;
@@ -135,6 +148,7 @@ export default class Fronton {
         .when(Boolean(gold), (el) => el.child(gold))
         .when(Boolean(wood), (el) => el.child(wood))
         .child(this.plaque("res-heros", pic("ic-heros", 26, 22), `${busy} / ${all.length}`, t("heroesAtWork"), t("heroesTip", busy, all.length)))
+        .when(Boolean(contexte), (el) => el.child(contexte))
         .when(resets.length > 0, (el) => el.child(this.plaque("res-foire", pic("ic-sablier", 22, 28), fair || "—", t("untilFair"), t("fairTip"))))
         .child(div().flex_1().min_w(0).flex().justify_center().when(Boolean(scroll), (el) => el.child(scroll)))
         .when(Boolean(alert), (el) => el.child(alert))

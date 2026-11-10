@@ -49,10 +49,16 @@ export function watchStat(cx) {
   cx.timer.every(STAT_POLL, () => { pollStat(); });
 }
 
+/** The selected hero's {model, ctx} when its status file is fresh, else null. */
+export function freshStat(address) {
+  const s = shared("wocc.stat");
+  return s && address && s.address === address && Date.now() - s.at <= STAT_STALE ? s : null;
+}
+
 /** "Opus 5.5 · ctx 42%" for this hero, or null when there is no fresh status file. */
 function statLine(a) {
-  const s = shared("wocc.stat");
-  if (!s || s.address !== a.address || Date.now() - s.at > STAT_STALE) return null;
+  const s = freshStat(a.address);
+  if (!s) return null;
   const parts = [s.model, s.ctx != null ? t("ctx", s.ctx) : null].filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
 }
