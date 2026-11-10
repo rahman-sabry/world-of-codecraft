@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 PY=${PY:-.venv/bin/python}
 mkdir -p assets
 for n in tavern townhall magetower forge barracks temple barn stall-red stall-blue stall-green well noticeboard campfire \
-         tree-oak tree-pine bush tree-autumn rocks fence-x fence-y; do
+         tree-oak tree-pine bush tree-autumn rocks fence-x fence-y windmill dock ruin; do
   OUT=assets/p-$n "$PY" buildings.py "$n" >/dev/null &
 done
 wait

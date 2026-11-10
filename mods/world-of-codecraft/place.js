@@ -22,7 +22,7 @@ import { t as tr, detectLang } from "./i18n.js";
 import { Activites } from "./activite.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
-import { commandPanel, MINI_INSET } from "./commande.js";
+import { commandPanel, MINI_INSET, watchStat } from "./commande.js";
 import { EXT } from "./terre-data.js";
 
 const ART = "mods/world-of-codecraft/art";
@@ -35,9 +35,10 @@ const ONLY_SELECTED = false; // if CPU is too high: frame-animate only the selec
 
 // Where each class works.
 const WORK = { mage: "tour", artificier: "atelier", guerrier: "caserne", pretre: "temple", rodeur: "grange", voleur: "etal1" };
+const LIEUX_TRAVAIL = Object.keys(SPOTS); // every building with work spots, where agents scatter
 const RECRUIT = {
   tour: { argv: ["claude"], get what() { return tr("recruit").tour; } },
-  atelier: { argv: ["codex"], get what() { return tr("recruit").atelier; } },
+  atelier: { argv: ["claude"], get what() { return tr("recruit").atelier; } },
   caserne: { argv: null, get what() { return tr("recruit").caserne; } },
 };
 const RACE_EN = { elfe: "elf", orque: "orc", humain: "human", "mort-vivant": "undead", nain: "dwarf" };
@@ -82,6 +83,7 @@ const walkAnim = (dx, dy) => (dy > 0 || (dy === 0 && dx < 0) ? (dx <= 0 ? "walk_
 export default class Place {
   init(_p, cx) {
     detectLang(cx);
+    if (!_p?.immersion) watchStat(cx); // the panel is drawn here only in the Workshop strip
     this.born = Date.now();
     this.gotoAt = shared("wocc.goto")?.at; // ignore a minimap click left over from an earlier session
     this.w = 1400;
@@ -151,9 +153,13 @@ export default class Place {
     const goals = new Map();
     const want = list.map((a) => {
       const h = a.demoHero ? { ...heroOf(a.address, a.program), race: RACE_FR[a.demoHero.split("-")[0]], cls: CLS_FR[a.demoHero.split("-")[1]] } : heroOf(a.address, a.program);
-      const scout = a.status === "working" && this.act.scene(a.address) === "eclaire" && LISIERE[WORK[h.cls]];
-      const group = a.status === "idle" ? "repos" : scout ? `lisiere-${WORK[h.cls]}` : WORK[h.cls];
-      return { a, h, group, spots: group === "repos" ? REST : scout ? LISIERE[WORK[h.cls]] : SPOTS[group] };
+      // agents work somewhere new each task (the hook's prompt counter), so they scatter across the village;
+      // shells stay on guard at the barracks
+      const tache = this.act.file(a.address)?.tache ?? 0;
+      const where = a.guard || a.demoHero ? WORK[h.cls] : LIEUX_TRAVAIL[hash(`${a.address}:${tache}`) % LIEUX_TRAVAIL.length];
+      const scout = a.status === "working" && this.act.scene(a.address) === "eclaire" && LISIERE[where];
+      const group = a.status === "idle" ? "repos" : scout ? `lisiere-${where}` : where;
+      return { a, h, group, spots: group === "repos" ? REST : scout ? LISIERE[where] : SPOTS[group] };
     });
     // keep a unit on its current spot when it stays in the same group (no shuffling)
     for (const u of want) {
@@ -369,17 +375,17 @@ export default class Place {
     const mw = PANEL - MINI_INSET, k = mw / WORLD.w, mh = Math.round(WORLD.h * k);
     const col = { blocked: C.quest, done: C.gold, working: "#7dff6a", idle: "#cfc8da", garde: "#9aa4b1" };
     const view = (vw / WORLD.w) * mw;
-    const vx = (this.cam(vw) / WORLD.w) * mw;
+    const vx = ((this.cam(vw) - WORLD.x) / WORLD.w) * mw;
     return div().id("minicarte").relative().w(mw).h(mh).flex_none().cursor_pointer()
       .tooltip(tr("mapTip"))
       .on_mouse_down("left", (e, cx) => {
         const lx = e.local_position?.x;
-        if (typeof lx === "number") { this.camX = (lx / mw) * WORLD.w - vw / 2; this.manual = true; cx.notify(); }
+        if (typeof lx === "number") { this.camX = WORLD.x + (lx / mw) * WORLD.w - vw / 2; this.manual = true; cx.notify(); }
         cx.stop_propagation();
       })
       .child(image(`${MONDE}/minicarte.png`).absolute().left(0).top(0).w(mw).h(mh))
       .children(units.map((u) => {
-        let d = div().absolute().left(u.x * k - 2).top(u.y * k - 3).size(4).bg(col[u.a.status] ?? "#ffffff").border_1().border_color("#000000");
+        let d = div().absolute().left((u.x - WORLD.x) * k - 2).top(u.y * k - 3).size(4).bg(col[u.a.status] ?? "#ffffff").border_1().border_color("#000000");
         if (u.a.status === "blocked") d = d.when(this.live, (e) => e.loop("opacity", { from: 0.2, to: 1, period: 420 }));
         return d;
       }))
@@ -394,10 +400,10 @@ export default class Place {
     return Math.max(top, Math.min(bottom - h, c));
   }
 
-  cam(vw) {
-    const max = Math.max(0, WORLD.w - vw);
-    const c = this.camX ?? (WORLD.w / 2 - vw / 2);
-    return Math.max(0, Math.min(max, c));
+  /** The world x at the left of the view (the world spans WORLD.x to WORLD.x + WORLD.w), kept inside it. */
+  cam(vw, c = this.camX) {
+    const max = Math.max(WORLD.x, WORLD.x + WORLD.w - vw);
+    return Math.max(WORLD.x, Math.min(max, c ?? (WORLD.x + WORLD.w / 2 - vw / 2)));
   }
 
   chronicle() {
@@ -514,8 +520,8 @@ export default class Place {
     const worldTop = imm ? -this.camV() : Math.round(((this.h ?? WORLD.h) - WORLD.h) / 2);
     const glide = this.drag ? { duration: 16, easing: "linear" } : { duration: 650, easing: "ease-in-out" };
     const band = (name, y) => [
-      ...EXT.tiles.map((k) => image(`${MONDE}/${name}-${k}-jour.png`).absolute().left(k * 1000).top(y).w(1000).h(EXT[name])),
-      ...(nightK > 0 ? EXT.tiles.map((k) => image(`${MONDE}/${name}-${k}-nuit.png`).absolute().left(k * 1000).top(y).w(1000).h(EXT[name]).opacity(nightK)) : []),
+      ...EXT.tiles.map((tl) => image(`${MONDE}/${name}-${tl.k}-jour.png`).absolute().left(tl.x).top(y).w(1000).h(EXT[name])),
+      ...(nightK > 0 ? EXT.tiles.map((tl) => image(`${MONDE}/${name}-${tl.k}-nuit.png`).absolute().left(tl.x).top(y).w(1000).h(EXT[name]).opacity(nightK)) : []),
     ];
 
     // the camera glides (650 ms) except while the view is dragged, where it follows the pointer
@@ -549,7 +555,7 @@ export default class Place {
         .on_mouse_down("left", (e, cx) => { this.drag = { x0: e.position.x, y0: e.position.y, cam0: this.cam(vw), camY0: this.camV() }; cx.notify(); })
         .on_mouse_move((e, cx) => {
           if (!this.drag) return;
-          const x = Math.max(0, Math.min(Math.max(0, WORLD.w - vw), this.drag.cam0 - (e.position.x - this.drag.x0)));
+          const x = this.cam(vw, this.drag.cam0 - (e.position.x - this.drag.x0));
           const y = imm ? this.drag.camY0 - (e.position.y - this.drag.y0) : 0;
           if (Math.abs(x - this.cam(vw)) < 1 && (!imm || Math.abs(y - this.camV()) < 1)) return;
           this.camX = x;

@@ -68,10 +68,10 @@ export const CLASSES = {
   voleur: { get nom() { return t("cls").voleur; }, bat: "etal1", item: "dague" },
 };
 
-/** The class a program plays: Claude a mage, Codex an artificer, shells warriors… */
-export function classOf(program) {
+/** The class a program plays: Claude a mage or an artificer (split by terminal), Codex an artificer, shells warriors… */
+export function classOf(program, h = 0) {
   const k = String(program?.key ?? "").toLowerCase();
-  if (k.startsWith("claude")) return "mage";
+  if (k.startsWith("claude")) return (h >>> 13) & 1 ? "artificier" : "mage";
   if (k === "codex") return "artificier";
   if (program?.shell || k === "shell") return "guerrier";
   if (k.includes("gemini")) return "pretre";
@@ -83,7 +83,7 @@ export function classOf(program) {
 export function heroOf(address, program) {
   const h = hash(address);
   const race = RACES[h % RACES.length];
-  const cls = classOf(program);
+  const cls = classOf(program, h);
   const list = NAMES[race];
   const name = list[(h >>> 5) % list.length];
   return { race, cls, name, prog: program?.name ?? "agent", sprite: `${ART}/h-${race}-${cls}`, item: CLASSES[cls].item };

@@ -42,12 +42,14 @@ the clock. The art is original: it imitates no existing game.
   - "Selected unit": the focused agent as a full-length portrait card with name, class
     and race, program, state and quest, plus Go and Next buttons.
 
-  On the right, the world: 3000×400 logical px with art pixels at 2×, panning
-  horizontally. It contains:
+  On the right, the world: 5000×400 logical px (x from -1000 to 4000; the village is 0 to 3000)
+  with art pixels at 2×, panning horizontally. It contains:
   - buildings: town hall with belfry, mage tower (round, violet cone), forge workshop,
     barracks, Temple of Dawn, tavern, barn with fenced fields, market stalls, a well
     and a notice board;
   - a campfire, a road, a river and a forest;
+  - west of the village, farmland: fields with fences and a windmill; east, a lake on the river with a
+    jetty and a rowboat;
   - in the top-left corner, a chronicle of the last 4 events on dark tags.
 
 ## How it behaves
@@ -150,6 +152,12 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   night the glow differs by one step on 85 pixels near the north edge); the only change is the forest's soft
   shadows on the top of the village's grass, which makes the seam invisible. About 9 minutes; `CACHE=x.npz`
   reuses the composite.
+- **Wider lands:** `tools/bake_wide.py` runs after it and re-bakes everything on a 5000×1200 canvas: bake_lands.py's
+  ground and objects (re-run from its source), the ground over 5000 columns with the road, fields, the lake and
+  two trails added, and 1000 px of new land on each side (forest, farmland and the windmill west; the lake, the
+  jetty and, in the north band, a ruined watchtower east). The world keeps its coordinates (`WORLD.x = -1000`).
+  No new sprite touches the old tiles; it checks the village's building pixels by day before rewriting the tiles.
+  About 40 seconds (sprite loads are cached); `CACHE=x.npz` reuses the composite.
 - **Camera:** horizontal and vertical (drag, two-axis wheel), kept inside the bands; selecting a hero
   brings the village back into view.
 - **Panel bridge:** the village publishes its camera and units to the store (`wocc.view`, only when
@@ -200,7 +208,7 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   (`defaults read -g AppleLanguages`, `$LANG`). No network calls.
 - **Repo tooling** (`tools/`, not installed): `install.sh` copies the mod, layout and theme
   into the Herdr home (`--integrations` links the hook and plugin); `sync_creatures.py`,
-  `sync_heroes.py`, `bake_world.py`, `ui.py` rebuild the art from `tools/sources/`.
+  `sync_heroes.py`, `bake_world.py`, `bake_lands.py`, `bake_wide.py`, `ui.py` rebuild the art from `tools/sources/`.
 - **Art** (`art/`):
   - heroes: 30 race×class sprites with `idle`, `rest`, `work` and 4-way walk frames,
     plus night-graded copies;

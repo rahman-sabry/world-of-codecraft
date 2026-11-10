@@ -521,6 +521,119 @@ def fx(): return fence('x')
 @bld('fence-y')
 def fy(): return fence('y')
 
+@bld('windmill')
+def windmill():
+    v = Vol(-62, 66, -62, 66, 0, 180)
+    taper = lambda Z: 18 - (Z - 8) * 0.06
+    v.cyl(0, 0, 21, 0, 8, STONE)
+    v.put((-19, 19, -19, 19, 8, 102), lambda X, Y, Z: X ** 2 + Y ** 2 <= taper(Z) ** 2, PLASTER)
+    for zz in (38, 72):
+        v.cyl(0, 0, taper(zz) + 0.8, zz, zz + 2, TIMBER)
+    v.cyl(0, 0, taper(100) + 2, 100, 103, TIMBER)
+    # thatched cap with a curved profile, gold finial
+    v.put((-18, 18, -18, 18, 103, 136), lambda X, Y, Z: X ** 2 + Y ** 2 <= (1 + 15.5 * (1 - (Z - 103) / 33) ** 0.8) ** 2, ROOF_T)
+    v.cyl(0, 0, 0.9, 134, 142, GOLD); v.ell(0, 0, 142, 1.8, 1.8, 1.8, GOLD)
+    # sails facing the viewer (plane x + y = const), turned a little off the cross
+    hub, hz, r2 = 12.5, 108, np.sqrt(2)
+    v.capsule((0, 0, hz), (hub, hub, hz), 1.8, TIMBER)
+    v.ell(hub + 0.6, hub + 0.6, hz, 3, 3, 3, METAL)
+    for k in range(4):
+        th = np.radians(25 + 90 * k)
+        def blade(X, Y, Z, th=th, part=0):
+            s = (X - Y) / r2; t = Z - hz; w = (X + Y) / r2 - hub * r2
+            al = s * np.cos(th) + t * np.sin(th); ac = -s * np.sin(th) + t * np.cos(th)
+            if part == 0:
+                return (np.abs(w) < 0.9) & (al > 2) & (al < 60) & (np.abs(ac) < 1.1)
+            lat = (al > 12) & (al < 58) & (ac > 1.1) & (ac < 10) & (np.abs(w - 0.3) < 0.9)
+            bars = (np.mod(al, 7.5) < 1.1) | (ac > 8.8) | (al > 56.9)
+            return lat & (bars if part == 1 else ~bars)
+        bb = (-48, 66, -48, 66, 40, 178)
+        v.put(bb, lambda X, Y, Z, f=blade: f(X, Y, Z, part=2), CREAM)
+        v.put(bb, lambda X, Y, Z, f=blade: f(X, Y, Z, part=1), WOOD_L)
+        v.put(bb, lambda X, Y, Z, f=blade: f(X, Y, Z, part=0), TIMBER)
+    # door, windows, lantern
+    door(v, 'y', taper(10) - 0.5, -5, 5, 15, arch=True)
+    lantern(v, 9, taper(20) + 1.5, 26)
+    window(v, 'x', taper(52) - 0.5, -3, 3, 48, 57, cross=False, sill=False)
+    window(v, 'y', taper(80) - 0.5, -3, 3, 76, 85, cross=False, sill=False)
+    # flour sacks, a cart wheel, hay
+    for (sx, sy, sz) in ((16, 12, 0), (21, 7, 0), (18, 10, 5)):
+        v.ell(sx, sy, sz + 3, 3.2, 2.6, 3.4, CLOTH_W)
+    for (hx_, hy_) in ((-26, 14), (-17, 20)):
+        v.box(hx_, hx_ + 9, hy_, hy_ + 7, 0, 7, HAY)
+        v.box(hx_ + 3, hx_ + 4, hy_ - 0.3, hy_ + 7.3, 0, 7.3, ROPE)
+    barrel(v, 24, -6)
+    return v
+
+@bld('dock')
+def dock():
+    v = Vol(-24, 34, -52, 40, 0, 40)
+    y0, y1 = -44, 32  # the jetty runs along y; its +y end rests on the shore
+    v.box(-7, -5.6, y0, y1, 3.6, 5, TIMBER); v.box(5.6, 7, y0, y1, 3.6, 5, TIMBER)
+    for yy in np.arange(y0, y1, 3.1):
+        v.box(-7.5, 7.5, yy, yy + 2.6, 5, 6.4, PLANK)
+    for yy in np.arange(y0 + 1, y1 - 4, 12):
+        for xx in (-8, 6.4):
+            v.box(xx, xx + 1.8, yy, yy + 1.8, 0, 9 if yy == y0 + 1 else 6.4, TIMBER)
+    for xx in (-8, 6.4):
+        v.box(xx - 0.3, xx + 2.1, y0 + 0.7, y0 + 3.1, 7, 8, ROPE)
+    # a lantern pole at the end
+    v.box(-7.5, -5.7, y0 + 6, y0 + 7.8, 6.4, 30, TIMBER)
+    v.box(-7.5, -1, y0 + 6.2, y0 + 7.6, 28, 29.5, TIMBER)
+    lantern(v, -2, y0 + 7, 26)
+    v.box(-3.4, -0.6, y0 + 4.7, y0 + 9.3, 22.8, 26, FIRE); v.box(-4.3, 0.3, y0 + 5.6, y0 + 8.4, 22.8, 26, FIRE)
+    # a rowboat moored alongside
+    bx, by = 15, -16
+    hull = lambda X, Y, Z, k=1.0: ((X - bx) / (5.5 * k)) ** 2 + ((Y - by) / (15 * k)) ** 2 <= 1 - np.clip((3.5 - Z) / 5, 0, 1) ** 2
+    v.put((bx - 7, bx + 7, by - 17, by + 17, 0, 5), lambda X, Y, Z: hull(X, Y, Z) & ~(hull(X, Y, Z, 0.8) & (Z > 1.2)), PLANK_R)
+    v.box(bx - 4.5, bx + 4.5, by - 1, by + 1.5, 2.6, 3.6, WOOD_L)
+    v.box(bx - 1, bx + 1, by + 4, by + 14, 1.6, 2.4, WOOD_L)
+    v.capsule((bx - 2, by - 4, 3.5), (bx + 6, by + 10, 2), 0.5, WOOD_L)
+    v.capsule((bx + 1, by - 12, 3.8), (6.4, by - 16, 7.5), 0.3, ROPE)
+    # crates, a barrel and a coil of rope on the shore end
+    crate(v, -6, y1 - 9, 6, z=6.4); crate(v, -5, y1 - 15, 5, z=6.4)
+    barrel(v, 3, y1 - 6, 3, 8, z=6.4)
+    v.cyl(2, y1 - 16, 2.4, 6.4, 7.6, ROPE, rin=1.0)
+    return v
+
+@bld('ruin')
+def ruin():
+    v = Vol(-48, 48, -48, 48, 0, 170)
+    x0, x1, y0, y1 = -23, 23, -23, 23
+    v.box(x0 - 3, x1 + 3, y0 - 3, y1 + 3, 0, 6, STONE_D)
+    # a hollow square keep, its front corner fallen in: the top drops steeply towards +x+y, every
+    # stone course broken at its own height
+    def top(X, Y):
+        h = 132 - 62 * np.clip((X + Y - 4) / 34, 0, 1) ** 1.3
+        return h - 12 * hash3(np.floor(X / 4).astype(np.int64), np.floor(Y / 4).astype(np.int64), np.zeros_like(X, dtype=np.int64), 21)
+    shell = lambda X, Y, Z: ((np.abs(X) > 19) | (np.abs(Y) > 19)) & (Z < top(X, Y))
+    v.put((x0, x1, y0, y1, 6, 140), shell, STONE)
+    for zz in (46, 88):
+        v.put((x0 - 2, x1 + 2, y0 - 2, y1 + 2, zz, zz + 4), lambda X, Y, Z: shell(np.clip(X, -23, 23) * 0.99, np.clip(Y, -23, 23) * 0.99, Z) & (Z < top(X, Y) - 2), STONE_D)
+    # surviving merlons on the back corner
+    for a in np.arange(-25, 0, 6):
+        v.box(a, a + 3.5, -25, -21, 126, 135, STONE)
+        v.box(-25, -21, a, a + 3.5, 126, 135, STONE)
+    # a charred floor beam sticking out of the breach, arrow slits, an open arched doorway
+    v.box(-8, 30, -4, -1, 82, 85, TIMBER)
+    for face, c in (('y', y1), ('x', x1)):
+        for (a, zz) in ((-12, 28), (8, 62), (-8, 100)):
+            if zz < 70 or face == 'y':
+                fbox(v, face, c, a, a + 2, zz, zz + 10, -4.5, 0.5, 0)
+    door(v, 'y', y1, -7, 5, 20, frame=STONE_D, leaf=COAL, studs=None)
+    lantern(v, -14, y1 + 2, 28)
+    v.box(-15.4, -12.6, y1 - 0.3, y1 + 4.3, 24.8, 28, FIRE); v.box(-16.3, -11.7, y1 + 0.6, y1 + 3.4, 24.8, 28, FIRE)
+    # rubble from the fallen corner, ivy on the left face
+    rng = np.random.default_rng(5)
+    for k in range(26):
+        a = rng.uniform(-0.3, 1.9); d = rng.uniform(28, 44)
+        rx, ry = d * np.cos(a), d * np.sin(a)
+        s = rng.uniform(2, 4.5)
+        v.box(rx, rx + s * 1.3, ry, ry + s, 0, s * rng.uniform(0.6, 1.0), STONE if k % 3 else STONE_D)
+    for (ix, iz, ir) in ((-16, 40, 6), (-19, 54, 5), (-12, 66, 5.5), (-18, 78, 4.5), (12, 12, 5)):
+        v.ell(ix, y1 + 1, iz, ir, 2.2, ir * 1.2, LEAF)
+    return v
+
 def build(name):
     t = time.time()
     s = {'magetower': 1.3}.get(name, S_B)

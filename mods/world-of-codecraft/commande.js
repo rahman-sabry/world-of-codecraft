@@ -5,7 +5,7 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { run } from "herdr";
+import { run, home, readTextFile } from "herdr";
 import { CLASSES, RACE_FR, QUEST, heroDesc } from "./kit.js";
 import { gradient } from "./kit.js";
 import { t } from "./i18n.js";
@@ -17,6 +17,44 @@ export const MINI_INSET = 38; // the minimap is PANEL - 38 wide (frame 14 x 2 + 
 function heading(text) {
   return div().relative().flex_none().h(30).children(bar("bandeau"))
     .child(div().absolute().left(24).right(24).top(0).bottom(0).flex().items_center().child(title(text, 16, P.goldHi)));
+}
+
+// ------------------------------------------------------------------ model and context
+// The status line writes ~/.local/state/world-of-codecraft/<address>.status.json = {at (s), model, context_pct}
+// (its own file, so it never races the activity hook). The selected hero's is polled into the store key
+// `wocc.stat`, so the panel in place.js and the "commande" block both show it.
+
+const STAT_POLL = 5000, STAT_STALE = 30 * 60e3;
+let statBusy = false;
+
+async function pollStat() {
+  if (statBusy) return;
+  statBusy = true;
+  try {
+    const address = focused()?.agent;
+    let s = null;
+    if (address) {
+      try { s = JSON.parse((await readTextFile(`${home()}/.local/state/world-of-codecraft/${address}.status.json`)) ?? "null"); } catch { s = null; }
+    }
+    const next = s ? { address, at: (s.at ?? 0) * 1e3, model: s.model ?? null, ctx: typeof s.context_pct === "number" ? Math.round(s.context_pct) : null } : null;
+    if (JSON.stringify(next) !== JSON.stringify(shared("wocc.stat") ?? null)) setShared("wocc.stat", next);
+  } finally {
+    statBusy = false;
+  }
+}
+
+/** Starts polling the selected hero's model and context (call it from init). */
+export function watchStat(cx) {
+  pollStat();
+  cx.timer.every(STAT_POLL, () => { pollStat(); });
+}
+
+/** "Opus 5.5 · ctx 42%" for this hero, or null when there is no fresh status file. */
+function statLine(a) {
+  const s = shared("wocc.stat");
+  if (!s || s.address !== a.address || Date.now() - s.at > STAT_STALE) return null;
+  const parts = [s.model, s.ctx != null ? t("ctx", s.ctx) : null].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 function card(sel) {
@@ -33,6 +71,7 @@ function card(sel) {
     .child(v_flex().flex_1().min_w(0).gap(3)
       .child(title(h.name, 19, P.goldHi).truncate())
       .child(txt(heroDesc(h), 15, P.cream, 700).truncate())
+      .when(Boolean(statLine(a)), (el) => el.child(div().id("modele").tooltip(t("statTip")).child(txt(statLine(a), 14, P.parch, 700).truncate())))
       .child(txt(h.prog, 14, P.muted, 700).truncate())
       .child(h_flex().gap(4).items_center().child(mark(st) ?? gem(st, true)).child(txt(word, 15, TONE[st] ?? P.idle, 800)))
       .when(Boolean(a.tab_name), (el) => el.child(well(div().px(5).py(1).rounded(2), {}).child(txt(t("questTab", a.tab_name), 14, P.parch, 700).truncate())))
@@ -76,7 +115,7 @@ const DOT = { blocked: KC.quest, done: KC.gold, working: "#7dff6a", idle: "#cfc8
  *  is another block, so the minimap reads its camera and units from the store (wocc.view, written by
  *  place.js) and a click asks it to move there (wocc.goto). */
 export class Commande {
-  init() { this.w = 262; }
+  init(_p, cx) { this.w = 262; watchStat(cx); }
 
   minimap() {
     const v = shared("wocc.view") ?? { cam: 0, vw: 1200, dots: [] };
@@ -85,13 +124,13 @@ export class Commande {
       .tooltip(t("mapTip"))
       .on_mouse_down("left", (e, cx) => {
         const lx = e.local_position?.x;
-        if (typeof lx === "number") setShared("wocc.goto", { x: (lx / mw) * WORLD.w, at: Date.now() });
+        if (typeof lx === "number") setShared("wocc.goto", { x: WORLD.x + (lx / mw) * WORLD.w, at: Date.now() });
         cx.stop_propagation();
       })
       .child(image(`${MONDE}/minicarte.png`).absolute().left(0).top(0).w(mw).h(mh))
-      .children((v.dots ?? []).map(([x, y, st]) => div().absolute().left(x * k - 2).top(Math.min(WORLD.h, Math.max(0, y)) * k - 3).size(4)
+      .children((v.dots ?? []).map(([x, y, st]) => div().absolute().left((x - WORLD.x) * k - 2).top(Math.min(WORLD.h, Math.max(0, y)) * k - 3).size(4)
         .bg(DOT[st] ?? "#ffffff").border_1().border_color("#000000")))
-      .child(div().absolute().left((v.cam / WORLD.w) * mw).top(0).w((v.vw / WORLD.w) * mw).h(mh).border_1().border_color("#ffffff"));
+      .child(div().absolute().left(((v.cam - WORLD.x) / WORLD.w) * mw).top(0).w((v.vw / WORLD.w) * mw).h(mh).border_1().border_color("#ffffff"));
   }
 
   /** The selected unit, as place.js picks it: the focused agent, else the focused shell. */

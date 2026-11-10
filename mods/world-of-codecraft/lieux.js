@@ -1,4 +1,5 @@
-// Where things are in the baked world (art/monde, 3000x400 logical px; 1 art px = 1 logical px).
+// Where things are in the baked world (art/monde: the village is x 0-3000 of a world from -1000 to 4000, 400
+// logical px high; 1 art px = 1 logical px).
 // Hand-edited: unit spots per building (feet points), the campfire ring, the road heroes walk on,
 // building hit boxes (tooltip, double-click to recruit), chimneys and live glows.
 
