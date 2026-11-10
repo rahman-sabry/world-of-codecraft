@@ -1,6 +1,6 @@
 // Where things are in the baked world (art/monde: the village is x 0-3000 of a world from -1000 to 4000, 400
 // logical px high; 1 art px = 1 logical px).
-// Hand-edited: unit spots per building (feet points), the campfire ring, the road heroes walk on,
+// Hand-edited: unit spots per building (feet points), where idle heroes stroll, the road heroes walk on,
 // building hit boxes (tooltip, double-click to recruit), chimneys and live glows.
 
 import { t } from "./i18n.js";
@@ -25,14 +25,23 @@ export const LISIERE = {
   etal1: [[2250, 205], [2282, 242], [2225, 240]],
 };
 
-/** The campfire and the resting ring round it (idle heroes). */
-export const FIRE = [1598, 352];
-export const REST = [[1555, 362], [1640, 372], [1600, 330], [1530, 342], [1680, 350], [1570, 388], [1628, 394], [1665, 328], [1505, 372], [1712, 380]];
+/** Where idle heroes stroll (feet points on open ground, in front of every object of the new lands): the
+ *  village (road, square, in front of the buildings), the farmland west (fields, the windmill's door) and,
+ *  over the footbridge, the east lands (by the jetty, the lake's south and east shores, along the lane). */
+export const FLANE = [
+  [330, 335], [640, 350], [900, 340], [1200, 380], [1520, 335], [1598, 352], [1680, 342], [1900, 352], [2150, 375],
+  [2450, 360], [2700, 305], [-180, 345], [-260, 325], [-460, 365], [-505, 322], [-640, 330], [-800, 345], [-920, 346],
+  [3400, 250], [3545, 292], [3700, 316], [3835, 228], [3920, 322],
+];
 
-/** The dirt road along the front of the village (screen feet points), walked between spots. */
+/** The dirt road along the front of the village (screen feet points), walked between spots; west, it follows
+ *  the baked road through the farmland (kept a little north at -620 to pass behind no bush); east, the baked
+ *  path over the footbridge (its ramps at 3054 and 3168, the deck 7 px up: feet on the planks, behind the
+ *  front rail's cut-outs) to the lane by the lake (tools/bake_wide.py, CROSSING and LANE). */
 export const ROAD = [
-  [0, 330], [200, 320], [420, 372], [640, 345], [900, 330], [1060, 360], [1350, 380], [1500, 372],
+  [-1000, 350], [-840, 340], [-620, 354], [-400, 338], [-180, 352], [0, 330], [200, 320], [420, 372], [640, 345], [900, 330], [1060, 360], [1350, 380], [1500, 372],
   [1610, 392], [1720, 360], [1900, 350], [2150, 372], [2330, 340], [2560, 330], [2700, 300],
+  [2840, 288], [2950, 256], [3054, 201], [3063, 199], [3159, 247], [3168, 259], [3250, 284], [3340, 282], [3426, 252], [3600, 322], [3800, 310], [4000, 335],
 ];
 
 /** Building hit boxes [x, y, w, h] and names (in the current language). */
@@ -48,10 +57,9 @@ export const BUILDINGS = {
 /** The market's name in the current language. */
 export const market = () => t("market");
 
-/** Chimney tops (smoke) and live glows [x, y, size, color, period] (night only unless always). */
+/** Chimney tops (smoke) and live glows [x, y, size, color, period] (night only). */
 export const SMOKE = [[827, 95], [1590, 47], [1639, 100]];
 export const GLOWS = [
-  { at: [1598, 345], size: 120, color: "#ffa12b", period: 700, always: true }, // campfire
   { at: [815, 236], size: 60, color: "#ff8a2b", period: 650 }, // forge hearth
   { at: [558, 160], size: 70, color: "#a86bff", period: 2200 }, // tower windows
 ];

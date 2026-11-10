@@ -9,9 +9,9 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { spaces, agents, focused, run, props, layout, nextCommand, window as appWindow } from "herdr";
+import { spaces, agents, run, props, layout, nextCommand, window as appWindow } from "herdr";
 import { freshStat } from "./commande.js";
-import { VILLAGE, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left } from "./kit.js";
+import { VILLAGE, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left, selectedAddress } from "./kit.js";
 import { P, DECO, TEXTE, bar, pic, txt, button, mark, banner } from "./ui.js";
 import { DEMO_SPACES } from "./demo.js";
 import { t, detectLang } from "./i18n.js";
@@ -69,7 +69,7 @@ export default class Fronton {
   /** The selected hero's context window: a mana gauge filling up, the %, and the model. Hidden without a fresh
    *  status file (see watchStat in commande.js). */
   contexte() {
-    const s = freshStat(focused()?.agent);
+    const s = freshStat(selectedAddress()); // none for a warrior (shell)
     if (!s || s.ctx == null) return null;
     const pct = Math.max(0, Math.min(100, s.ctx));
     const gauge = div().relative().w(12).h(26).bg("#0c0a0e").border_1().border_color(P.goldLo).rounded(2).overflow_hidden()

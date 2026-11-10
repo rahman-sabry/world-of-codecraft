@@ -10,7 +10,10 @@ dithering and the hashed details of the old land come out as baked), and new lan
 - west, farmland: the road goes on, fields with fences, a windmill (b-windmill), the forest continued north;
 - east: a lake on the river (the river's own distance field joined to an ellipse's) with a jetty and a
   rowboat (b-dock), a lane to the edge of the map, a trail north through the forest to a ruined watchtower
-  (b-ruin), meadows and woods.
+  (b-ruin), meadows and woods;
+- the crossing: a dirt path from the village road's end over a wooden footbridge (b-bridge) to the east lane,
+  with front cut-outs (keys "est-*" in monde-data.js FRONTS) for the bridge's front rail and the objects just
+  in front of the walk, since heroes now cross and stroll there.
 The world keeps its coordinates: x runs from -1000 to 4000 (WORLD.x = -1000), so every spot, road and path of
 the mod stays valid. The old tiles are rewritten from the composite only if no building pixel of the village
 changed by day (only the new land's shadows and the night glow may reach the old edges).
@@ -47,6 +50,10 @@ W = XW + W0 + XE
 # ------------------------------------------------------------------ the ground over 5000 columns
 
 LAKE = (990, -1070, 190, 140)  # world centre and half-axes (x, y): screen (3560, 160), on the river's east bank
+BRIDGE = (3111, 230)  # the footbridge (b-bridge) over the river, east of the village road's end
+# the path from the village road's end over the bridge (its ramps at 3054 and 3168) to the east lane
+CROSSING = [(2700, 300), (2840, 288), (2950, 256), (3054, 201), (3168, 259), (3250, 284), (3340, 282), (3426, 252)]
+LANE = [(3600, 322), (3800, 310), (4000, 335)]
 src = GROUND_SRC
 for a, b in L["patches"]:
     src = src.replace(a, b)
@@ -57,7 +64,7 @@ patches = [
     ("[(1520, 400), (1490, 520), (1550, 650), (1510, 800)]]",
      "[(1520, 400), (1490, 520), (1550, 650), (1510, 800)], "
      "[(0, 330), (-180, 352), (-400, 338), (-620, 362), (-840, 340), (-1000, 350)], [(-470, 344), (-505, 312)], "
-     "[(3426, 252), (3600, 322), (3800, 310), (4000, 335)], [(3395, 95), (3480, -40), (3610, -125)]]"),
+     "[(3426, 252), (3600, 322), (3800, 310), (4000, 335)], [(3395, 95), (3480, -40), (3610, -125)], %r]" % CROSSING),
     ("(230, 560, 90, 50), (520, 640, 70, 40))",
      "(230, 560, 90, 50), (520, 640, 70, 40), "
      "(-300, 250, 70, 45), (-720, 250, 80, 50), (-640, 445, 70, 40), (-260, 470, 80, 45), (-860, 520, 70, 40), (-420, 610, 90, 50))"),
@@ -73,10 +80,18 @@ for a, b in patches:
 C2.XOFF = XW
 C2.W = C3.W = C.W = W
 C2.H = C3.H = C.H = H
-exec(compile(src, C2.__file__, "exec"), C2.__dict__)
-GROUND = C2.ground()
-C2.ground = lambda: GROUND  # computed once: the placement below reads it, both bakes reuse it
-kind = GROUND[1]
+
+
+def ground(src):
+    exec(compile(src, C2.__file__, "exec"), C2.__dict__)
+    return C2.ground()
+
+
+# the objects are placed on the ground as it was before the crossing (the same draws, so the same lands), and
+# the few standing on it are dropped below
+kind = ground(src.replace(", %r]" % CROSSING, "]"))[1]
+GROUND = ground(src)
+C2.ground = lambda: GROUND  # computed once: both bakes reuse it
 C3.load = functools.lru_cache(maxsize=None)(C.load)  # receive() reloaded every caster's PNG for every receiver
 
 # ------------------------------------------------------------------ objects (u: screen column, v: screen row, as in the mod)
@@ -179,6 +194,20 @@ for fu, fv, a, b in ((-300, 250, 70, 45), (-720, 250, 80, 50), (-260, 470, 80, 4
         add("fence-x", *w2s(fx + t, fy + b + 6), 2)
     for t in np.arange(-b + 22, b, 44):
         add("fence-y", *w2s(fx + a + 6, fy + t), 2)
+
+# the crossing: the new objects standing on its path are dropped, then the bridge spans the river
+ROUTE = CROSSING[3:] + LANE  # where heroes walk east of the river: the bridge, the path, the lane
+
+
+def route_v(u):
+    return float(np.interp(u, [p[0] for p in ROUTE], [p[1] for p in ROUTE]))
+
+
+KEEP = {"b-" + n for n, *_ in LANDMARKS}
+n = len(O)
+O = O[:old] + [o for o in O[old:] if o[0] in KEEP or not (ROUTE[0][0] <= o[1] - XW <= ROUTE[-1][0] and abs(o[2] - N - route_v(o[1] - XW)) < 22)]
+print(n - len(O), "objects dropped from the crossing")
+add("bridge", *BRIDGE, 26)
 O = [(n, int(round(u)), int(round(v)), dp, ex) for (n, u, v, dp, ex) in O]
 print(len(O) - old, "new objects")
 
@@ -203,7 +232,7 @@ def save2(arr, path):
 # buildings must not change by a single pixel by day (checked against every building sprite's own pixels);
 # then every tile is rewritten from the composite, so no seam shows.
 BUILDINGS = {"b-barn", "b-magetower", "b-forge", "b-townhall", "b-tavern", "b-temple", "b-barracks", "b-well",
-             "b-noticeboard", "b-campfire", "b-stall-red", "b-stall-blue", "b-stall-green"}
+             "b-noticeboard", "b-stall-red", "b-stall-blue", "b-stall-green"}
 rd = lambda p: np.asarray(Image.open(p).convert("RGB"))[::2, ::2]
 for tag, img in (("jour", day), ("nuit", night)):
     band = img[N:N + H0, XW:XW + W0]
@@ -242,8 +271,52 @@ for k, x in TILES:
         save2(img[N + H0:, c:c + 1000], os.path.join(OUT, f"sud-{k}-{tag}.png"))
 Image.fromarray(day[N:N + H0]).resize((448, 36), Image.LANCZOS).save(os.path.join(OUT, "minicarte.png"), optimize=True)
 
+# front cut-outs east of the river (as bake_world.py's, keys "est-*"): the bridge's front rail in four pieces
+# along the deck (a hero crossing walks behind it), and the objects just in front of the walk to the lake
+for f in os.listdir(OUT):
+    if f.startswith("avant-est-"):
+        os.remove(os.path.join(OUT, f))
+fronts = []
+
+
+def cut(key, mask, x0, y0, z):
+    """A cut-out of the composite under mask (a sprite's alpha placed at x0, y0), kept to the village band."""
+    rows, cols = np.arange(mask.shape[0])[:, None] + y0, np.arange(mask.shape[1])[None] + x0
+    mask = mask & (rows >= 0) & (rows < H0) & (cols < W0 + XE)
+    ys, xs = np.nonzero(mask)
+    ys0, ys1, xs0, xs1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    for tag, img in (("jour", day), ("nuit", night)):
+        c = np.zeros((ys1 - ys0, xs1 - xs0, 4), np.uint8)
+        c[..., :3] = img[N + y0 + ys0:N + y0 + ys1, XW + x0 + xs0:XW + x0 + xs1]
+        c[..., 3] = np.where(mask[ys0:ys1, xs0:xs1], 255, 0)
+        save2(c, os.path.join(OUT, f"avant-{key}-{tag}.png"))
+    fronts.append({"key": key, "x": int(x0 + xs0), "y": int(y0 + ys0), "w": int(xs1 - xs0), "h": int(ys1 - ys0), "z": int(z)})
+
+
+m = C2.META["b-bridge-rail"]
+rail = C3.load("b-bridge-rail")[..., 3] > 0
+x0, y0 = BRIDGE[0] - m["ax"], BRIDGE[1] - m["ay"]
+for k, cols in enumerate(np.array_split(np.nonzero(rail.any(0))[0], 4)):
+    piece = np.zeros_like(rail)
+    piece[:, cols] = rail[:, cols]
+    cut(f"est-rail-{k}", piece, x0, y0, y0 + np.nonzero(piece.any(1))[0].max() + 4)  # its foot on the deck, east end
+seen = {}
+for (name, u, v, dp, _x) in O[old:]:
+    u, v = u - XW, v - N
+    if name in KEEP or name == "b-bridge" or not (ROUTE[0][0] - 40 <= u <= ROUTE[-1][0]):
+        continue
+    if not 0 < v - route_v(u) < (110 if name.startswith("b-tree") else 40):
+        continue
+    m = C2.META[name]
+    k = seen[name] = seen.get(name, -1) + 1
+    cut(f"est-{name[2:]}-{k}", C3.load(name)[..., 3] > 0, u - m["ax"], v - m["ay"], v + dp)
+print(len(fronts), "front cut-outs east of the river")
+
 path = os.path.join(MOD, "monde-data.js")
 js = open(path).read()
+fr = re.search(r"(?s)export const FRONTS = (\[.*?\n\]);", js)
+keep = [f for f in json.loads(fr.group(1)) if not f["key"].startswith("est-")]
+js = js[:fr.start(1)] + "[\n" + ",\n".join("  " + json.dumps(f) for f in keep + fronts) + "\n]" + js[fr.end(1):]
 js = re.sub(r"(?m)^export const WORLD = .*$", "export const WORLD = " + json.dumps({"x": -XW, "w": W, "h": H0}) + ";  // tools/bake_wide.py", js)
 js = re.sub(r"(?m)^export const TILES = .*$", "export const TILES = " + json.dumps([{"k": k, "x": x, "w": 1000} for k, x in TILES]) + ";", js)
 open(path, "w").write(js)

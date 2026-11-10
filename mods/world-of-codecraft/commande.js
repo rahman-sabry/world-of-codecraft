@@ -6,7 +6,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { run, home, readTextFile } from "herdr";
-import { CLASSES, RACE_FR, QUEST, heroDesc } from "./kit.js";
+import { CLASSES, RACE_FR, QUEST, heroDesc, selectedAddress } from "./kit.js";
 import { gradient } from "./kit.js";
 import { t } from "./i18n.js";
 import { P, frame, frameT, bar, pic, txt, title, button, gem, mark, portraitCard, well } from "./ui.js";
@@ -25,28 +25,24 @@ function heading(text) {
 // `wocc.stat`, so the panel in place.js and the "commande" block both show it.
 
 const STAT_POLL = 5000, STAT_STALE = 30 * 60e3;
-let statBusy = false;
 
+// No busy flag: a module-level one stayed set when a read never resolved across a hot reload, and the poll
+// stopped for good. Overlapping reads of this small file are harmless.
 async function pollStat() {
-  if (statBusy) return;
-  statBusy = true;
-  try {
-    const address = focused()?.agent;
-    let s = null;
-    if (address) {
-      try { s = JSON.parse((await readTextFile(`${home()}/.local/state/world-of-codecraft/${address}.status.json`)) ?? "null"); } catch { s = null; }
-    }
-    const next = s ? { address, at: (s.at ?? 0) * 1e3, model: s.model ?? null, ctx: typeof s.context_pct === "number" ? Math.round(s.context_pct) : null } : null;
-    if (JSON.stringify(next) !== JSON.stringify(shared("wocc.stat") ?? null)) setShared("wocc.stat", next);
-  } finally {
-    statBusy = false;
+  const address = selectedAddress(); // a shell has no status file: no stat
+  let s = null;
+  if (address) {
+    try { s = JSON.parse((await readTextFile(`${home()}/.local/state/world-of-codecraft/${address}.status.json`)) ?? "null"); } catch { s = null; }
   }
+  const next = s ? { address, at: (s.at ?? 0) * 1e3, model: s.model ?? null, ctx: typeof s.context_pct === "number" ? Math.round(s.context_pct) : null } : null;
+  if (JSON.stringify(next) !== JSON.stringify(shared("wocc.stat") ?? null)) setShared("wocc.stat", next);
 }
 
-/** Starts polling the selected hero's model and context (call it from init). */
+/** Starts polling the selected hero's model and context (call it from init): each poll is a task of the
+ *  timer's own cx, so a reload stops the old build's polls and the new init starts its own. */
 export function watchStat(cx) {
-  pollStat();
-  cx.timer.every(STAT_POLL, () => { pollStat(); });
+  cx.spawn(pollStat);
+  cx.timer.every(STAT_POLL, (cx) => { cx.spawn(pollStat); });
 }
 
 /** The selected hero's {model, ctx} when its status file is fresh, else null. */
@@ -109,7 +105,7 @@ export function commandPanel(width, minimap, sel, anim = null) {
 // ------------------------------------------------------------------ the panel as its own block
 
 import { image } from "gpui-kit";
-import { agents, focused, shared, setShared, props } from "herdr";
+import { agents, shared, setShared, props } from "herdr";
 import { heroOf, guards, C as KC } from "./kit.js";
 import { DEMO_SELECTED } from "./demo.js";
 import { WORLD } from "./monde-data.js";
@@ -139,11 +135,10 @@ export class Commande {
       .child(div().absolute().left(((v.cam - WORLD.x) / WORLD.w) * mw).top(0).w((v.vw / WORLD.w) * mw).h(mh).border_1().border_color("#ffffff"));
   }
 
-  /** The selected unit, as place.js picks it: the focused agent, else the focused shell. */
+  /** The selected unit, as place.js picks it: the focused shell when it is a guard, else the focused agent. */
   selected() {
     if (props()?.demo) return { a: DEMO_SELECTED, h: heroOf(DEMO_SELECTED.address, DEMO_SELECTED.program) };
-    const f = focused();
-    const want = f?.agent ?? f?.terminal;
+    const want = selectedAddress();
     const a = agents().find((x) => x.address === want)
       ?? guards().map((p) => ({ address: p.terminal, pane: p.pane, guard: true, status: "garde", program: p.program, tab_name: p.title, focused: p.focused })).find((x) => x.address === want);
     return a ? { a, h: heroOf(a.address, a.program) } : null;

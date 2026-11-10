@@ -4,20 +4,20 @@
 // by tools/bake_world.py into a few big images, day and night, exactly as the approved mocks;
 // only the units, their markers, front cut-outs (depth), glows and smoke are live.
 //
-// Every agent is a hero of its class: working = `work` loop at its class building; idle = `rest`
-// at the campfire; blocked = `idle` + flashing `!` + red ring + speech bubble; done = `idle` + gold
-// `?` + halo. When the spot changes the hero walks there along the road (walk_dl / walk_ur and their
+// Every agent is a hero of its class: working = `work` loop at its class building; idle = `idle`,
+// strolling from spot to spot (FLANE) with a pause at each; blocked = `idle` + flashing `!` + red ring +
+// speech bubble; done = `idle` + gold `?` + halo. When the spot changes the hero walks there along the road (walk_dl / walk_ur and their
 // mirrors), at its own speed. Frame-by-frame animation uses one shared data timer (~10 fps), only
 // while a visible unit needs it; movement itself is a native `left`/`top` transition. Heroes whose
 // frames aren't synced yet (tools/sync_heroes.py) stand still and breathe natively.
 
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, spaces, run, setAgentOrder, props, focused, layout, shared, setShared } from "herdr";
-import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop } from "./kit.js";
+import { agents, spaces, run, setAgentOrder, props, layout, shared, setShared } from "herdr";
+import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress } from "./kit.js";
 import { WORLD, TILES, FRONTS } from "./monde-data.js";
 import { HEROES } from "./heros-data.js";
-import { SPOTS, FIRE, REST, ROAD, BUILDINGS, market, SMOKE, GLOWS, LISIERE } from "./lieux.js";
+import { SPOTS, FLANE, ROAD, BUILDINGS, market, SMOKE, GLOWS, LISIERE } from "./lieux.js";
 import { t as tr, detectLang } from "./i18n.js";
 import { Activites } from "./activite.js";
 import { Ambiance, behind } from "./ambiance.js";
@@ -32,6 +32,9 @@ const RANK = { blocked: 0, done: 1, working: 2, idle: 3, garde: 4 };
 const LOG_KEY = "wocc.chronicle";
 const TICK = 100; // ms: the shared frame timer (10 fps)
 const ONLY_SELECTED = false; // if CPU is too high: frame-animate only the selected unit
+const PAUSE = (addr, n) => 15000 + (hash(`${addr}:pause:${n}`) % 25000); // an idle hero's stop at each stroll spot
+const STAY = (addr, n) => 30000 + (hash(`${addr}:poste:${n}`) % 30000); // a working hero's stay on each spot
+const NEAR = 300; // a working hero moves on only to a spot this close (px)
 
 // Where each class works.
 const WORK = { mage: "tour", artificier: "atelier", guerrier: "caserne", pretre: "temple", rodeur: "grange", voleur: "etal1" };
@@ -45,7 +48,6 @@ const RACE_EN = { elfe: "elf", orque: "orc", humain: "human", "mort-vivant": "un
 const CLS_EN = { mage: "mage", artificier: "artificer", guerrier: "warrior", pretre: "priest", rodeur: "ranger", voleur: "rogue" };
 const RACE_FR = Object.fromEntries(Object.entries(RACE_EN).map(([f, e]) => [e, f]));
 const CLS_FR = Object.fromEntries(Object.entries(CLS_EN).map(([f, e]) => [e, f]));
-const placeName = (cls) => BUILDINGS[WORK[cls]]?.nom ?? market();
 
 // ------------------------------------------------------------------ the road
 
@@ -92,6 +94,8 @@ export default class Place {
     this.now = new Date();
     this.prev = null;
     this.mob = new Map(); // address -> { x, y, goal, legs: [{ a, b, t0, t1 }] }
+    this.flanes = new Map(); // address -> { n, i, at }: an idle hero's stroll (spot index, arrival time)
+    this.postes = new Map(); // address -> { n, goal, at }: a working hero's spot (arrival time, moves so far)
     this.timer = null;
     this.sig = "";
     this.act = new Activites(); // what each hero does while working (Claude Code hook)
@@ -116,7 +120,7 @@ export default class Place {
       for (const a of list) {
         const was = this.prev.get(a.address);
         const h = heroOf(a.address, a.program);
-        const where = a.status === "idle" ? tr("campfire") : placeName(h.cls);
+        const where = a.status === "idle" ? tr("villageTag") : BUILDINGS[this.lieu(a, h)]?.nom ?? market();
         const quest = a.tab_name && !/^\d+$/.test(a.tab_name) ? tr("quoted", clip(a.tab_name, 34)) : "";
         if (!was) this.say(`[${where}] ${tr("arrives", heroTitle(h), h.prog)}`, a.status, a.address);
         else if (was.status !== a.status) {
@@ -147,24 +151,74 @@ export default class Place {
     return { x: m.x, y: m.y, leg: null };
   }
 
+  /** An idle hero's stroll spot: it stands PAUSE after arriving, then heads for another (none when still). */
+  flane(addr, t) {
+    let w = this.flanes.get(addr);
+    if (!w) { w = { n: 0, i: hash(addr) % FLANE.length, at: null }; this.flanes.set(addr, w); }
+    const m = this.mob.get(addr);
+    if (!this.live || !m || m.goal.join() !== FLANE[w.i].join() || (m.legs.length && t < m.legs[m.legs.length - 1].t1)) return w;
+    if (w.at === null) w.at = t;
+    else if (t - w.at >= PAUSE(addr, w.n)) {
+      const busy = new Set([...this.flanes.values()].map((o) => o.i));
+      let i = hash(`${addr}:${++w.n}`) % FLANE.length;
+      for (let k = 0; k < FLANE.length && busy.has(i); k++) i = (i + 1) % FLANE.length;
+      w.i = i;
+      w.at = null;
+    }
+    return w;
+  }
+
+  /** Where an agent works: somewhere new each task (the hook's prompt counter), so agents scatter across the
+   *  village; shells (on guard) and demo heroes at their class building. */
+  lieu(a, h) {
+    const tache = this.act.file(a.address)?.tache ?? 0;
+    return a.guard || a.demoHero ? WORK[h.cls] : LIEUX_TRAVAIL[hash(`${a.address}:${tache}`) % LIEUX_TRAVAIL.length];
+  }
+
+  /** A working hero's next spot among its group's (another one near it, no other hero's goal) once it has stood
+   *  STAY on this one and its scene allows a walk (Activites.calme); null = it stays. */
+  poste(u, m, t) {
+    const addr = u.a.address;
+    let p = this.postes.get(addr);
+    if (!p || p.goal !== m.goal.join()) { p = { n: p?.n ?? 0, goal: m.goal.join(), at: null }; this.postes.set(addr, p); }
+    if (!this.live || u.a.status !== "working" || (m.legs.length && t < m.legs[m.legs.length - 1].t1)) return null;
+    if (p.at === null) p.at = t;
+    const due = p.at + STAY(addr, p.n);
+    if (t < due) { this.wake = Math.min(this.wake ?? Infinity, due); return null; }
+    if (!this.act.calme(u.a)) return null; // the activity poll redraws when the scene allows it
+    const busy = new Set([...this.mob].filter(([k]) => k !== addr).map(([, o]) => o.goal.join()));
+    const free = u.spots.filter((s) => s.join() !== p.goal && !busy.has(s.join()) && dist(s, m.goal) < NEAR);
+    if (!free.length) return null;
+    return free[hash(`${addr}:poste:${++p.n}`) % free.length];
+  }
+
   /** Every unit with its goal spot, current position and leg; starts walks when a goal changes. */
   units(list, t) {
     const taken = new Set();
     const goals = new Map();
+    this.wake = null; // when a standing idle hero moves on (the ambient timer redraws then)
     const want = list.map((a) => {
       const h = a.demoHero ? { ...heroOf(a.address, a.program), race: RACE_FR[a.demoHero.split("-")[0]], cls: CLS_FR[a.demoHero.split("-")[1]] } : heroOf(a.address, a.program);
-      // agents work somewhere new each task (the hook's prompt counter), so they scatter across the village;
-      // shells stay on guard at the barracks
-      const tache = this.act.file(a.address)?.tache ?? 0;
-      const where = a.guard || a.demoHero ? WORK[h.cls] : LIEUX_TRAVAIL[hash(`${a.address}:${tache}`) % LIEUX_TRAVAIL.length];
+      const where = this.lieu(a, h);
       const scout = a.status === "working" && this.act.scene(a.address) === "eclaire" && LISIERE[where];
-      const group = a.status === "idle" ? "repos" : scout ? `lisiere-${where}` : where;
-      return { a, h, group, spots: group === "repos" ? REST : scout ? LISIERE[where] : SPOTS[group] };
+      const group = a.status === "idle" || a.guard ? "flane" : scout ? `lisiere-${where}` : where; // shells stroll like idle heroes
+      if (group === "flane") {
+        const w = this.flane(a.address, t);
+        goals.set(a.address, FLANE[w.i]);
+        if (w.at !== null) this.wake = Math.min(this.wake ?? Infinity, w.at + PAUSE(a.address, w.n));
+      }
+      return { a, h, group, spots: scout ? LISIERE[where] : SPOTS[group] };
     });
-    // keep a unit on its current spot when it stays in the same group (no shuffling)
+    // keep a unit on its current spot when it stays in the same group (no shuffling); a working one moves on
+    // now and then to another spot of its group
     for (const u of want) {
       const m = this.mob.get(u.a.address);
-      if (m && m.group === u.group && !taken.has(m.goal.join())) { taken.add(m.goal.join()); goals.set(u.a.address, m.goal); }
+      if (goals.has(u.a.address)) continue;
+      if (m && m.group === u.group && !taken.has(m.goal.join())) {
+        const g = this.poste(u, m, t) ?? m.goal;
+        taken.add(g.join());
+        goals.set(u.a.address, g);
+      }
     }
     for (const u of want) {
       if (goals.has(u.a.address)) continue;
@@ -200,6 +254,8 @@ export default class Place {
       out.push({ a: u.a, h: u.h, x: p.x, y: p.y, leg: p.leg, key: `${RACE_EN[u.h.race]}-${CLS_EN[u.h.cls]}` });
     }
     for (const k of [...this.mob.keys()]) if (!alive.has(k)) this.mob.delete(k);
+    for (const k of [...this.flanes.keys()]) if (!want.some((u) => u.group === "flane" && u.a.address === k)) this.flanes.delete(k);
+    for (const k of [...this.postes.keys()]) if (!alive.has(k)) this.postes.delete(k);
     return out;
   }
 
@@ -208,7 +264,7 @@ export default class Place {
     const H = HEROES[u.key];
     let name;
     if (u.leg) name = walkAnim(u.leg.b[0] - u.leg.a[0], u.leg.b[1] - u.leg.a[1]);
-    else name = (u.a.status === "working" && this.act.anim(u.a.address)) || (u.a.status === "working" ? "work" : u.a.status === "idle" ? "rest" : "idle");
+    else name = (u.a.status === "working" && this.act.anim(u.a.address)) || (u.a.status === "working" ? "work" : "idle");
     const info = H?.anims?.[name];
     if (info) return { name, info, frames: true };
     return { name: "stand", info: H?.stand ?? { w: 50, h: 85, ax: 25, ay: 83 }, frames: false };
@@ -268,7 +324,6 @@ export default class Place {
       el = el.child(div().absolute().left(-22).top(head + 10).size(3).bg(C.goldLight).when(this.live, (e) => e.loop("top", { from: head + 30, to: head - 6, period: 1000 })).when(this.live, (e) => e.loop("opacity", { from: 1, to: 0, period: 1000 })));
       el = el.child(div().absolute().left(20).top(head + 20).size(3).bg("#fff2c0").when(this.live, (e) => e.loop("top", { from: head + 40, to: head + 2, period: 1300 })).when(this.live, (e) => e.loop("opacity", { from: 1, to: 0, period: 1300 })));
     }
-    if (st === "idle" && !u.leg) el = el.child(image(`${ART}/z.svg`).absolute().left(14).top(head).size(8).when(this.live, (e) => e.loop("top", { from: head + 10, to: head - 14, period: 2600 })).when(this.live, (e) => e.loop("opacity", { from: 1, to: 0, period: 2600 })));
     if (!u.leg && !a.guard) el = el.children(this.act.layers(u, head, night, t));
     if (selected) {
       el = el.child(div().absolute().left(-15).top(head - 9).w(30).h(5).bg("#1b1420").border_1().border_color("#000000")
@@ -470,9 +525,9 @@ export default class Place {
     this.act.watch(cx, order, this.hidden(), !this.live);
     const units = this.units([...order, ...gs], t);
 
-    // the selected unit = the focused agent (or the focused shell)
-    const f = focused();
-    const sel = units.find((u) => u.a.address === (f?.agent ?? f?.terminal)) ?? units.find((u) => u.a.focused) ?? null;
+    // the selected unit = the focused shell when it is a guard, else the focused agent
+    const want = selectedAddress();
+    const sel = units.find((u) => u.a.address === want) ?? units.find((u) => u.a.focused) ?? null;
     // immersive layout: the command panel is its own block (role "commande"), the village takes the full width
     const imm = Boolean(props()?.immersion);
     const vw = Math.max(200, this.w - (imm ? 0 : PANEL));
@@ -482,7 +537,7 @@ export default class Place {
       this.manual = false; // a new selection takes the camera back
       this.camX = sel.x - vw / 2; // glide to the selected unit
       if (imm) this.camY = sel.y - 60 - (this.h ?? WORLD.h) / 2; // and bring the village back into view
-    } else if (sel?.leg && !this.manual) this.camX = sel.x - vw / 2; // and follow it while it walks
+    } else if (sel?.leg && sel.a.status !== "idle" && !sel.a.guard && !this.manual) this.camX = sel.x - vw / 2; // and follow it while it walks to work (not strolling or patrolling)
     const camX = this.cam(vw);
 
     // frame animation: visible units with frames, or any walking unit
@@ -502,7 +557,7 @@ export default class Place {
     const things = units.map((u) => ({ z: u.y + 3, el: this.unit(u, u === sel, nightHeroes, t, u.animate) }));
     for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); }
     const working = list.filter((a) => a.status === "working").length;
-    this.amb.watch(cx, this.live && !hidden, { phase: sk.phase });
+    this.amb.watch(cx, this.live && !hidden, { phase: sk.phase, wake: this.wake });
     const life = this.live ? this.amb.things(nightHeroes, sk.phase, working) : [];
     things.push(...life);
     for (const fr of FRONTS) {

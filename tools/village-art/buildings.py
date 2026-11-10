@@ -596,6 +596,34 @@ def dock():
     v.cyl(2, y1 - 16, 2.4, 6.4, 7.6, ROPE, rin=1.0)
     return v
 
+def footbridge(front_only=False):
+    """A wooden footbridge along x on stone abutments, ramps down to both banks. front_only: its front (+y)
+    rail alone, the mask of the cut-out drawn over heroes crossing the deck (bake_wide.py)."""
+    v = Vol(-42, 42, -14, 14, 0, 22)
+    x0, x1, w = -26, 26, 8  # the deck spans the water from x0 to x1; heroes walk at y = 0
+    if not front_only:
+        for a, b in ((x0 - 8, x0 + 2), (x1 - 2, x1 + 8)):
+            v.box(a, b, -w - 1.5, w + 1.5, 0, 4, STONE)
+        v.put((x0 - 15, x0 - 8, -w, w, 0, 5.2), lambda X, Y, Z: Z < 5.2 * (X - (x0 - 15)) / 7, PLANK)
+        v.put((x1 + 8, x1 + 15, -w, w, 0, 5.2), lambda X, Y, Z: Z < 5.2 * ((x1 + 15) - X) / 7, PLANK)
+        for yy in (-w + 0.5, w - 2):
+            v.box(x0 - 8, x1 + 8, yy, yy + 1.5, 2.6, 4, TIMBER)
+            for xx in (-10, 9):
+                v.box(xx, xx + 1.8, yy, yy + 1.8, 0, 4, TIMBER)  # piles in the stream
+        for xx in np.arange(x0 - 8, x1 + 8, 3.1):
+            v.box(xx, xx + 2.6, -w, w, 4, 5.2, PLANK)
+    for yy in ((w - 1.6,) if front_only else (-w, w - 1.6)):
+        for xx in np.arange(x0 - 6, x1 + 7, 11):
+            v.box(xx - 0.8, xx + 0.8, yy, yy + 1.6, 4, 14, TIMBER)
+        v.box(x0 - 7, x1 + 7, yy + 0.1, yy + 1.5, 12.2, 13.6, WOOD_L)
+        v.box(x0 - 7, x1 + 7, yy + 0.3, yy + 1.3, 8.4, 9.4, WOOD_L)
+    return v
+
+@bld('bridge')
+def bridge(): return footbridge()
+@bld('bridge-rail')
+def bridge_rail(): return footbridge(True)
+
 @bld('ruin')
 def ruin():
     v = Vol(-48, 48, -48, 48, 0, 170)

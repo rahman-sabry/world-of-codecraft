@@ -159,7 +159,7 @@ def scene():
     b('tavern', 1610, 245)
     b('temple', 2030, 292, 45)
     b('barracks', 2470, 262)
-    b('well', 1470, 390, 10); b('noticeboard', 1060, 380, 6); b('campfire', 1598, 352, 4)
+    b('well', 1470, 390, 10); b('noticeboard', 1060, 380, 6)
     b('stall-red', 1730, 395, 10); b('stall-blue', 1860, 390, 10); b('stall-green', 960, 400, 10)
     for (t, u, v) in (('tree-oak', 2960, 395), ('tree-oak', 2900, 260), ('tree-autumn', 760, 398), ('bush', 2250, 380), ('bush', 2600, 395),
                       ('bush', 390, 270), ('rocks', 2400, 385), ('rocks', 700, 390), ('tree-oak', 1800, 300), ('bush', 2700, 250), ('tree-pine', 2990, 330),

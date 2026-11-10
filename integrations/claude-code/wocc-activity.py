@@ -58,6 +58,8 @@ def kind(t):
         return "test" if TEST.search(cmd) else "commande"
     if t in WEB or (t.startswith("mcp__") and any(k in t for k in ("search", "fetch", "scrape", "exa", "firecrawl", "context7", "docs"))):
         return "web"
+    if t.startswith("mcp__"):  # other MCP tools: driving a browser reads the web, anything else acts like a command
+        return "web" if any(k in t for k in ("browser", "chrome", "playwright", "navigate", "snapshot", "screenshot")) else "commande"
     return None  # Agent, TodoWrite, Skill, AskUserQuestion...: keep the current scene
 
 
@@ -97,7 +99,7 @@ with open(os.path.join(DIR, ".lock"), "w") as lk:
             act(k)
         s["outil"] = tool
     elif name == "PostToolUse":
-        if tool in EDIT or tool == "Bash":  # every successful edit or command is a blow on the creature
+        if tool in EDIT or kind(tool) == "commande" or tool == "Bash":  # every successful edit or command is a blow on the creature
             s["coups"] = s.get("coups", 0) + 1
         s["err"] = 0
         if TEST.search(cmd):

@@ -4,7 +4,7 @@
 
 import { div, image, svg, PathBuilder, Background } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { home, readTextFile, panes } from "herdr";
+import { home, readTextFile, panes, focused } from "herdr";
 import { t, tbl } from "./i18n.js";
 
 export const ART = "mods/world-of-codecraft/art";
@@ -99,6 +99,13 @@ export const QUEST = tbl("quest");
 /** Shell terminals (not agents) of every tab: the warriors on guard at the forge. */
 export function guards() {
   return panes().filter((p) => p.terminal && !p.status && p.program?.shell);
+}
+
+/** The selected unit's address: the focused pane's shell when it is a guard (focused().agent never goes null,
+ *  it falls back to an agent), else the focused agent. */
+export function selectedAddress() {
+  const f = focused();
+  return guards().some((p) => p.terminal === f?.terminal) ? f.terminal : f?.agent ?? f?.terminal;
 }
 
 // ------------------------------------------------------------------ time

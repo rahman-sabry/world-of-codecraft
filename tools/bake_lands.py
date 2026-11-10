@@ -154,7 +154,7 @@ def save2(arr, path):
 # top grass (and the last row's edge). Its buildings must not change by a single pixel: checked against every
 # building sprite's own pixels; then the village tiles are rewritten from the composite, so no seam shows.
 BUILDINGS = {"b-barn", "b-magetower", "b-forge", "b-townhall", "b-tavern", "b-temple", "b-barracks", "b-well",
-             "b-noticeboard", "b-campfire", "b-stall-red", "b-stall-blue", "b-stall-green"}
+             "b-noticeboard", "b-stall-red", "b-stall-blue", "b-stall-green"}
 for tag, img in (("jour", day), ("nuit", night)):
     band = img[N:N + H0]
     ref = np.concatenate([np.asarray(Image.open(os.path.join(OUT, f"{tag}-{k}.png")).convert("RGB"))[::2, ::2] for k in range(3)], 1)

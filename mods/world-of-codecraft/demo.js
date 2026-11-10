@@ -33,5 +33,5 @@ export const DEMO_LOG = [
   { at: m(1), text: "[Mage Tower] Thrakk, Orc mage (Claude Code) sets out on a quest \"Forge the realm\"", kind: "working", address: null },
   { at: m(4), text: "[Barracks] Brann, Human warrior (Codex) needs help", kind: "blocked", address: null },
   { at: m(9), text: "[Barn and fields] Liriel, Elf ranger (OpenCode) has finished the quest \"Chart the realm\"", kind: "done", address: null },
-  { at: m(15), text: "[Campfire] Gromdal, Dwarf artificer (Gemini) rests by the campfire", kind: "idle", address: null },
+  { at: m(15), text: "[Village] Gromdal, Dwarf artificer (Gemini) wanders the village", kind: "idle", address: null },
 ];

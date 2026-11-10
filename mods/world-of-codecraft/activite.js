@@ -151,6 +151,18 @@ export class Activites {
     }
   }
 
+  /** True when a working hero may walk to another spot: no meditation or tests, no creature hurt and not yet
+   *  felled (a move waits for the puff), and no hit, test result, seal or pigeon on screen. */
+  calme(a) {
+    const s = this.file(a.address) ?? a.demoAct ?? null;
+    const sc = this.scene(a.address);
+    const h = this.hits.get(a.address);
+    if (sc === "medite" || sc === "test" || (h && (h.felled.length || Date.now() - h.at < 900))) return false;
+    if (!s) return true;
+    if (sc === "combat" && (s.coups ?? 0) % blowsFor(s) !== 0) return false;
+    return !(recent(s.essai?.t, RESULT) || recent(s.commitT, 4000) || recent(s.pushT, 7000) || (s.errT && (s.err ?? 0) > 0 && recent(s.errT, 1500)));
+  }
+
   /** The anim a scene plays (null = the status default). */
   anim(addr) {
     const sc = this.scene(addr);

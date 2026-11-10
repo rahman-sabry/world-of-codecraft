@@ -57,7 +57,7 @@ export class Ambiance {
     this.qAt = 0;
   }
 
-  /** Runs the 1 s timer while the village is animated and shown. */
+  /** Runs the 1 s timer while the village is animated and shown; ctx.wake: when an idle hero moves on (redraw then). */
   watch(cx, on, ctx) {
     this.ctx = ctx;
     if (on && !this.timer) this.timer = cx.timer.every(TICK, (cx) => this.tick(cx));
@@ -88,6 +88,7 @@ export class Ambiance {
         if (key !== m.depth) { m.depth = key; changed = true; }
       }
     }
+    if (this.ctx?.wake && now >= this.ctx.wake) { this.ctx.wake = null; changed = true; }
     if (now - this.qAt > 60_000) this.loadQuota(cx);
     if (changed) cx.notify();
   }

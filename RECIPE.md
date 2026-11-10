@@ -47,9 +47,9 @@ the clock. The art is original: it imitates no existing game.
   - buildings: town hall with belfry, mage tower (round, violet cone), forge workshop,
     barracks, Temple of Dawn, tavern, barn with fenced fields, market stalls, a well
     and a notice board;
-  - a campfire, a road, a river and a forest;
-  - west of the village, farmland: fields with fences and a windmill; east, a lake on the river with a
-    jetty and a rowboat;
+  - a market square, a road, a river and a forest;
+  - west of the village, farmland: fields with fences and a windmill; east, past a wooden footbridge over
+    the river at the village road's end, a lake with a jetty and a rowboat;
   - in the top-left corner, a chronicle of the last 4 events on dark tags.
 
 ## How it behaves
@@ -60,19 +60,30 @@ the clock. The art is original: it imitates no existing game.
   - Gemini: Priest, at the Temple of Dawn
   - OpenCode, pi, amp, cursor: Ranger, at the barn and fields
   - any other agent: Rogue, at the market
-  - plain shells: Warriors on guard at the barracks
+  - plain shells: Warriors; they stroll the whole world like idle heroes (FLANE spots, 15 to 40 s at each),
+    never onto a spot another hero holds or heads for; no chronicle line, the camera does not follow the
+    stroll, and with animations off they stand still
 - **Race and name** come from a hash of the terminal address. The races are Elf, Orc,
   Human, Undead and Dwarf.
 - **States:**
-  - **working**: the hero plays its `work` animation at its building.
-  - **idle**: it sits by the campfire (`rest`).
+  - **working**: the hero plays its `work` animation at its building. Every 30 to 60 s (staggered per hero
+    and per stop) it walks to another free spot of the same group within 300 px (that building's `SPOTS`, or
+    `LISIERE` while scouting), never one another hero is heading for. It waits for a calm moment: not during
+    meditation or tests, not while a creature is hurt but not yet felled (the move comes after the puff), and
+    not while a hit, a test result, a seal or the pigeon shows. No chronicle line; the camera follows a
+    selected hero's walk. Blocked and done heroes stay put; with animations off nobody moves.
+  - **idle**: it strolls (`idle` while standing): it walks to a spot in the village or the western
+    farmland or, over the footbridge, the east lands (lake shore, by the jetty, along the lane: `FLANE` in
+    lieux.js), stands 15 to 40 s (staggered per hero), then picks another. With animations off it stands still
+    on one spot.
   - **blocked**: `idle` with a red ring, a flashing `!` and a speech bubble.
   - **done**: `idle` with a gold ring, a `?` and sparkles.
 - **Movement:** when its spot changes, a hero walks there. Close spots are reached in
   a straight line. Farther ones follow the road, with a 4-direction walk animation.
   Each road leg is a native `left`/`top` transition.
-- **Selection:** the selected unit is the focused agent. It gets a green ring and a
-  health bar, and the camera glides to it (and follows it while it walks).
+- **Selection:** the selected unit is the focused agent, or the focused pane's shell when it is a warrior on
+  guard (`selectedAddress` in kit.js; Herdr's focused agent never goes empty). It gets a green ring and a
+  health bar, and the camera glides to it (and follows it while it walks to work, not while it strolls).
 - **Camera:** click and drag the village to pan (the camera follows the pointer with no
   glide while dragging), or use the scroll wheel or a minimap click. Any manual pan stops
   the follow until another unit is selected. Units and buttons stop the press, so their
@@ -86,9 +97,9 @@ the clock. The art is original: it imitates no existing game.
   - a chronicle line: focus that hero
   - the top alert: focus the first hero who is waiting
 - **Day and night:** night tiles crossfade over day tiles (opacity 1 at night, 0.55 at
-  dawn and dusk). Window and campfire glows pulse, and chimneys smoke.
+  dawn and dusk). Window and forge glows pulse, and chimneys smoke.
 - **Chronicle:** it logs arrivals, departures and state changes ("[Mage Tower] Gromdal,
-  Dwarf mage (Claude Code) sets out on a quest"). It is kept in the store key
+  Dwarf mage (Claude Code) sets out on a quest"); the tag names the building the hero is sent to for its task. It is kept in the store key
   `wocc.chronicle`.
 - **Language:** French or English, detected once per start (see `i18n.js`): `WOCC_LANG`
   if set, else macOS `AppleLanguages`, else `LC_ALL` / `LC_MESSAGES` / `LANG`; French when
@@ -157,6 +168,11 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   two trails added, and 1000 px of new land on each side (forest, farmland and the windmill west; the lake, the
   jetty and, in the north band, a ruined watchtower east). The world keeps its coordinates (`WORLD.x = -1000`).
   No new sprite touches the old tiles; it checks the village's building pixels by day before rewriting the tiles.
+  The crossing: a dirt path from the village road's end over a wooden footbridge (`b-bridge` in buildings.py) to
+  the east lane. The new lands are placed on the ground as it was before that path (same draws, same lands),
+  then the few objects standing on it are dropped. Heroes walk there, so it adds front cut-outs (keys `est-*`):
+  the bridge's front rail in four pieces (its mask is `b-bridge-rail`, the rail alone) and the objects just in
+  front of the walk.
   About 40 seconds (sprite loads are cached); `CACHE=x.npz` reuses the composite.
 - **Camera:** horizontal and vertical (drag, two-axis wheel), kept inside the bands; selecting a hero
   brings the village back into view.
