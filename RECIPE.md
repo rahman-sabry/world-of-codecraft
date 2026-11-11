@@ -251,8 +251,9 @@ the clock. The art is original: it imitates no existing game.
     class's effect, once, event-driven. A hero's blow is its own successful edit or command (`blows`: its `coups` rose)
     while it fights (a raid, minions, its scene's creature or the dummy); an apprentice's is its own subagent's
     successful tool call that hit the raid boss or a minion (the poll's damage for that hero, put on the subagents
-    whose last event moved since the last poll, else its latest one; `frappesSub`). By class (the apprentice's look's,
-    at 0.7 size), from its chest to its foe's (`adversaire`: the boss; the minion its subagent fights, else the one its
+    whose last event moved since the last poll, else its latest one; `frappesSub`), and that blow makes its hero strike
+    too (it mostly waits on its subagents, so they are what drives its fight). By class (the apprentice's look's), a
+    hero's at 1.5x the art's 2x, an apprentice's at 1x, from its chest to its foe's (`adversaire`: the boss; the minion its subagent fights, else the one its
     hero hit last; the creature or the dummy, `ouCreature`):
     - warrior: a silver crescent sweep just in front of it, opening towards the foe, growing and fading;
     - rogue: two dagger glints on the foe, the second a little later and off to one side;
@@ -267,8 +268,8 @@ the clock. The art is original: it imitates no existing game.
     size and opacity, and each stage (`FX_ETAPES`: 40 ms launched, 340 landed, 500 fading; gone at `FX` 650) is in
     the frame timer's signature, so each redraws once with new targets that native transitions carry (a projectile is
     one element gliding from its striker to its foe in 300 ms). One effect per member at a time (a blow while one runs
-    is dropped) and 12 at most (`FX_MAX`); a projectile sorts over both (the nearer one's feet + 8), the rest with whom
-    they touch; dimmed at night (1 - 0.3 x the night weight); only the shown, live village makes them (none in
+    is dropped) and 12 at most (`FX_MAX`); every effect sorts over the whole world, front cut-outs included (a hero may
+    stand behind an oak), their order among themselves kept (a projectile over both, the nearer one's feet + 8); dimmed at night (1 - 0.3 x the night weight); only the shown, live village makes them (none in
     the demo).
     **Its drawing:** each species is drawn as tall as the troll at 2× its fight size (`GEANT`: 4×4 screen px per art
     px), the factor computed from creatures-data heights and rounded to a half so an art px stays whole screen px

@@ -127,6 +127,7 @@ export function geantDe(sp, ecart = ECART.mage) {
 export function antre(day) {
   const { ANTRE, WORLD } = lieux(), cote = hash(`${day}:antre`) % 2 ? "est" : "ouest";
   const z = ANTRE?.[cote] ?? { x: cote === "ouest" ? [WORLD.x + 150, WORLD.x + 800] : [WORLD.x + WORLD.w - 800, WORLD.x + WORLD.w - 150] };
+  if (!Array.isArray(z.x)) throw new Error(`${lieux().id} ANTRE.${cote} must be { x: [x0, x1], y: [y0, y1] }`);
   return { cote, x: z.x, y: z.y ?? [Math.round(WORLD.h * 0.78), Math.round(WORLD.h * 0.92)] };
 }
 
@@ -252,6 +253,7 @@ export class Activites {
     this.abattu = null; // (address, day) when this village's damage slays the boss: the chronicle line (Place)
     this.effets = new Map(); // member (address, or address:subagent id) -> its blow's effect { t0, addr, id, cible } (frappe)
     this.subT = new Map(); // address -> { subagent id: its last event } at the last poll (whose blows these are)
+    this.subC = new Map(); // address -> its subCoups at the last poll (frappesSub)
     this.timer = null;
     this.busy = false;
   }
@@ -625,7 +627,7 @@ export class Activites {
       changed = this.mene(lus, now, boss.slain) || changed;
       for (const [addr, s] of lus) changed = this.suit(addr, s, now, boss.slain, sbires.get(addr) ?? 0) || changed;
       const fx = this.effets.size;
-      for (const [addr, s] of lus) this.frappesSub(addr, s, coups.get(addr) ?? sbires.get(addr) ?? 0, now);
+      for (const [addr, s] of lus) this.frappesSub(addr, s, now);
       if (this.effets.size !== fx || [...this.effets.values()].some((e) => e.t0 === now)) changed = true; // a blow's effect starts
       if (coups.size && this.raids.size && !this.boss().fin) { this.boss().at = now; changed = true; } // the boss flinches
       // short-lived flashes (blow on the creature, hero hit): redraw when they start or end
@@ -698,16 +700,21 @@ export class Activites {
     this.effets.set(k, { t0: now, addr, id, cible: undefined });
   }
 
-  /** A hero's subagents' blows this poll (d: its successful subagent tool calls that hit the raid boss or its
-   *  minions): on the subagents whose last event moved since the last poll, else its latest one; their apprentices
-   *  strike (frappe). */
-  frappesSub(addr, s, d, now) {
-    const ids = this.subagents(s), avant = this.subT.get(addr) ?? {};
+  /** A hero's subagents' blows this poll (its successful subagent tool calls since this village last read its file,
+   *  subCoups; counted here, not from the stored damage, which only the village that dealt it sees): on the subagents
+   *  whose last event moved since the last poll, else its latest one; their apprentices strike, and so does the hero
+   *  (frappe: in a raid or a minion fight, one at a time each, so a burst of calls gives a steady rhythm). */
+  frappesSub(addr, s, now) {
+    if (!s) return;
+    const ids = this.subagents(s), avant = this.subT.get(addr) ?? {}, n = s.subCoups, b = this.subC.get(addr);
     this.subT.set(addr, Object.fromEntries(ids.map((x) => [x.id, x.t ?? 0])));
+    this.subC.set(addr, n);
+    const d = typeof n === "number" && typeof b === "number" && n > b ? n - b : 0;
     if (!d) return;
     const bouge = ids.filter((x) => (x.t ?? 0) > (avant[x.id] ?? 0));
     const qui = bouge.length ? bouge : [...ids].sort((p, q) => (q.t ?? 0) - (p.t ?? 0)).slice(0, 1);
     for (const x of qui.slice(0, d)) this.frappe(addr, x.id, now);
+    this.frappe(addr, null, now);
   }
 
   /** The effects running at t ([member, effect]); the ended ones are dropped. */

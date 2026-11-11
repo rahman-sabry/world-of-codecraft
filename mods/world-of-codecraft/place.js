@@ -49,6 +49,7 @@ const ADIEU = [100, 300]; // a leaving apprentice's sparkles: rise, then fade, w
 // A hero's teleport (Place.sauter, activite.js portail): its first portal closes from VOYAGE[1], the far one from FERME; the swirl
 // turns a frame per TICK. Each stage is a frame-timer redraw that changes the native transitions' targets.
 const FERME = 1000;
+const FX_DESSUS = 100000; // a blow's effect sorts over every world element (their order among themselves kept)
 const ETOFFES = [0, 3, 2]; // the trophy banners' cloth (ui.js banner colours: red, violet, green), each with the cup
 /** How many of these thresholds (ms) dt has passed. */
 const etape = (dt, seuils) => seuils.filter((s) => dt >= s).length;
@@ -513,8 +514,9 @@ export default class Place {
   }
 
   /** The fight effects running (Activites.frappe, effets.js), each from its striker's chest to its foe's (adversaire),
-   *  by the striker's class (an apprentice's look's, at 0.7 size); a priest heals a party member (soigne, chosen at
-   *  its first draw), alone it smites its foe. Dimmed at night (1 - 0.3 x the night weight). [{ z, el }]. */
+   *  by the striker's class (a hero's at 1.5x the art's 2x, an apprentice's look's at 1x); a priest heals a party
+   *  member (soigne, chosen at its first draw), alone it smites its foe. Dimmed at night (1 - 0.3 x the night weight).
+   *  Over everything in the world, front cut-outs included (a hero may stand behind an oak). [{ z, el }]. */
   effets(units, apps, t, nightK) {
     const out = [], al = 1 - 0.3 * nightK;
     const poitrine = (m) => (m.a ? [m.x, m.y - this.anim(m).info.ay * 0.55, m.y] : [m.vu.x, m.vu.y - m.vu.ay * 0.55, m.vu.y]);
@@ -530,7 +532,8 @@ export default class Place {
         const c = e.cible && (units.find((m) => m.a.address === e.cible) ?? apps.find((m) => m.key === e.cible));
         if (c) { const [cx, cy, cf] = poitrine(c); soin = { at: [cx, cy], fy: cf }; }
       }
-      out.push(...effet(`fx-${k}`, cls, { a: [x, y], b: [foe.x, foe.y], dir: foe.x < x ? -1 : 1, fy, tfy: foe.fy }, etape(t - e.t0, FX_ETAPES), ap ? 0.7 : 1, al, soin));
+      out.push(...effet(`fx-${k}`, cls, { a: [x, y], b: [foe.x, foe.y], dir: foe.x < x ? -1 : 1, fy, tfy: foe.fy }, etape(t - e.t0, FX_ETAPES), ap ? 1 : 1.5, al, soin)
+        .map((f) => ({ ...f, z: f.z + FX_DESSUS })));
     }
     return out;
   }
