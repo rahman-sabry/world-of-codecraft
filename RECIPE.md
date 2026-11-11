@@ -70,7 +70,7 @@ the clock. The art is original: it imitates no existing game.
     point on the road), with no walk first; when another hero holds or heads for that exact point it is nudged
     to the nearest free walkable point. Every 10 to 20 s (staggered per hero and per stop) it walks to another
     free walkable point within 300 px (any `FLANE` or `SPOTS` point, or a `ROAD` point), never one another hero
-    is heading for. It waits for a calm moment: not during meditation or tests, not while a creature is hurt
+    is heading for. It waits for a calm moment: not during a raid, meditation or tests, not while a creature is hurt
     but not yet felled (the move comes after the puff), and not while a hit, a test result, a seal or the
     pigeon shows. No chronicle line; the camera follows a selected hero's walk. Blocked and done heroes stay
     put; with animations off nobody moves. Only the demo heroes work at their class building (`SPOTS`).
@@ -107,7 +107,8 @@ the clock. The art is original: it imitates no existing game.
   the follow until another unit is selected. Units and buttons stop the press, so their
   clicks still work.
 - **Clicks:**
-  - a unit: `agent.focus` (`pane.focus` for shells)
+  - a unit: `agent.focus` (`pane.focus` for shells), and the camera glides to it, even when it is already
+    selected (after a manual pan)
   - double-click the tower, the forge or the barracks: recruit with `tab.new` (claude,
     codex or a shell)
   - a district card: `space.select`
@@ -169,6 +170,20 @@ the clock. The art is original: it imitates no existing game.
     behind front cut-outs like the walkers; not clickable, no chronicle line. When a subagent ends its
     apprentice blinks out (and a new one blinks in). The activity file is read while the hero works, once when it is first seen, and
     while it has subagents (and an event in the last 30 min), so they stay after the main turn ends.
+  - **Raid:** while a hero (not a shell, not a demo hero) has running subagents (the apprentices' rule: ids with an
+    event in the last 30 min), whatever its status, it fights a raid boss instead of its scene. It plays `work`
+    where it stands and never moves on (a strolling idle hero stops where it is, as when it turns working; it
+    strolls again after the raid). The boss is the forest troll drawn at 2× its fight size (`GEANT`: 4×4 screen
+    px per art px), feet 170 px from the hero's (`LOIN`) on the creature's side (right; left past x 2700) and
+    16 px nearer the viewer, `pret` / `attaque` alternating, depth-sorted by its feet. Over its head, one pip per
+    running subagent. A subagent that ends (even when another starts in the same poll) is a blow: `touche` and an
+    impact flash for 900 ms, one pip fewer. When the last one ends it falls: the felled puff at its size, 1.2 s,
+    then the hero is back to its scene or stroll. The raid wins over thinking, scouting, combat, the dummy and
+    meditation (their anti-zapping state keeps running underneath); a test result, the seal, the pigeon and
+    "Ouch!" still show. In a raid every apprentice slot is on the side away from the boss (70, 115, 160, 205 px,
+    zigzagging 6 px in front and 30 px behind), and no apprentice's feet stand within the boss's half width plus
+    25 px of its x, wherever the search pulls or mirrors it. No raid with animations off, in the demo, or for
+    shells; no chronicle line.
   - **Anti-zapping:** a scene changes only when asked for 8 s and the current one is 15 s
     old (20 s / 40 s to or from the forest edge); meditation, tests and the end switch at once.
 - **Village life** (`ambiance.js`): walkers with pauses on the road (a peasant woman and a
@@ -263,7 +278,7 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   - commands: `agent.focus`, `agent.next`, `pane.focus`, `space.select`, `tab.select`,
     `tab.new`, `space.new`, `pane.split`, `pane.zoom` and `pane.close`.
 - **Timers:** one shared 100 ms timer runs only while a visible unit animates or walks, or someone blinks in or out
-  or is summoned,
+  or is summoned, or a raid boss is hit or falls (its signature drops each window's end: `Activites.fenetres`),
   and stops when its village block (`place` or `place-immersion`) is hidden. The clock ticks every 30 s; the sky and quotas
   update every 60 s.
 - **Files read and programs run:** the activity files in `~/.local/state/world-of-codecraft/`

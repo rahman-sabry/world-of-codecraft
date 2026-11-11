@@ -6,7 +6,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { run, home, readTextFile } from "herdr";
-import { CLASSES, RACE_FR, QUEST, heroDesc, selectedAddress } from "./kit.js";
+import { CLASSES, RACE_FR, QUEST, heroDesc, selectedAddress, reroll } from "./kit.js";
 import { gradient } from "./kit.js";
 import { t } from "./i18n.js";
 import { P, frame, frameT, bar, pic, txt, title, button, gem, mark, portraitCard, well } from "./ui.js";
@@ -69,7 +69,8 @@ function card(sel) {
   const st = a.status;
   const word = QUEST[st]?.mot ?? t("onGuard");
   return h_flex().flex_1().min_h(0).gap(8).px(2).pt(8).items_start()
-    .child(portraitCard(h))
+    .child(v_flex().flex_none().gap(4).child(portraitCard(h))
+      .when(!a.demoHero && !props()?.demo, (el) => el.child(button("race", txt(t("reroll"), 14, P.cream, 800), () => reroll(a.address, h.race), { w: 66, h: 24, tip: t("rerollTip") }))))
     .child(v_flex().flex_1().min_w(0).gap(3)
       .child(title(h.name, 19, P.goldHi).truncate())
       .child(txt(heroDesc(h), 15, P.cream, 700).truncate())

@@ -4,7 +4,7 @@
 
 import { div, image, svg, PathBuilder, Background } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { home, readTextFile, panes, focused } from "herdr";
+import { home, readTextFile, panes, focused, agents, shared, setShared } from "herdr";
 import { t, tbl } from "./i18n.js";
 
 export const ART = "mods/world-of-codecraft/art";
@@ -85,11 +85,23 @@ export function classOf(program, h = 0) {
 /** Everything that makes a terminal a villager-hero, stable for its address. */
 export function heroOf(address, program) {
   const h = hash(address);
-  const race = RACES[h % RACES.length];
+  const race = shared(RACE_PICKS)?.[address] ?? RACES[h % RACES.length];
   const cls = classOf(program, h);
   const list = NAMES[race];
   const name = list[(h >>> 5) % list.length];
   return { race, cls, name, prog: program?.name ?? "agent", sprite: `${ART}/h-${race}-${cls}`, item: CLASSES[cls].item };
+}
+
+/** Races picked with the unit card's « Race » button, by terminal address (the class stays). */
+const RACE_PICKS = "wocc.races";
+
+/** Gives this unit another race at random and forgets the picks of terminals that are gone. */
+export function reroll(address, current) {
+  const others = RACES.filter((r) => r !== current);
+  const alive = new Set([...agents().map((a) => a.address), ...guards().map((p) => p.terminal)]);
+  const picks = Object.fromEntries(Object.entries(shared(RACE_PICKS) ?? {}).filter(([k]) => alive.has(k)));
+  picks[address] = others[Math.floor(Math.random() * others.length)];
+  setShared(RACE_PICKS, picks);
 }
 
 /** "Orc mage" / "mage orque". */

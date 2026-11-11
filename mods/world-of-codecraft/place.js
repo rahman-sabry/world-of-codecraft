@@ -226,7 +226,7 @@ export default class Place {
     const addr = u.a.address;
     let p = this.postes.get(addr);
     if (!p || p.goal !== m.goal.join()) { p = { n: p?.n ?? 0, goal: m.goal.join(), at: null }; this.postes.set(addr, p); }
-    if (!this.live || u.a.status !== "working" || (m.legs.length && t < m.legs[m.legs.length - 1].t1)) return null;
+    if (!this.live || u.a.status !== "working" || this.act.raid(addr) || (m.legs.length && t < m.legs[m.legs.length - 1].t1)) return null;
     if (p.at === null) p.at = t;
     const due = p.at + STAY(addr, p.n);
     if (t < due) { this.wake = Math.min(this.wake ?? Infinity, due); return null; }
@@ -244,9 +244,9 @@ export default class Place {
     this.wake = null; // when a standing idle hero moves on (the ambient timer redraws then)
     const want = list.map((a) => {
       const h = a.demoHero ? { ...heroOf(a.address, a.program), race: RACE_FR[a.demoHero.split("-")[0]], cls: CLS_FR[a.demoHero.split("-")[1]] } : heroOf(a.address, a.program);
-      // shells stroll like idle heroes; a working, blocked or done hero stays where it is (demo heroes: at
-      // their class building)
-      const group = a.status === "idle" || a.guard ? "flane" : a.demoHero ? WORK[h.cls] : "poste";
+      // shells stroll like idle heroes; a working, blocked or done hero, or one in a raid, stays where it is (demo
+      // heroes: at their class building)
+      const group = (a.status === "idle" && !this.act.raid(a.address)) || a.guard ? "flane" : a.demoHero ? WORK[h.cls] : "poste";
       if (group === "flane") {
         const w = this.flane(a.address, t);
         goals.set(a.address, FLANE[w.i]);
@@ -319,6 +319,7 @@ export default class Place {
     let name;
     if (u.leg) name = walkAnim(u.leg.b[0] - u.leg.a[0], u.leg.b[1] - u.leg.a[1]);
     else if ([...this.invocations.values()].some((s) => s.hero === u.a.address && Date.now() - s.t0 < CAST)) name = "work"; // summoning
+    else if (this.act.raid(u.a.address)) name = "work"; // fighting the raid boss
     else name = (u.a.status === "working" && this.act.anim(u.a.address)) || (u.a.status === "working" ? "work" : "idle");
     const info = H?.anims?.[name];
     if (info) return { name, info, frames: true };
@@ -366,7 +367,11 @@ export default class Place {
     el = el.child(div().id(`clic-${a.address}`).absolute().left(-ax).top(-ay).w(w).h(hh).cursor_pointer()
       .tooltip(tr("unitTip", heroTitle(h), h.prog, `${a.space_name ?? ""} › ${a.tab_name ?? ""}`, QUEST[st]?.mot ?? tr("onGuardTerm")))
       .on_mouse_down("left", stop)
-      .on_click(() => (a.guard ? run("pane.focus", { pane: a.pane }) : run("agent.focus", { terminal: a.address }))));
+      .on_click((_e, cx) => {
+        this.lastFocus = null; // the camera glides to it again, even when it was already selected
+        if (a.guard) run("pane.focus", { pane: a.pane }); else run("agent.focus", { terminal: a.address });
+        cx.notify();
+      }));
 
     const head = -ay;
     if (st === "blocked" && !u.leg) {
@@ -415,7 +420,7 @@ export default class Place {
     for (const [k, t0] of this.nes) s += `${k}:${t - t0 < BLINK};`;
     for (const [k, g] of this.fantomes) s += `${k}:${t - g.t0 < BLINK}:${etape(t - g.t0, ADIEU)};`;
     for (const [k, v] of this.invocations) s += `${k}:${etape(t - v.t0, [OUVRE, LEAD, FONDU, CAST, SUMMON])};`;
-    return s;
+    return s + this.act.fenetres(t); // a raid blow or fall that ends
   }
 
   // ---------------------------------------------------------------- blinking in and out
@@ -683,8 +688,9 @@ export default class Place {
     // depth: units by feet y (+3, like the compositor), front cut-outs above the units behind them
     const els = units.map((u) => this.unit(u, u === sel, nightHeroes, t, u.animate));
     this.passages(units, apps, this.live && !hidden && !props()?.demo, t);
-    // the frame timer also runs while someone blinks in or out or is summoned, and redraws at each stage and its end
-    this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0));
+    // the frame timer also runs while someone blinks in or out or is summoned, or a raid boss is hit or falls, and
+    // redraws at each stage and its end
+    this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0 || this.act.fenetres(t) !== ""));
     this.sig = this.frameSig(t);
     const things = units.map((u, i) => ({ z: u.y + 3, el: this.blink(u.a.address, els[i], t) }));
     for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); }

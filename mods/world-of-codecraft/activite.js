@@ -12,6 +12,8 @@
 //   travail  bash and the rest   the usual `work` loop
 // plus, whatever the scene: a wax seal and "Sealed!" on a git commit, a carrier pigeon flying off east on a
 // git push; and, whatever the status, apprentices (one full-size hero per running subagent) trailing the hero.
+// Raid: while a hero has running subagents, whatever its status, it stands and fights the forest troll drawn twice
+// as large, one pip per subagent; each subagent that ends is a blow, the last one fells it. It wins over the scenes.
 // Lot 2: six creatures in the draw (imp, wolf, goblin, boar, rust golem, spectre); a task with 3+ failed
 // tools brings the forest troll, a boss of 8 blows.
 // Anti-zapping: a scene changes only when the new one has been asked for 8 s and the current one has
@@ -44,6 +46,7 @@ export const DISTRICT = { atelier: ["golem", "gobelin"], grange: ["loup", "sangl
 const HOME = { artificier: "atelier", rodeur: "grange", pretre: "temple", voleur: "etal1" };
 const clsOf = (a) => (a.demoHero ? { mage: "mage", artificer: "artificier", ranger: "rodeur", priest: "pretre", rogue: "voleur", warrior: "guerrier" }[a.demoHero.split("-")[1]] : heroOf(a.address, a.program).cls);
 const RESULT = 5000; // a test result stays on screen this long
+const BETE = 1.5; // fight creatures drawn this much larger (art 2x: 3x3 screen px per art px, still crisp)
 const STUCK = 10000; // a fight with no blow for this long (delegating to subagents) no longer holds the hero
 const SCENE_OF = { pense: "pense", eclaire: "eclaire", web: "eclaire", code: "combat", commande: "combat", medite: "medite", test: "test" };
 const SUB_TTL = 30 * 60_000; // an activity file silent this long has no running subagents (as the hook drops them)
@@ -56,20 +59,29 @@ export const TRAIL = 3600 + (150 / STEP) * 1000; // the last apprentice ends its
 const GAP = 45; // px kept between apprentices
 const WORKS = new Set(["code", "commande", "test"]); // a subagent's acts shown with `work`
 const READS = new Set(["eclaire", "web"]); // and with the scroll over the head
+const GEANT = 2; // the raid boss drawn this much larger (art 2x: 4x4 screen px per art px)
+const LOIN = 170; // px from the hero's feet to the raid boss's
+const COUP = 900; // a raid blow (a subagent ended) shows this long
+const CHUTE = 1200; // the raid boss's fall (the felled puff) lasts this long
+// half the raid boss's width at its widest pose, plus an apprentice's half body: no apprentice's feet that close to its x
+const LARGE = Math.max(...Object.values(CREATURES.troll ?? {}).flatMap((p) => [p.ax, p.w - p.ax])) * GEANT + 25;
 
 /** Where slot k stands by a hero standing at p: its offset, else mirrored, else pulled in (mirrored too), the first
- *  on walkable ground at least GAP px from the apprentices placed before it; else the first such point around the
- *  hero; else a quarter of its offset. */
-function spot(p, k, side, taken) {
-  const [dx0, dy] = SLOTS[k], dx = -side * dx0;
+ *  on walkable ground at least GAP px from the apprentices placed before it (and, in a raid, off the boss's
+ *  footprint); else the first such point around the hero; else a quarter of its offset (away from a raid boss). */
+function spot(p, k, side, taken, raid) {
+  // in a raid every slot is on the side away from the boss, zigzagging out 45 px apart
+  const [dx0, dy] = raid ? [70 + 45 * k, k % 2 ? -30 : 6] : SLOTS[k], dx = -side * dx0;
+  const free = (q) => walkable(q) && !taken.some((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) < GAP)
+    && !(raid && Math.abs(q[0] - (p[0] + side * LOIN)) < LARGE);
   for (const f of [1, 0.75, 0.5, 0.35]) for (const ox of [dx * f, -dx * f]) {
     const q = [p[0] + ox, p[1] + dy * Math.max(f, 0.5)];
-    if (walkable(q) && !taken.some((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) < GAP)) return q;
+    if (free(q)) return q;
   }
   // a cramped spot (a shore, the bridge): the first free ground around the hero
   for (const r of [45, 65, 85]) for (let i = 0; i < 12; i++) {
     const q = [p[0] + r * Math.cos((i * Math.PI) / 6), p[1] + r * Math.sin((i * Math.PI) / 6)];
-    if (walkable(q) && !taken.some((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) < GAP)) return q;
+    if (free(q)) return q;
   }
   return [p[0] + dx / 4, p[1] + dy / 4];
 }
@@ -101,14 +113,50 @@ export class Activites {
     this.scenes = new Map(); // address -> { scene, since, cand, candSince }
     this.hits = new Map(); // address -> { coups, at, felled: [{ species, at }] }
     this.slots = new Map(); // address -> Map(subagent id -> apprentice slot)
+    this.raids = new Map(); // address -> { ids (running subagents), at (last blow), fin (the fall, 0 = none) }
     this.timer = null;
     this.busy = false;
   }
 
-  /** The scene a unit plays now (decided in the poll, read in render). */
+  /** The scene a unit plays now (decided in the poll, read in render); none during a raid. */
   scene(addr) {
-    if (this.off) return null;
+    if (this.off || this.raid(addr)) return null;
     return this.scenes.get(addr)?.scene ?? null;
+  }
+
+  /** A hero's raid, while it has running subagents and through the boss's fall (null = none). */
+  raid(addr) {
+    const r = this.raids.get(addr);
+    if (!r || this.off) return null;
+    if (!r.ids.length && Date.now() - r.fin >= CHUTE) { this.raids.delete(addr); return null; }
+    return r;
+  }
+
+  /** Follows a hero's running subagents (not demo heroes): one that ends is a blow, the last one fells the boss;
+   *  true when the raid changed. */
+  mene(addr, s, now) {
+    const ids = this.subagents(s).map((x) => x.id);
+    const r = this.raids.get(addr);
+    if (!r) {
+      if (!ids.length) return false;
+      this.raids.set(addr, { ids, at: 0, fin: 0 });
+      return true;
+    }
+    const fini = r.ids.some((id) => !ids.includes(id));
+    if (!fini && ids.length === r.ids.length) return false;
+    if (ids.length) { if (fini) r.at = now; r.fin = 0; }
+    else if (r.ids.length) r.fin = now;
+    r.ids = ids;
+    return true;
+  }
+
+  /** The raids' bounded windows open at t (a blow, a fall): the frame timer runs while one is, and its signature
+   *  changes when one ends (a redraw drops it). */
+  fenetres(t) {
+    let s = "";
+    if (this.off) return s;
+    for (const [k, r] of this.raids) if (t - r.at < COUP || (!r.ids.length && t - r.fin < CHUTE)) s += `${k}:${r.at}:${r.fin};`;
+    return s;
   }
 
   file(addr) {
@@ -124,6 +172,7 @@ export class Activites {
   watch(cx, list, hidden, off = false) {
     this.list = list;
     this.off = off;
+    if (off) this.raids.clear();
     const need = !hidden && !off && list.some((a) => this.reads(a) || this.scenes.has(a.address));
     if (need && !this.timer) this.timer = cx.timer.every(POLL, (cx) => this.poll(cx));
     else if (!need && this.timer) { this.timer.cancel(); this.timer = null; }
@@ -138,12 +187,13 @@ export class Activites {
       const dir = `${home()}/.local/state/world-of-codecraft`;
       for (const a of this.list ?? []) {
         if (a.demoAct) { changed = this.apply(a, a.demoAct, now) || changed; continue; }
-        if (!this.reads(a)) { changed = this.apply(a, null, now) || changed; continue; }
+        if (!this.reads(a)) { changed = this.apply(a, null, now) || changed; changed = this.mene(a.address, null, now) || changed; continue; }
         let s = null;
         try { s = JSON.parse((await readTextFile(`${dir}/${a.address}.json`)) ?? "null"); } catch { s = null; }
         const old = this.files.get(a.address);
         if (JSON.stringify(old) !== JSON.stringify(s)) { this.files.set(a.address, s); changed = true; }
         changed = this.apply(a, s, now) || changed;
+        changed = this.mene(a.address, s, now) || changed;
       }
       // short-lived flashes (blow on the creature, hero hit): redraw when they start or end
       for (const a of this.list ?? []) {
@@ -154,6 +204,7 @@ export class Activites {
       const alive = new Set((this.list ?? []).map((a) => a.address));
       for (const k of [...this.scenes.keys()]) if (!alive.has(k)) { this.scenes.delete(k); changed = true; }
       for (const k of [...this.slots.keys()]) if (!alive.has(k)) this.slots.delete(k);
+      for (const k of [...this.raids.keys()]) if (!alive.has(k)) this.raids.delete(k);
       // a felled creature's puff lasts 1.2 s
       for (const h of this.hits.values()) {
         const n = h.felled.length;
@@ -322,7 +373,8 @@ export class Activites {
     }
     const drawn = subs.filter((x) => slots.has(x.id)).sort((p, q) => slots.get(p.id) - slots.get(q.id));
     // the slots by the hero's goal and, on a walk, by its starting point
-    const at = (p) => { const taken = []; return drawn.map((x) => { const q = spot(p, slots.get(x.id), side, taken); taken.push(q); return q; }); };
+    const raid = Boolean(this.raid(addr));
+    const at = (p) => { const taken = []; return drawn.map((x) => { const q = spot(p, slots.get(x.id), side, taken, raid); taken.push(q); return q; }); };
     const ends = at([m.x, m.y]), starts = m.legs.length ? at(m.legs[0].a) : ends;
     const sfx = night ? "-n" : "";
     return drawn.map((x, i) => {
@@ -356,6 +408,8 @@ export class Activites {
   creature(u, night) {
     const addr = u.a.address;
     if (u.leg || this.off) return null;
+    const r = this.raid(addr);
+    if (r) return this.geant(u, r, night);
     const s = this.file(addr) ?? u.a.demoAct;
     if (!s) return null;
     const sc = this.scene(addr);
@@ -363,7 +417,7 @@ export class Activites {
     if (sc !== "combat" && !dummy) return null;
     // on the hero's right and a little nearer the viewer, facing it (left side near the world's right end)
     const side = u.x > 2700 ? -1 : 1;
-    const off = !dummy && boss(s) ? 78 : 44; // the troll is wide: keep it off the hero
+    const off = dummy ? 44 : boss(s) ? 115 : 70; // creatures are drawn larger (BETE); the troll is wide: keep it off the hero
     const x = Math.round(u.x + side * off), y = Math.round(u.y + 16);
     const kids = dummy ? this.dummy(u, s, night ? "-n" : "", side) : this.fight(u, s, night ? "-n" : "", side);
     const el = div().absolute().left(x).top(y).w(0).h(0).children(kids);
@@ -396,12 +450,12 @@ export class Activites {
     const out = [];
     const sprite = (pose, extra) => {
       const p = D[pose];
-      return image(`${CRE}/${sp}/${pose}${g}${sfx}.png`).absolute().left(side * gap - p.ax).top(-p.ay + 4).w(p.w).h(p.h).when(Boolean(extra), extra);
+      return image(`${CRE}/${sp}/${pose}${g}${sfx}.png`).absolute().left(side * gap - p.ax * BETE).top(-p.ay * BETE + 4).w(p.w * BETE).h(p.h * BETE).when(Boolean(extra), extra);
     };
     if (hit) {
       out.push(sprite("touche"));
       // impact flash on the creature
-      out.push(div().absolute().left(side * gap - 6).top(-D.pret.h / 2 - 4).size(12).rounded_full().bg("#fff6d8")
+      out.push(div().absolute().left(side * gap - 6).top((-D.pret.h * BETE) / 2 - 4).size(12).rounded_full().bg("#fff6d8")
         .loop("opacity", { from: 1, to: 0, period: 450 }));
     } else {
       // ready / attack, alternating: one frame shown at a time (two clamped opacity loops in step)
@@ -410,19 +464,56 @@ export class Activites {
     }
     // blows left: little pips over the creature
     const left = B - ((s.coups ?? 0) % B);
-    out.push(div().absolute().left(side * gap - 2.5 * B).top(-D.pret.h - 6).flex().gap(1)
+    out.push(div().absolute().left(side * gap - 2.5 * B).top(-D.pret.h * BETE - 6).flex().gap(1)
       .children(Array.from({ length: B }, (_, i) => div().w(4).h(3).bg(i < left ? "#e5685a" : "#3a2a2a").border_1().border_color("#000000"))));
     // the last creature felled: fades and rises in a puff
     for (const f of h.felled) {
       const F = CREATURES[f.species];
       if (!F) continue;
       const p = F.touche;
-      out.push(image(`${CRE}/${f.species}/touche${g}${sfx}.png`).absolute().left(side * (gap + 14) - p.ax).top(-p.ay).w(p.w).h(p.h)
-        .loop("opacity", { from: 0.9, to: 0, period: 1200 }).loop("top", { from: -p.ay, to: -p.ay - 16, period: 1200 }));
+      out.push(image(`${CRE}/${f.species}/touche${g}${sfx}.png`).absolute().left(side * (gap + 14) - p.ax * BETE).top(-p.ay * BETE).w(p.w * BETE).h(p.h * BETE)
+        .loop("opacity", { from: 0.9, to: 0, period: 1200 }).loop("top", { from: -p.ay * BETE, to: -p.ay * BETE - 16, period: 1200 }));
       out.push(div().absolute().left(side * (gap + 14) - 12).top(-20).size(24).rounded_full().bg("#e8e2d0aa")
         .loop("opacity", { from: 0.8, to: 0, period: 1200 }));
     }
     return out;
+  }
+
+  /** The raid boss: the troll GEANT times its drawn size, LOIN px from the hero on the creature's side, one pip per
+   *  running subagent; hit COUP ms when one ends, felled (the puff) when the last one does. { z, el }. */
+  geant(u, r, night) {
+    const D = CREATURES.troll;
+    if (!D) return null;
+    const addr = u.a.address;
+    const side = u.x > 2700 ? -1 : 1;
+    const x = Math.round(u.x + side * LOIN), y = Math.round(u.y + 16);
+    const g = side > 0 ? "" : "-g", sfx = night ? "-n" : "";
+    const now = Date.now();
+    const sprite = (pose, extra) => {
+      const p = D[pose];
+      return image(`${CRE}/troll/${pose}${g}${sfx}.png`).absolute().left(-p.ax * GEANT).top(-p.ay * GEANT + 4).w(p.w * GEANT).h(p.h * GEANT).when(Boolean(extra), extra);
+    };
+    const out = [];
+    if (!r.ids.length) {
+      // felled: fades and rises in a puff, at the boss's size
+      const p = D.touche;
+      out.push(image(`${CRE}/troll/touche${g}${sfx}.png`).absolute().left(side * 28 - p.ax * GEANT).top(-p.ay * GEANT).w(p.w * GEANT).h(p.h * GEANT)
+        .loop("opacity", { from: 0.9, to: 0, period: CHUTE }).loop("top", { from: -p.ay * GEANT, to: -p.ay * GEANT - 32, period: CHUTE }));
+      out.push(div().absolute().left(side * 28 - 24).top(-40).size(48).rounded_full().bg("#e8e2d0aa")
+        .loop("opacity", { from: 0.8, to: 0, period: CHUTE }));
+    } else if (now - r.at < COUP) {
+      out.push(sprite("touche"));
+      out.push(div().absolute().left(-12).top(-D.pret.h * GEANT / 2 - 8).size(24).rounded_full().bg("#fff6d8")
+        .loop("opacity", { from: 1, to: 0, period: 450 }));
+    } else {
+      out.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: 1700 + (hash(addr) % 400), easing: "linear" })));
+      out.push(sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: 1700 + (hash(addr) % 400), easing: "linear" })));
+    }
+    // health: one pip per running subagent over its head
+    const n = r.ids.length;
+    if (n) out.push(div().absolute().left(-2.5 * n).top(-D.pret.h * GEANT - 6).flex().gap(1)
+      .children(Array.from({ length: n }, () => div().w(4).h(3).bg("#e5685a").border_1().border_color("#000000"))));
+    return { z: y + 3, el: div().absolute().left(x).top(y).w(0).h(0).children(out) };
   }
 }
 
