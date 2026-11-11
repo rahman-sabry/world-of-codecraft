@@ -76,6 +76,10 @@ export function walkable(p) {
   return [...FLANE, ...Object.values(SPOTS).flat()].some(([sx, sy]) => Math.hypot(sx - x, sy - y) < SPOT_R);
 }
 
+/** The town hall's trophy standards (bannieres in kit.js), in the order they are earned: the feet of their poles in
+ *  front of its door (left of the steps, right of them, then further left), clear of the lanterns and the road. */
+export const BANNIERES = [[1172, 336], [1262, 344], [1140, 350]];
+
 /** The market's name in the current language, and its box [x, y, w, h] (the red and blue stalls). */
 export const market = () => t("market");
 export const MARCHE = [1647, 309, 317, 91];

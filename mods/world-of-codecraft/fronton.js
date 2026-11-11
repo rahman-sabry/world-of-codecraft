@@ -12,7 +12,8 @@ import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { spaces, agents, run, props, layout, nextCommand, window as appWindow } from "herdr";
 import { freshStat } from "./commande.js";
-import { VILLAGE, ART, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left, selectedAddress, bossDuJour, nomBoss, trophees, minuit } from "./kit.js";
+import { VILLAGE, ART, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left, selectedAddress, bossDuJour, nomBoss, trophees, minuit, especeBoss, palier, serieEnJeu, PALIERS } from "./kit.js";
+import { CREATURES } from "./creatures-data.js";
 import { P, DECO, TEXTE, bar, pic, txt, button, mark, banner } from "./ui.js";
 import { DEMO_SPACES } from "./demo.js";
 import { t, detectLang } from "./i18n.js";
@@ -78,15 +79,19 @@ export default class Fronton {
     return this.plaque("res-contexte", gauge, t("pct", pct), s.model ? `${t("context")} · ${s.model}` : t("context"), t("contextTip", pct, s.model), pct >= 80);
   }
 
-  /** Today's raid boss: its HP (slain: in gold, felled), its name; the tooltip says when the next one comes, and gives
-   *  the trophies when their plaque has no room (more). */
+  /** Today's raid boss: its species (slain: felled), its HP (slain: in gold), its tier and name (an Elite or Legendary
+   *  boss's HP in its tier's colour); the tooltip says the tier, who slew it, when the next one comes, and gives the
+   *  trophies when their plaque has no room (more). */
   boss(more) {
-    const b = bossDuJour(this.now), nom = nomBoss(b.day), reset = left(minuit(this.now)) || "?";
-    const by = b.slain && b.by ? heroTitle(heroOf(b.by, agents().find((a) => a.address === b.by)?.program ?? { key: "claude" })) : null;
-    const tip = (b.slain ? t("bossSlainTip", nom, by, reset) : t("bossTip", nom, b.hp, b.max, reset)) + (more ? `\n\n${more}` : "");
-    const pose = b.slain ? "touche" : "pret";
-    const troll = image(`${ART}/creatures/troll/${pose}.png`).w(32).h(b.slain ? 23 : 25).flex_none();
-    return this.plaque("res-boss", troll, b.slain ? t("slain") : t("hp", b.hp, b.max), nom, tip, false, b.slain ? P.goldHi : P.cream);
+    const b = bossDuJour(this.now), p = palier(b.day), nom = nomBoss(b.day, p), reset = left(minuit(this.now)) || "?";
+    const by = !b.slain ? null : b.heros ? heroTitle(b.heros)
+      : b.by ? heroTitle(heroOf(b.by, agents().find((a) => a.address === b.by)?.program ?? { key: "claude" })) : null;
+    const tip = (b.slain ? t("bossSlainTip", nom, by, reset) : t("bossTip", nom, b.hp, b.max, reset))
+      + (p ? `\n${t("tierTip", p, serieEnJeu(b.day))}` : "") + (more ? `\n\n${more}` : "");
+    const sp = especeBoss(b.day), pose = b.slain ? "touche" : "pret", D = CREATURES[sp][pose], k = Math.min(32 / D.w, 28 / D.h);
+    const bete = image(`${ART}/creatures/${sp}/${pose}.png`).w(Math.round(D.w * k)).h(Math.round(D.h * k)).flex_none();
+    return this.plaque("res-boss", bete, b.slain ? t("slain") : t("hp", b.hp, b.max), p ? `${t("tiers")[p]} · ${nomBoss(b.day, 0)}` : nom, tip, false,
+      b.slain ? P.goldHi : PALIERS[p] ?? P.cream);
   }
 
   /** The immersive-mode switch: swaps the village (big) and the terminal (below), in the same layout. */

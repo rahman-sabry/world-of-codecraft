@@ -12,19 +12,19 @@
 //   travail  bash and the rest   the usual `work` loop
 // plus, whatever the scene: a wax seal and "Sealed!" on a git commit, a carrier pigeon flying off east on a
 // git push; and, whatever the status, apprentices (one full-size hero per running subagent) trailing the hero.
-// Raid: while a hero has running subagents, whatever its status, it stands and fights the day's raid boss (the forest
-// troll drawn twice as large, kit.js bossDuJour), whose HP every hero shares: each successful subagent tool call is
-// 1 damage. At 0 HP it falls in a gold burst (no more raids that day); when a hero's subagents all end first, it flees
-// and keeps its HP. It wins over the scenes.
+// Raid: while a hero has running subagents, whatever its status, it stands and fights the day's raid boss (a troll,
+// golem, spectre or goblin by date, all as tall as the troll drawn twice as large, kit.js bossDuJour), whose HP every
+// hero shares: each successful subagent tool call is 1 damage. At 0 HP it falls in a gold burst (no more raids that
+// day); when a hero's subagents all end first, it flees and keeps its HP. It wins over the scenes.
 // Lot 2: six creatures in the draw (imp, wolf, goblin, boar, rust golem, spectre); a task with 3+ failed
 // tools brings the forest troll, a boss of 8 blows.
 // Anti-zapping: a scene changes only when the new one has been asked for 8 s and the current one has
 // lasted 15 s; 20 s / 40 s when it means walking to or from the forest edge (meditation, tests and the
 // end of work switch at once).
 
-import { div, image } from "gpui-kit";
+import { div, image, svg } from "gpui-kit";
 import { home, readTextFile, shared, setShared } from "herdr";
-import { hash, UI, C, heroOf, walkAnim, BOSS, TROPHEES, bossDuJour, veille } from "./kit.js";
+import { hash, UI, C, heroOf, walkAnim, BOSS, TROPHEES, bossDuJour, veille, especeBoss, palier, PALIERS } from "./kit.js";
 import { walkable } from "./lieux.js";
 import { CREATURES } from "./creatures-data.js";
 import { HEROES } from "./heros-data.js";
@@ -61,25 +61,33 @@ export const TRAIL = 3600 + (150 / STEP) * 1000; // the last apprentice ends its
 const GAP = 45; // px kept between apprentices
 const WORKS = new Set(["code", "commande", "test"]); // a subagent's acts shown with `work`
 const READS = new Set(["eclaire", "web"]); // and with the scroll over the head
-const GEANT = 2; // the raid boss drawn this much larger (art 2x: 4x4 screen px per art px)
-const LOIN = 170; // px from the hero's feet to the raid boss's
+const GEANT = 2; // the troll raid boss drawn this much larger (art 2x: 4x4 screen px per art px); the others match its height
 const COUP = 900; // a raid blow (damage dealt in a poll) shows this long
 const CHUTE = 1200; // the raid boss's fall (the felled puff and the gold burst), or its flight, lasts this long
 const ETAPES = [100, 700]; // the fall's and the flight's stages: open / walk off from here, fade from here
 const etape = (dt) => ETAPES.filter((s) => dt >= s).length;
 const FUIR = 150; // px the raid boss walks away from the hero when it flees
 const VUS = "wocc.boss.vus"; // { address: the subCoups already counted as damage }, so a reload neither loses nor recounts
-// half the raid boss's width at its widest pose, plus an apprentice's half body: no apprentice's feet that close to its x
-const LARGE = Math.max(...Object.values(CREATURES.troll ?? {}).flatMap((p) => [p.ax, p.w - p.ax])) * GEANT + 25;
+
+/** A raid boss species' drawing: its scale k (the troll's height at GEANT, rounded to a half so an art px stays whole
+ *  screen px), loin (px from the hero's feet to its feet: half its widest pose + 50) and large (that half width plus an
+ *  apprentice's half body: no apprentice's feet that close to its x). */
+export function geantDe(sp) {
+  const D = CREATURES[sp], T = CREATURES.troll;
+  const k = Math.round((T.pret.h * GEANT * 2) / D.pret.h) / 2;
+  const demi = Math.max(...Object.values(D).flatMap((p) => [p.ax, p.w - p.ax])) * k;
+  return { k, loin: Math.round(demi + 50), large: demi + 25 };
+}
 
 /** Where slot k stands by a hero standing at p: its offset, else mirrored, else pulled in (mirrored too), the first
  *  on walkable ground at least GAP px from the apprentices placed before it (and, in a raid, off the boss's
- *  footprint); else the first such point around the hero; else a quarter of its offset (away from a raid boss). */
+ *  footprint: raid = geantDe of its species); else the first such point around the hero; else a quarter of its offset
+ *  (away from a raid boss). */
 function spot(p, k, side, taken, raid) {
   // in a raid every slot is on the side away from the boss, zigzagging out 45 px apart
   const [dx0, dy] = raid ? [70 + 45 * k, k % 2 ? -30 : 6] : SLOTS[k], dx = -side * dx0;
   const free = (q) => walkable(q) && !taken.some((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) < GAP)
-    && !(raid && Math.abs(q[0] - (p[0] + side * LOIN)) < LARGE);
+    && !(raid && Math.abs(q[0] - (p[0] + side * raid.loin)) < raid.large);
   for (const f of [1, 0.75, 0.5, 0.35]) for (const ox of [dx * f, -dx * f]) {
     const q = [p[0] + ox, p[1] + dy * Math.max(f, 0.5)];
     if (free(q)) return q;
@@ -187,7 +195,11 @@ export class Activites {
     boss = { ...boss };
     for (const [addr, d] of coups) {
       boss.hp = Math.max(0, boss.hp - d);
-      if (!boss.hp) { Object.assign(boss, { slain: true, slainAt: now, by: addr }); break; }
+      if (!boss.hp) {
+        const h = heroOf(addr, (this.list ?? []).find((a) => a.address === addr)?.program);
+        Object.assign(boss, { slain: true, slainAt: now, by: addr, heros: { name: h.name, race: h.race, cls: h.cls } });
+        break;
+      }
     }
     setShared(BOSS, boss);
     if (boss.slain) {
@@ -431,7 +443,7 @@ export class Activites {
     }
     const drawn = subs.filter((x) => slots.has(x.id)).sort((p, q) => slots.get(p.id) - slots.get(q.id));
     // the slots by the hero's goal and, on a walk, by its starting point
-    const raid = Boolean(this.raid(addr));
+    const raid = this.raid(addr) ? geantDe(especeBoss(bossDuJour().day)) : null;
     const at = (p) => { const taken = []; return drawn.map((x) => { const q = spot(p, slots.get(x.id), side, taken, raid); taken.push(q); return q; }); };
     const ends = at([m.x, m.y]), starts = m.legs.length ? at(m.legs[0].a) : ends;
     const sfx = night ? "-n" : "";
@@ -537,21 +549,23 @@ export class Activites {
     return out;
   }
 
-  /** The raid boss: the troll GEANT times its drawn size, LOIN px from the hero on the creature's side, today's HP
-   *  (shared by every raid) in a bar over its head; hit COUP ms after each damage tick; when slain, the felled puff and a
-   *  gold burst; when it flees, it turns its back and walks FUIR px away, fading. { z, el }. */
+  /** The raid boss: the day's species at the troll's height (geantDe), its half width + 50 px from the hero on the
+   *  creature's side, today's HP (shared by every raid) in a bar over its head and, for an Elite or Legendary boss, an
+   *  aura of its tier's colour at its feet; hit COUP ms after each damage tick; when slain, the felled puff and a gold
+   *  burst; when it flees, it turns its back and walks FUIR px away, fading. { z, el }. */
   geant(u, r, night) {
-    const D = CREATURES.troll;
+    const b = bossDuJour(), sp = especeBoss(b.day), D = CREATURES[sp];
     if (!D) return null;
+    const { k: K, loin } = geantDe(sp);
     const addr = u.a.address;
     const side = u.x > 2700 ? -1 : 1;
-    const x = Math.round(u.x + side * LOIN), y = Math.round(u.y + 16);
+    const x = Math.round(u.x + side * loin), y = Math.round(u.y + 16);
     const g = side > 0 ? "" : "-g", sfx = night ? "-n" : "";
     const now = Date.now();
     const e = r.fin ? etape(now - r.fin) : 0;
     const sprite = (pose, extra, gg = g) => {
       const p = D[pose];
-      return image(`${CRE}/troll/${pose}${gg}${sfx}.png`).absolute().left(-p.ax * GEANT).top(-p.ay * GEANT + 4).w(p.w * GEANT).h(p.h * GEANT).when(Boolean(extra), extra);
+      return image(`${CRE}/${sp}/${pose}${gg}${sfx}.png`).absolute().left(-p.ax * K).top(-p.ay * K + 4).w(p.w * K).h(p.h * K).when(Boolean(extra), extra);
     };
     if (r.issue === "fuite") {
       // drawn where it stood, then (stage 1) given the far point and opacity 0, which its native transitions carry
@@ -565,23 +579,32 @@ export class Activites {
     if (r.issue === "mort") {
       // felled: fades and rises in a puff, at the boss's size, in a gold burst
       const p = D.touche;
-      out.push(image(`${CRE}/troll/touche${g}${sfx}.png`).absolute().left(side * 28 - p.ax * GEANT).top(-p.ay * GEANT).w(p.w * GEANT).h(p.h * GEANT)
-        .loop("opacity", { from: 0.9, to: 0, period: CHUTE }).loop("top", { from: -p.ay * GEANT, to: -p.ay * GEANT - 32, period: CHUTE }));
+      out.push(image(`${CRE}/${sp}/touche${g}${sfx}.png`).absolute().left(side * 28 - p.ax * K).top(-p.ay * K).w(p.w * K).h(p.h * K)
+        .loop("opacity", { from: 0.9, to: 0, period: CHUTE }).loop("top", { from: -p.ay * K, to: -p.ay * K - 32, period: CHUTE }));
       out.push(div().absolute().left(side * 28 - 24).top(-40).size(48).rounded_full().bg("#e8e2d0aa")
         .loop("opacity", { from: 0.8, to: 0, period: CHUTE }));
-      out.push(...eclat(addr, e, Math.round((D.pret.h * GEANT) / 2)));
-    } else if (now - r.at < COUP) {
-      out.push(sprite("touche"));
-      out.push(div().absolute().left(-12).top(-D.pret.h * GEANT / 2 - 8).size(24).rounded_full().bg("#fff6d8")
-        .loop("opacity", { from: 1, to: 0, period: 450 }));
+      out.push(...eclat(addr, e, Math.round((D.pret.h * K) / 2)));
     } else {
-      out.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: 1700 + (hash(addr) % 400), easing: "linear" })));
-      out.push(sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: 1700 + (hash(addr) % 400), easing: "linear" })));
+      // an Elite or Legendary boss stands in an aura of its tier's colour (halo.svg as a mask, a smaller one for its core)
+      const p = palier(b.day);
+      if (p) for (const f of [1.3, 0.8]) {
+        const w = Math.round(D.pret.w * K * f), h = Math.round(w / 2.4);
+        out.push(svg(`${ART}/halo.svg`).absolute().left(-w / 2).top(-h / 2 + 4).w(w).h(h).text_color(PALIERS[p])
+          .loop("opacity", { from: 0.55, to: 1, period: 1600 }));
+      }
+      if (now - r.at < COUP) {
+        out.push(sprite("touche"));
+        out.push(div().absolute().left(-12).top(-D.pret.h * K / 2 - 8).size(24).rounded_full().bg("#fff6d8")
+          .loop("opacity", { from: 1, to: 0, period: 450 }));
+      } else {
+        out.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: 1700 + (hash(addr) % 400), easing: "linear" })));
+        out.push(sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: 1700 + (hash(addr) % 400), easing: "linear" })));
+      }
     }
     // today's HP over its head while it fights
     if (!r.fin) {
-      const b = bossDuJour(), W = 84;
-      out.push(div().absolute().left(-W / 2).top(-D.pret.h * GEANT - 12).w(W).h(8).bg("#1b1420").border_1().border_color("#000000")
+      const W = 84;
+      out.push(div().absolute().left(-W / 2).top(-D.pret.h * K - 12).w(W).h(8).bg("#1b1420").border_1().border_color("#000000")
         .child(div().h_full().w(Math.round(((W - 2) * b.hp) / b.max)).bg("#e5685a")));
     }
     return { z: y + 3, el: div().absolute().left(x).top(y).w(0).h(0).children(out) };

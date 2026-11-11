@@ -15,8 +15,9 @@ the clock. The art is original: it imitates no existing game.
     "village of Valbrume" under it;
   - resource plaques, each an icon, a value and a caption: Gold (Claude account A),
     Wood (account B), Heroes ("1/2", heroes at work out of all heroes) and Fair (time
-    until the weekly quota reset); then the day's raid boss (the troll, "214/300" and its name; slain: "Slain!" in
-    gold, the troll felled; tooltip: name, HP, who slew it, time to the next boss) and the trophies (a gold cup,
+    until the weekly quota reset); then the day's raid boss (the day's species, "214/300" and its name, the HP in
+    violet / orange and the name led by "Elite" / "Legendary" for a tiered boss; slain: "Slain!" in gold, the creature
+    felled; tooltip: name with its tier, HP, the streak at stake, who slew it, time to the next boss) and the trophies (a gold cup,
     "3 slain", "streak 2 days"; tooltip). They show only when the bar has room beside everything else (a width
     estimate): the trophies go first (their tooltip then joins the boss's), then the boss;
   - a parchment scroll in the middle with the shown district and quest;
@@ -175,22 +176,43 @@ the clock. The art is original: it imitates no existing game.
     behind front cut-outs like the walkers; not clickable, no chronicle line. When a subagent ends its
     apprentice blinks out (and a new one blinks in). The activity file is read while the hero works, once when it is first seen, and
     while it has subagents (and an event in the last 30 min), so they stay after the main turn ends.
-  - **Raid (daily boss):** one boss a day, from local midnight to the next, named by a hash of the date (a troll name and
-    an epithet, "Gruntak the Mossback" / "Gruntak le Moussu"; `nomBoss` in kit.js) with `BOSS_HP` = 300 HP (calibrated:
+  - **Raid (daily boss):** one boss a day, from local midnight to the next, its species (troll, golem, spectre or
+    goblin; `especeBoss` in kit.js) and name (a name and an epithet of that species, "Gruntak the Mossback" / "Gruntak le
+    Moussu"; `nomBoss`) by a hash of the date, with `BOSS_HP` = 300 HP whatever its tier (calibrated:
     the person's subagents make a median 390 / mean 496 successful tool calls per weekday). Every successful subagent
     tool call is 1 damage, whichever hero's subagent made it, so more subagents in parallel hit faster. While a hero
     (not a shell, not a demo hero) has running subagents (the apprentices' rule: ids with an event in the last 30 min),
     whatever its status, and the day's boss still stands, it fights its own troll instead of its scene; several
     heroes raiding at once each draw one, all sharing the one HP pool. The hero plays `work` where it stands and never
-    moves on (a strolling idle hero stops where it is, as when it turns working; it strolls again after the raid). The
-    troll is drawn at 2× its fight size (`GEANT`: 4×4 screen px per art px), feet 170 px from the hero's (`LOIN`) on
-    the creature's side (right; left past x 2700) and 16 px nearer the viewer, `pret` / `attaque` alternating,
+    moves on (a strolling idle hero stops where it is, as when it turns working; it strolls again after the raid). Each
+    species is drawn as tall as the troll at 2× its fight size (`GEANT`: 4×4 screen px per art px), the factor computed
+    from creatures-data heights and rounded to a half so an art px stays whole screen px (`geantDe` in activite.js):
+    troll 2× (184 px), golem 3.5× (175), spectre 3.5× (189), goblin 3.5× (196); its feet are its widest pose's half
+    width + 50 px from the hero's (troll 170, golem 197, spectre 183, goblin 194; the apprentices keep its half width
+    + 25 px clear) on the creature's side (right; left past x 2700) and 16 px nearer the viewer, `pret` / `attaque` alternating,
     depth-sorted by its feet, with the day's HP in a bar over its head. A poll that deals damage makes it flinch
     (`touche` and an impact flash, 900 ms). At 0 HP it falls: the felled puff at its size and a gold burst (a gold ring
     opening and 10 sparkles rising, 1.2 s), every running raid's troll with it; the chronicle says "[Mage Tower]
     Gruntak the Mossback is slain by Aldric, Human mage!"; the trophies count it (`total`, and `streak`: consecutive
     days with a kill, alive while the last kill is today or yesterday); and no raid starts again until midnight
-    (apprentices still show, heroes play their scenes). When a hero's subagents all end with HP left, its troll flees:
+    (apprentices still show, heroes play their scenes).
+    **Champion's crown:** the hero whose subagent dealt the last blow wears a small gold crown (art/couronne.svg,
+    13 × 9) over its head until midnight: in the village (a child of its unit, so it walks and sorts with it; above its
+    HP bar when selected, above its `!` / `?` mark; never on apprentices) and on the Selected Unit card (2×, on the
+    frame's top edge). The slayer's terminal is `by` in `wocc.boss`; when it closes there is nothing to draw, and the
+    tooltip still names it from the stored hero (`heros`). `champion()` in kit.js.
+    **Tiers:** by the streak at stake, the one alive when the day began (`serieEnJeu`: a kill today does not change
+    it): 3+ = Elite, 7+ = Legendary (`palier`, colours `PALIERS` violet `#b07bff` / orange `#ff9a2e`). The name says it
+    ("Elite Gruntak the Mossback" / "Gruntak le Moussu (élite)"), and the fighting boss stands in a pulsing aura of
+    that colour at its feet (halo.svg drawn with `svg()` as a mask, twice: 1.3× and 0.8× its width). A colour tint
+    of the sprite was tried and dropped: `svg()` of a PNG draws nothing, so there is no silhouette mask.
+    **Trophy standards:** cloth banners with the cup (art/ui/banniere-<n>-coupe.png: red, violet, green) at 1.5x
+    (39 x 60) hang from wooden poles with a gold finial standing in front of the town hall door (`BANNIERES` in
+    lieux.js: the poles' feet, left of the steps, right of them, then further left): one once a boss is slain, a
+    second at a current streak of 3, a third at 7 (`bannieres()` in kit.js). World elements at depth = the pole's
+    foot, sorted with the units. Dimmed at night (opacity 1 - 0.55 ×
+    the night weight: 0.45 at night), a 1 px native sway while animated, still with animations off, none in the demo.
+    When a hero's subagents all end with HP left, its troll flees:
     it turns its back, walks 150 px away from the hero over 1.2 s and fades; its HP stays for the next raid that day.
     The raid wins over thinking, scouting, combat, the dummy and meditation (their anti-zapping state keeps running
     underneath); a test result, the seal, the pigeon and "Ouch!" still show. In a raid every apprentice slot is on the
@@ -198,7 +220,8 @@ the clock. The art is original: it imitates no existing game.
     feet stand within the boss's half width plus 25 px of its x, wherever the search pulls or mirrors it. No raid
     with animations off, in the demo, or for shells.
     - **Store keys** (one writer: the shown, live village, as for the chronicle; the demo and a hidden copy write
-      nothing): `wocc.boss` = `{day, hp, max, slain, slainAt, by}` (the day's boss; another day's or none reads as a
+      nothing): `wocc.boss` = `{day, hp, max, slain, slainAt, by, heros}` (`by` the slayer's
+      terminal address, `heros` its `{name, race, cls}` then) (the day's boss; another day's or none reads as a
       fresh boss at full HP, `bossDuJour` in kit.js), `wocc.trophees` = `{total, streak, lastDay}`, and
       `wocc.boss.vus` = `{address: subCoups already counted}`. Each poll the writer compares each read file's
       `subCoups` with its stored count: the difference is damage (a lower count means the file started over: all of

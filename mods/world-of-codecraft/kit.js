@@ -152,9 +152,18 @@ export const hhmm = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.
 /** Calibrated on the person's subagents: a median 390 / mean 496 successful tool calls per weekday, so an ordinary
  *  working day fells the boss and a light one doesn't. */
 export const BOSS_HP = 300;
-export const BOSS = "wocc.boss"; // { day, hp, max, slain, slainAt, by (the address that dealt the last blow) }
+export const BOSS = "wocc.boss"; // { day, hp, max, slain, slainAt, by (the slayer's terminal address), heros ({ name, race, cls } of its hero then) }
 export const TROPHEES = "wocc.trophees"; // { total (bosses slain), streak (consecutive days with a kill), lastDay }
-const TROLLS = ["Gruntak", "Morgrul", "Skarn", "Brokk", "Ughlar", "Thargol", "Vruuk", "Hobrak", "Dolgrim", "Krummok"];
+/** The raid boss's species, rotating by date, and each one's names. */
+export const ESPECES = ["troll", "golem", "spectre", "gobelin"];
+const NOMS = {
+  troll: ["Gruntak", "Morgrul", "Skarn", "Brokk", "Ughlar", "Thargol", "Vruuk", "Hobrak", "Dolgrim", "Krummok"],
+  golem: ["Brazzik", "Korrund", "Ferrox", "Gharnak", "Ulmbrass", "Tolvek", "Rivok", "Durnhal"],
+  spectre: ["Morvhal", "Velthis", "Hollvar", "Nharrok", "Sevrin", "Ombreth", "Grisdan", "Vaelor"],
+  gobelin: ["Snikrit", "Grubbek", "Zagnut", "Ritzak", "Skabble", "Nogwig", "Krikkit", "Vexnip"],
+};
+/** Streak tiers: the boss is Elite while a 3-day streak is at stake, Legendary from 7; their colours. */
+export const PALIERS = [null, "#b07bff", "#ff9a2e"];
 const deux = (n) => String(n).padStart(2, "0");
 /** The local date of d, "2026-11-11": the boss's day. */
 export const jour = (d) => `${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}`;
@@ -167,16 +176,29 @@ export function bossDuJour(d = new Date()) {
   const day = jour(d), b = shared(BOSS);
   return b?.day === day ? b : { day, hp: BOSS_HP, max: BOSS_HP, slain: false };
 }
-/** The day's boss name, "Gruntak the Mossback" / "Gruntak le Moussu" (a hash of the date). */
-export function nomBoss(day) {
-  const ep = t("epithets");
-  return t("bossName", TROLLS[hash(day) % TROLLS.length], ep[hash(`${day}:epithete`) % ep.length]);
+/** The day's boss species (a hash of the date). */
+export const especeBoss = (day) => ESPECES[hash(`${day}:espece`) % ESPECES.length];
+/** The streak a day's boss puts at stake: the one alive when the day began (a kill that day already counts in it). */
+export function serieEnJeu(day) {
+  const T = shared(TROPHEES) ?? {};
+  return T.lastDay === day ? Math.max(0, (T.streak ?? 1) - 1) : T.lastDay === veille(day) ? T.streak ?? 0 : 0;
 }
+/** The day's boss tier: 0, 1 (Elite, streak 3+ at stake) or 2 (Legendary, 7+). */
+export const palier = (day) => { const s = serieEnJeu(day); return s >= 7 ? 2 : s >= 3 ? 1 : 0; };
+/** The day's boss name, "Gruntak the Mossback" / "Gruntak le Moussu", with its tier (a hash of the date). */
+export function nomBoss(day, p = palier(day)) {
+  const sp = especeBoss(day), noms = NOMS[sp], ep = t("epithets")[sp];
+  return t("bossName", noms[hash(day) % noms.length], ep[hash(`${day}:epithete`) % ep.length], p);
+}
+/** The terminal whose subagent slew today's boss: its hero wears the crown until midnight (null = none). */
+export const champion = (d = new Date()) => { const b = bossDuJour(d); return b.slain ? b.by ?? null : null; };
 /** Bosses slain, and the streak still alive (its last kill today or yesterday, else 0). */
 export function trophees(d = new Date()) {
   const T = shared(TROPHEES) ?? {}, day = jour(d);
   return { total: T.total ?? 0, streak: T.lastDay === day || T.lastDay === veille(day) ? T.streak ?? 0 : 0 };
 }
+/** Trophy banners on the town hall: one once a boss is slain, a second from a 3-day streak, a third from 7. */
+export const bannieres = (d = new Date()) => { const T = trophees(d); return T.total ? 1 + (T.streak >= 3) + (T.streak >= 7) : 0; };
 
 // ------------------------------------------------------------------ quotas
 // Claude accounts A and B, read only from the files the local poller writes.

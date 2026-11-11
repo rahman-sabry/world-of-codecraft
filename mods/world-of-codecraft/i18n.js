@@ -124,9 +124,16 @@ const S = {
     demoTabs: ["PR review", "tests", "migration", "docs", "rest", "map", "triage", "build", "refactor", "fix"],
     // scenes
     ouch: "Ouch!", sealed: "Sealed!", sent: "Message sent!", testsOk: "Tests passed!", testsKo: "Tests failing",
-    // the daily raid boss (the epithets in the same order in both languages)
-    bossName: (name, ep) => `${name} ${ep}`,
-    epithets: ["the Mossback", "the Bridge-Breaker", "the Bog-Born", "the Gnarled", "the Unwashed", "the Stonehide", "the Hungry", "the Rootgnawer"],
+    // the daily raid boss (the epithets, per species, in the same order in both languages; tier 0, Elite, Legendary)
+    bossName: (name, ep, tier) => `${tier ? `${["", "Elite", "Legendary"][tier]} ` : ""}${name} ${ep}`,
+    epithets: {
+      troll: ["the Mossback", "the Bridge-Breaker", "the Bog-Born", "the Gnarled", "the Unwashed", "the Stonehide", "the Hungry", "the Rootgnawer"],
+      golem: ["the Rusted", "the Iron-Hearted", "the Clanking", "the Unbroken", "the Forge-Born", "the Ironclad", "the Grinding", "the Boltheart"],
+      spectre: ["the Pale", "the Wailing", "the Restless", "the Hollow", "the Grave-Cold", "the Mist-Walker", "the Forsaken", "the Whisperer"],
+      gobelin: ["the Sneaky", "the Sticky-Fingered", "the Loud", "the Greedy", "the Bitey", "the Trap-Maker", "the Coin-Pincher", "the Rotten-Toothed"],
+    },
+    tiers: ["", "Elite", "Legendary"],
+    tierTip: (tier, n) => `${["", "Elite", "Legendary"][tier]}: your ${n}-day streak is at stake`,
     hp: (hp, max) => `${hp}/${max}`,
     slain: "Slain!",
     bossTip: (name, hp, max, reset) => `Today's raid boss: ${name}\nHP ${hp}/${max} (each subagent tool call deals 1)\nNew boss in ${reset}`,
@@ -218,8 +225,15 @@ const S = {
     help: ["À l'aide !", "À l'aide !", "Tes ordres ?", "Par ici !"],
     demoTabs: ["revue PR", "tests", "migration", "doc", "repos", "carte", "tri", "build", "refonte", "correctif"],
     ouch: "Aïe !", sealed: "Scellé !", sent: "Message envoyé !", testsOk: "Tests réussis !", testsKo: "Tests en échec",
-    bossName: (name, ep) => `${name} ${ep}`,
-    epithets: ["le Moussu", "le Brise-Pont", "le Né-des-Marais", "le Noueux", "le Crasseux", "Peau-de-Pierre", "l'Affamé", "le Ronge-Racines"],
+    bossName: (name, ep, tier) => `${name} ${ep}${tier ? ` (${["", "élite", "légendaire"][tier]})` : ""}`,
+    epithets: {
+      troll: ["le Moussu", "le Brise-Pont", "le Né-des-Marais", "le Noueux", "le Crasseux", "Peau-de-Pierre", "l'Affamé", "le Ronge-Racines"],
+      golem: ["le Rouillé", "Cœur-de-Fer", "le Cliquetant", "l'Inébranlable", "le Né-de-la-Forge", "le Bardé", "le Grinçant", "Cœur-de-Boulon"],
+      spectre: ["le Blême", "le Gémissant", "l'Errant", "le Creux", "Froid-de-Tombe", "Marche-Brume", "le Maudit", "le Murmurant"],
+      gobelin: ["le Sournois", "Doigts-Collants", "le Braillard", "le Rapace", "le Mordeur", "Pose-Pièges", "Pince-Écus", "Dent-Pourrie"],
+    },
+    tiers: ["", "Élite", "Légendaire"],
+    tierTip: (tier, n) => `${["", "Élite", "Légendaire"][tier]} : ta série de ${n} jours est en jeu`,
     hp: (hp, max) => `${hp}/${max}`,
     slain: "Terrassé !",
     bossTip: (name, hp, max, reset) => `Boss de raid du jour : ${name}\nPV ${hp}/${max} (chaque outil d'un sous-agent en ôte 1)\nNouveau boss dans ${reset}`,

@@ -14,10 +14,11 @@
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, spaces, run, setAgentOrder, props, layout, shared, setShared } from "herdr";
-import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss } from "./kit.js";
+import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss, champion, bannieres } from "./kit.js";
 import { WORLD, TILES, FRONTS } from "./monde-data.js";
 import { HEROES } from "./heros-data.js";
-import { SPOTS, FLANE, ROAD, BUILDINGS, MARCHE, market, SMOKE, GLOWS } from "./lieux.js";
+import { SPOTS, FLANE, ROAD, BUILDINGS, MARCHE, market, SMOKE, GLOWS, BANNIERES } from "./lieux.js";
+import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
 import { Activites, TRAIL } from "./activite.js";
 import { Ambiance, behind } from "./ambiance.js";
@@ -46,6 +47,7 @@ const CAST = 1000;
 const OUVRE = 100; // the ring opens and the sparkles rise from here
 const FONDU = 700; // and fade from here
 const ADIEU = [100, 300]; // a leaving apprentice's sparkles: rise, then fade, within its BLINK ghost window
+const ETOFFES = [0, 3, 2]; // the trophy banners' cloth (ui.js banner colours: red, violet, green), each with the cup
 /** How many of these thresholds (ms) dt has passed. */
 const etape = (dt, seuils) => seuils.filter((s) => dt >= s).length;
 
@@ -392,6 +394,13 @@ export default class Place {
       el = el.child(div().absolute().left(20).top(head + 20).size(3).bg("#fff2c0").when(this.live, (e) => e.loop("top", { from: head + 40, to: head + 2, period: 1300 })).when(this.live, (e) => e.loop("opacity", { from: 1, to: 0, period: 1300 })));
     }
     if (!u.leg && !a.guard) el = el.children(this.act.layers(u, head, night, t));
+    // the champion (its subagent slew today's boss) wears a crown until midnight, above its head, its HP bar and its
+    // quest mark
+    if (champion() === a.address) {
+      const marks = (st === "blocked" || st === "done") && !u.leg;
+      const top = Math.min(-(HEROES[u.key]?.stand?.ay ?? ay) - 9, marks ? head - 61 : selected ? head - 20 : 0);
+      el = el.child(image(`${ART}/couronne.svg`).absolute().left(-6).top(top).w(13).h(9));
+    }
     if (selected) {
       el = el.child(div().absolute().left(-15).top(head - 9).w(30).h(5).bg("#1b1420").border_1().border_color("#000000")
         .child(div().h_full().w(st === "blocked" ? 8 : 28).bg(st === "blocked" ? "#e5685a" : "#7dff6a")));
@@ -537,6 +546,20 @@ export default class Place {
     if (nightK < 1) el = el.child(image(`${MONDE}/avant-${f.key}-jour.png`).absolute().left(0).top(0).w(f.w).h(f.h));
     if (nightK > 0) el = el.child(image(`${MONDE}/avant-${f.key}-nuit.png`).absolute().left(0).top(0).w(f.w).h(f.h).opacity(nightK));
     return el;
+  }
+
+  /** The town hall's trophy standards (kit.js bannieres; none in the demo): a pole with a gold finial and the banner at
+   *  1.5x (39 x 60) hanging from its crossbar, in front of the door; dimmed at night, the cloth swaying a pixel while
+   *  animated. World elements at depth = the pole's foot, sorted with the units like any standing thing. */
+  etendards(nightK) {
+    if (props()?.demo) return [];
+    return BANNIERES.slice(0, bannieres()).map(([x, y], i) => ({ z: y,
+      el: div().absolute().left(x).top(y).w(0).h(0).opacity(1 - 0.55 * nightK)
+        .child(div().absolute().left(-2).top(-82).w(4).h(82).bg("#4a2f1e").border_1().border_color("#1e120c"))
+        .child(div().absolute().left(-21).top(-79).w(42).h(3).bg("#6b3f26").border_1().border_color("#1e120c"))
+        .child(div().absolute().left(-4).top(-88).size(8).rounded_full().bg("#e0a32a").border_1().border_color("#6b3f10"))
+        .child(image(art(`banniere-${ETOFFES[i]}-coupe`)).absolute().left(-19).top(-76).w(39).h(60)
+          .when(this.live, (e) => e.loop("left", { from: -19, to: -18, period: 2600 + i * 700 }))) }));
   }
 
   // ---------------------------------------------------------------- the panel
@@ -715,6 +738,7 @@ export default class Place {
       const walkerBehind = [...life, ...apps, ...traces].some((th) => th.box && behind(th.box).includes(fr));
       if (over || walkerBehind) things.push({ z: fr.z, el: this.front(fr, nightK) });
     }
+    things.push(...this.etendards(nightK));
     things.sort((p, q) => p.z - q.z);
 
     // immersive layout: the lands around the village (tools/bake_lands.py, terre-data.js) and a vertical camera too
