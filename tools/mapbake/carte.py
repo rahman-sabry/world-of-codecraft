@@ -1,4 +1,4 @@
-"""A map's layout (layouts/<id>.json, schema in RECIPE.md): read, its keys checked, its points resolved.
+"""A map's layout (maps/<id>.json, schema in RECIPE.md): read, its keys checked, its points resolved.
 
 Two coordinate systems (the projection of compose.py / compose2.py, origin U0, V0 = the layout's "origine"):
   map px (u, v)        the mod's (x, y): u across the world (WORLD.x to WORLD.x + w), v down from the top of the
@@ -12,7 +12,7 @@ TOP = {"id", "origine", "monde", "tuile", "sol", "batiments", "props", "clotures
 MONDE = {"x", "w", "h", "nord", "sud"}
 SOL = {"sol", "ligne", "boite", "ellipse", "polygone", "demi", "bruit", "rivage"}
 OBJET = {"modele", "at", "iso", "dp", "sur", "box", "front"}
-CLOTURE = {"axe", "de", "iso", "n", "pas"}
+CLOTURE = {"axe", "de", "iso", "n", "pas", "modele", "sur", "front"}
 DISPERSION = {"zone", "essais", "max", "graine", "modeles", "densite", "espacement", "herbe", "dp", "exclusions"}
 HEROS = {"ROAD", "ROAD_R", "FLANE", "SPOTS", "SPOT_R", "DECK"}
 

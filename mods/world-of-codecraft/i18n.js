@@ -90,8 +90,8 @@ const S = {
     newQuest: "Quest", newQuestTip: "Start a new quest (a new tab in this district)",
     newDistrict: "District", newDistrictTip: "Found a new district (a new space)",
     // command panel
-    map: "Map of Valbrume",
-    maps: { valbrume: "Valbrume" },
+    map: (v) => `Map of ${v}`,
+    maps: { valbrume: "Valbrume", port: "Port Salin" },
     mapPrevTip: "Previous map", mapNextTip: "Next map",
     looks: { ete: "Summer", hiver: "Winter" },
     lookPrevTip: "Previous season", lookNextTip: "Next season",
@@ -106,7 +106,7 @@ const S = {
     scroll: "Scroll",
     splitR: "Split right", splitD: "Split down", zoom: "Zoom", close: "Close",
     // places
-    building: { grange: "Barn and fields", tour: "Mage Tower", atelier: "Forge Workshop", hotel: "Town Hall", taverne: "Tavern", temple: "Temple of Dawn", caserne: "Barracks" },
+    building: { grange: "Barn and fields", tour: "Mage Tower", atelier: "Forge Workshop", hotel: "Town Hall", taverne: "Tavern", temple: "Temple of Dawn", caserne: "Barracks", phare: "Lighthouse" },
     market: "Market",
     villageTag: "Village",
     gate: "Gate",
@@ -146,7 +146,7 @@ const S = {
     resetTip: "Click: reset today's boss to full HP",
     resetBoss: "Reset boss?", yes: "Yes", no: "No",
     // village life
-    treasury: (p) => `Valbrume treasury: ${p}% of account A left this week`,
+    treasury: (p, v) => `${v} treasury: ${p}% of account A left this week`,
     fair: (t) => `The fair: reset in ${t}`,
   },
   fr: {
@@ -198,8 +198,8 @@ const S = {
     districts: "Quartiers",
     newQuest: "Quête", newQuestTip: "Afficher une nouvelle quête (nouvel onglet dans ce quartier)",
     newDistrict: "Quartier", newDistrictTip: "Fonder un nouveau quartier (nouvel espace)",
-    map: "Carte de Valbrume",
-    maps: { valbrume: "Valbrume" },
+    map: (v) => `Carte de ${v}`,
+    maps: { valbrume: "Valbrume", port: "Port-Salin" },
     mapPrevTip: "Carte précédente", mapNextTip: "Carte suivante",
     looks: { ete: "Été", hiver: "Hiver" },
     lookPrevTip: "Saison précédente", lookNextTip: "Saison suivante",
@@ -212,7 +212,7 @@ const S = {
     reroll: "Race", rerollTip: "Donner une autre race au hasard à ce héros (sa classe reste)",
     scroll: "Parchemin",
     splitR: "Fendre à droite", splitD: "Fendre en bas", zoom: "Agrandir", close: "Fermer",
-    building: { grange: "Grange et champs", tour: "Tour des mages", atelier: "Atelier-forge", hotel: "Hôtel de ville", taverne: "Taverne", temple: "Temple de l'Aube", caserne: "Caserne" },
+    building: { grange: "Grange et champs", tour: "Tour des mages", atelier: "Atelier-forge", hotel: "Hôtel de ville", taverne: "Taverne", temple: "Temple de l'Aube", caserne: "Caserne", phare: "Phare" },
     market: "Marché",
     villageTag: "Village",
     gate: "Porte",
@@ -248,7 +248,7 @@ const S = {
     trophyTip: (total, streak) => `Boss de raid terrassés : ${total}\nSérie : ${streak} jour${streak > 1 ? "s" : ""} d'affilée avec une victoire`,
     resetTip: "Clic : rendre au boss du jour tous ses PV",
     resetBoss: "Relancer le boss ?", yes: "Oui", no: "Non",
-    treasury: (p) => `Trésor de Valbrume : ${p} % du compte A cette semaine`,
+    treasury: (p, v) => `Trésor de ${v} : ${p} % du compte A cette semaine`,
     fair: (t) => `La foire : réinitialisation dans ${t}`,
   },
 };

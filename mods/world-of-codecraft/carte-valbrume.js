@@ -67,11 +67,12 @@ export const VALBRUME = {
     [1610, 392], [1720, 360], [1900, 350], [2150, 372], [2330, 340], [2560, 330], [2700, 300],
     [2840, 288], [2950, 256], [3054, 201], [3063, 199], [3159, 247], [3168, 259], [3250, 284], [3340, 282], [3426, 252], [3600, 322], [3800, 310], [4000, 335],
   ],
-  // The water, measured on the baked world (tools/bake_wide.py): the river's centre line and half width, the lake's
-  // ellipse [cx, cy, rx, ry], and the footbridge's deck (walkable over the river).
-  RIVER: [[3420, 20], [3300, 110], [3130, 190], [3070, 260], [3020, 330], [2860, 380], [2740, 410]],
-  RIVER_R: 36,
-  LAKE: [3570, 165, 245, 130],
+  // The water, measured on the baked world (tools/bake_wide.py; lieux.js walkable()): the river's centre line and half
+  // width, the lake's ellipse [cx, cy, rx, ry]; and the footbridge's deck (walkable over the river).
+  EAU: [
+    { ligne: [[3420, 20], [3300, 110], [3130, 190], [3070, 260], [3020, 330], [2860, 380], [2740, 410]], demi: 36 },
+    { ellipse: [3570, 165, 245, 130] },
+  ],
   DECK: [[3054, 201], [3168, 259]],
   // walkable ground: within SPOT_R of a stroll or work spot, ROAD_R of the road
   SPOT_R: 60, ROAD_R: 30,

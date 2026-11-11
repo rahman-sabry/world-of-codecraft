@@ -32,8 +32,8 @@ def boites(O):
 
 
 def marchable(c, kind, O, U, V):
-    """lieux.js walkable() on arrays of map px points: the deck; never water (the kind map, where the mod has its
-    hand-measured RIVER and LAKE); the road; else near a stroll or work spot and outside every building's box."""
+    """lieux.js walkable() on arrays of map px points: the deck; never water (the kind map, where the mod has its water
+    shapes, EAU); the road; else near a stroll or work spot and outside every building's box."""
     h, m = c["heros"], c["monde"]
     U, V = np.asarray(U), np.asarray(V)
     r, cc = V + m["nord"], U - m["x"]

@@ -90,6 +90,24 @@ if SOL.get('dirt') == 'neige':
     DR = ramp('#a69c96', hs=16, light=1.28, dark=0.5)
 if SOL.get('water') == 'glace':
     WR = ICE_RAMP
+# the port's sea (deeper than the river, its shallows turquoise, foam white) and sand (dry, and wet at the waterline);
+# winter: a colder, greyer sea (open water, ice only at its edges: mapbake/sol.py) and snow over the sand
+SE = ramp('#1f5d8e', hs=16, light=1.35, dark=0.35)
+SH = ramp('#3c9fb2', hs=14, light=1.25)
+EC = ramp('#d8ecee', hs=8, light=1.08, dark=0.6)
+SA = ramp('#d9bd84', hs=18, light=1.2)
+SAW = ramp('#a3865a', hs=20, light=1.15, dark=0.4)
+if SOL.get('sea') == 'froide':
+    SE = ramp('#28506e', hs=10, light=1.3, dark=0.4)
+    SH = ramp('#4c8aa0', hs=10, light=1.25)
+
+def sable_mouille(x, y, sx, sy, macro=0):
+    """Wet sand at the waterline (every look: the snow stops at the tide line)."""
+    P = 32
+    lv = 2.4 + vnoise2(x, y, 8, 47, P) * 1.0 + macro * 0.4
+    h = hash3(np.floor(x).astype(np.int64) % P, np.floor(y).astype(np.int64) % P, np.zeros_like(x, dtype=np.int64), 48)
+    lv = lv + (h > 0.95) * 1.2 - (h < 0.03) * 0.8 + BAYER[sy % 4, sx % 4] * 0.3
+    return SAW[np.clip(np.round(lv), 0, 6).astype(int)]
 
 def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
     """x,y world coords (float arrays); sx,sy screen px for dithering. Returns RGB float. Period 32 world units."""
@@ -171,6 +189,27 @@ def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
             c = np.where((furrow < 2.5 + (vnoise2(x, y, 6, 43, P) - 0.5) * 1.2)[..., None], snow, c)
             return np.where((plant & (h > 0.86))[..., None], WH[np.clip(np.round(lvp - 1), 0, 6).astype(int)], c)
         return np.where(plant[..., None], pc, c)
+    if kind == 'sea':  # long swell crests, a few bright caps
+        n = vnoise2(x, y, 24, 37, P) * 1.0 + vnoise2(x, y, 10, 38, P) * 0.6
+        lv = 1.5 + n + macro * 0.8
+        wv = np.sin((x - y) * 0.3 + vnoise2(x, y, 12, 39, P) * 5.0) + 0.6 * np.sin(x * 0.21 + y * 0.33 + variant)
+        lv = lv + (wv > 1.4) * 1.4 + (wv > 1.53) * 1.2
+        lv = lv + BAYER[sy % 4, sx % 4] * 0.3
+        return SE[np.clip(np.round(lv), 0, 6).astype(int)]
+    if kind == 'sand':  # fine grain, wind ripples, pebbles and a few shells
+        n = vnoise2(x, y, 10, 44, P) * 0.9 + vnoise2(x, y, 4, 45, P) * 0.5
+        lv = 2.9 + n + macro * 0.6
+        rip = np.sin(x * 0.8 + y * 0.35 + vnoise2(x, y, 8, 46, P) * 4.0)
+        h = hash3(np.floor(x).astype(np.int64) % P, np.floor(y).astype(np.int64) % P, np.zeros_like(x, dtype=np.int64), 49)
+        lv = lv + (rip > 0.75) * 0.7 - (rip < -0.85) * 0.5 + (h > 0.97) * 1.0 - (h < 0.02) * 1.6
+        lv = lv + BAYER[sy % 4, sx % 4] * 0.3
+        c = SA[np.clip(np.round(lv), 0, 6).astype(int)]
+        c = np.where((h > 0.9965)[..., None], np.array(hx('#f2ddd0'), np.float32), c)
+        if SOL.get('sand') == 'neige':  # snow, the sand showing through in wind-scoured patches
+            snow = GR[np.clip(np.round(lv + 0.4), 0, 6).astype(int)]
+            m = vnoise2(x, y, 16, 50, P) * 0.65 + vnoise2(x, y, 4, 51, P) * 0.35
+            return np.where((m > 0.3)[..., None], snow, SA[np.clip(np.round(lv - 0.8), 0, 6).astype(int)])
+        return c
     raise KeyError(kind)
 
 def tile(kind, variant=0):

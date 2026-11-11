@@ -12,7 +12,7 @@ the clock. The art is original: it imitates no existing game.
 
 - **Top bar** (48 px, window drag, traffic lights at 16,23). A carved beam with:
   - the crest and the logo "WORLD OF CODECRAFT" in Cinzel Decorative, with
-    "village of Valbrume" under it;
+    "village of Valbrume" (the shown map's name) under it;
   - resource plaques, each an icon, a value and a caption: Gold (Claude account A),
     Wood (account B), Heroes ("1/2", heroes at work out of all heroes) and Fair (time
     until the weekly quota reset); then the day's raid boss (the day's species, "934/1000" and its name, the HP in
@@ -44,8 +44,8 @@ the clock. The art is original: it imitates no existing game.
   - the tab title and folder;
   - iron buttons: split right, split down, zoom and close.
 - **Village** (bottom, 400 px). On the left, a command panel:
-  - "Map of Valbrume": a minimap with unit dots and the camera frame, and under it two switch rows: the map
-    (‹ map name ›: "Valbrume", the only map so far, so its arrows are left out) and its look (‹ look name ›:
+  - "Map of Valbrume" (the shown map's name): a minimap with unit dots and the camera frame, and under it two switch
+    rows: the map (‹ map name ›: "Valbrume", "Port Salin" / « Port-Salin ») and its look (‹ look name ›:
     "Summer" / "Winter", « Été » / « Hiver »);
   - "Selected unit": the focused agent as a full-length portrait card with name, class
     and race, program, state and quest, plus Go and Next buttons.
@@ -328,11 +328,25 @@ the clock. The art is original: it imitates no existing game.
     leg; no chronicle line, no click.
 - **Always animated:** there is no animation switch (the old « Animations » toggle and its store key `wocc.anim` are
   gone; a stored `wocc.anim` is ignored). Only a hidden village block and the demo hold things still.
-- **Maps and looks** are two axes. A map is a layout: its data module (`carte-valbrume.js`, the only map so far) and
+- **Maps and looks** are two axes. A map is a layout: its data module (`carte-valbrume.js`, `carte-port.js`) and
   its bake. A look is one bake of that layout into its own folder of art/, with its own flags. Kit.js `CARTES` lists
-  the maps; each record lists its looks: `{ id, nom (i18n looks), dossier, neige (snow falls), poissons (fish leap),
-  fond (the view's background under the world) }`. Valbrume's looks: `ete` (`art/monde/`, fish, `#3f6b2c`) and
-  `hiver` (`art/monde-hiver/`, snow, `#c9d3df`).
+  the maps (`nomCarte()`: the shown one's name, in the top bar, the panel heading and the treasury's tooltip); each
+  record lists its looks: `{ id, nom (i18n looks), dossier, neige (snow falls), poissons (fish leap), fond (the view's
+  background under the world) }`. Valbrume's looks: `ete` (`art/monde/`, fish, `#3f6b2c`) and `hiver`
+  (`art/monde-hiver/`, snow, `#c9d3df`). The water a unit never stands in is the record's `EAU`, a list of shapes in
+  map px (`{ligne, demi}` a river, `{ellipse: [cx, cy, rx, ry]}` a lake, `{polygone}` a sea or a basin); `DECK` is
+  walkable over it.
+- **Port Salin (`carte-port.js`, `maps/port.json`):** a harbour town, the world x 0 to 4000 (4 tiles, a fifth less art
+  than Valbrume's 5000, and every tile has something in it). West to east: a sandy cove with nets drying, the barn
+  and its fields, the mage tower, the forge, the tavern on the harbour's west quay; the harbour basin (an iso box of
+  sea whose two far sides are stone quays meeting inland, a wooden pier out from the west quay with a skiff alongside,
+  a cog moored along the east quay), the market on the quay-side square with the well, the town hall at its head,
+  the Temple of Dawn, the barracks above a bay, and a headland with the lighthouse (`phare`: a building, its lamp a
+  live glow at night). The sea fills the south band and comes up into the strip along the whole coast. Heroes walk
+  the road along the cove and the village, up the west quay round the basin's head and down the east quay through the
+  square, on to the lighthouse's door; the pier is its `DECK`. Looks `ete` (`art/port-ete/`, `#1f5d8e`) and `hiver`
+  (`art/port-hiver/`, snow, `#28506e`); fish leap in both (the sea stays open water in winter). `BASCULE` 3700
+  (300 px short of the east edge, Valbrume's rule).
 - **Map and look switches** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande`
   block), two rows of the same style: ‹ map name › cycles the maps (store key `wocc.map`, default `"valbrume"`) and
   ‹ look name › the shown map's looks (`wocc.look`, default its first); a row with a single choice shows only the
@@ -342,7 +356,7 @@ the clock. The art is original: it imitates no existing game.
   heroes, walkers and cats afresh on its spots. The world's images (tiles, bands, front cut-outs, minimap) come
   from the shown look's folder (`monde()`; same file names in each); only that look's images are referenced. Rings
   and quest marks stay in `art/monde/` (the winter folder has none).
-- **Winter (look flags):** no leaping fish (`poissons: false`: the river is frozen), and light snow (`neige: true`)
+- **Winter (look flags):** in Valbrume no leaping fish (`poissons: false`: the river is frozen), and light snow (`neige: true`)
   over the view, above the world and under the chronicle. A `.loop` swings there and back, so a flake on a `top` loop would climb back up;
   instead each flake stream is a wheel (`art/neige-{0,1,2}.svg`, 7 flakes of 3-4 px on its rim, 480 px, over a dark twin wheel 1 px lower right turning in step, so the flakes show over snow) turned by
   the native `svg.spin` (17-26 s a turn, staggered per wheel) inside a 100×390 px `overflow_hidden` window that
@@ -409,12 +423,13 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   winter chain rewrites `monde-data.js` and `terre-data.js` with the same content (check with `git diff`).
   Valbrume's chain (bake_world, bake_lands, bake_wide) is frozen: new maps use `bake_map.py`.
 - **Maps from a layout (`tools/bake_map.py`):** a new map is baked in one pass from a layout file,
-  `layouts/<id>.json`, with the same compositor, lighting, shadows and ground textures (`compose3.compose_sol`,
-  `extras.ground_tex`), one look per run (about 20 s for a 2000×1200 canvas):
+  `maps/<id>.json` (`layouts/` holds the Herdr screen layout), with the same compositor, lighting, shadows and ground
+  textures (`compose3.compose_sol`, `extras.ground_tex`), one look per run (about 20 s for a 2000×1200 canvas, 35 s
+  for the port's 4000×1200):
 
       sh tools/village-art/build_assets.sh && THEME=hiver sh tools/village-art/build_assets.sh   # sprites per look
       P=tools/village-art/.venv/bin/python
-      $P tools/bake_map.py layouts/<id>.json --look ete && $P tools/bake_map.py layouts/<id>.json --look hiver
+      $P tools/bake_map.py maps/<id>.json --look ete && $P tools/bake_map.py maps/<id>.json --look hiver
 
   `--racine DIR` writes elsewhere than the mod (a test bake). It writes `art/<id>-<look>/` (`jour-<k>`, `nuit-<k>`,
   `nord-<k>-<jour|nuit>`, `sud-<k>-…`, `avant-<key>-<jour|nuit>`, `minicarte.png`: the names place.js reads) and
@@ -434,15 +449,21 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
       Geometry: `ligne` (polyline, `demi` = half width: roads, paths, rivers), `boite` (centre, `demi` `[x, y]` on
       the iso axes: squares, fields), `ellipse` (centre, radii `demi` `[x, y]`: lakes), `polygone` (map px outline:
       lakes, seas). `bruit` scales the edge noise (default per kind), `rivage` adds a slow shore wobble (bake_wide's
-      lake: 24). Kinds (`KINDS` in sol.py): `grass` (the default ground), `dirt`, `paved`, `water`, `crop`, each
-      with its edges: water kinds share one distance field (bank, foam, shallows), `dirt` and `water` are
-      `interdit` (nothing stands on them), `crop` gets a dark top edge. A new kind (sand, a sea shore) is an entry
-      in `KINDS` plus its texture (`TEX`, or a branch of `extras.ground_tex`).
+      lake: 24). Kinds (`KINDS` in sol.py): `grass` (the default ground), `dirt`, `paved`, `water`, `crop`, `sand`,
+      `sea`, each with its edges: water kinds share one distance field (bank, foam, shallows), and a land shape
+      painted after a water one pulls it back to its own edge; `dirt`, `water` and `sea` are `interdit` (nothing
+      stands on them), `crop` gets a dark top edge. `sea` (`mer`) has its own edge (`rivage_mer`): a white surf line
+      about 3 px wide, broken foam lines further out, turquoise shallows fading out over some 40 px and the deep
+      darkening far out, in dithered steps; its texture is deeper blues than the river's with long swell crests.
+      `sand` (`plage`) turns dark and wet at the waterline instead of the dirt bank. A new kind is an entry in
+      `KINDS` plus its texture (`TEX`, or a branch of `extras.ground_tex`).
     - `batiments` (buildings and landmarks) and `props`: `{modele, at | iso, dp, sur, box, front}`. `modele` is a
       buildings.py name (no `b-`); `dp` the depth bias (drawn at `v + dp`; 30 and 8 by default, as compose2's
       scene: the town hall 60); `sur` the `interdit` kinds it may stand on (a bridge: `["water", "dirt"]`); `box`
       the mod's hit box `[dx, dy, w, h]` for the walkable check (else its ground box); `front` see below.
-    - `clotures`: fence runs `{axe: x | y, de | iso, n, pas: 44}`: `n` posts of `fence-<axe>` along that iso axis.
+    - `clotures`: runs `{modele: fence, axe: x | y, de | iso, n, pas: 44, sur, front}`: `n` segments of
+      `<modele>-<axe>` along that iso axis (fences; the port's quays: `quay-x` / `quay-y`, `sur: ["sea"]`,
+      `front: false`).
     - `dispersions`: seeded scatter bands `{zone: [u0, u1, v0, v1], essais, max, graine, modeles: {name: weight},
       densite, espacement: [du, dv], herbe: [r, up], dp: 6, exclusions}`: `essais` draws in the zone (seed
       `graine`), kept when a draw under `densite` (a number, or `[top, bottom]` across the zone) passes, the ground
@@ -469,13 +490,23 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   - **Looks** (`LOOKS` in theme.py, picked by `--look` / `THEME`): `assets` (its sprite folder), `monde` (Valbrume's
     folder), `base` (the look whose boxes its sprites are cut to: `buildings.fit`), `materiaux` (a palette transform,
     `tex.MATERIAUX`: `hiver`), `arbres_nus` (bare oaks and autumn trees), `sol` (ground-kind texture variants:
-    `{grass: neige, dirt: neige, paved: neige, water: glace, crop: neige}`), `herbe` (grass tint `sec` / `dru`, blade
+    `{grass: neige, dirt: neige, paved: neige, water: glace, crop: neige, sand: neige, sea: froide}`: snow over the sand
+    but at its wet waterline, a colder sea with ice along its shores, open water beyond), `herbe` (grass tint `sec` / `dru`, blade
     colour `brins`), `fleurs`. `""` and `hiver` build and bake exactly as before (sprites checked byte-identical).
-  - **A new map, end to end:** write `layouts/<id>.json`; build the sprites of each look; bake each look with a
+  - **The sea and its models** (buildings.py, the port): the sea is drawn flat like the ground but reads as lying
+    `MER` (10) units below the land. A quay segment (`quay-x`, `quay-y`: 32 units, 44.8 px, a run at `pas` 44 joins
+    up) is a wall whose face towards the viewer drops from the land (`z = 0`, its anchor) to the sea, with a coping,
+    a bollard, a mooring ring and weed at its foot; so a harbour basin is an iso `boite` of sea whose two far sides
+    take the quay runs (the near sides open to the sea). The `pier` stands on piles in it, its deck at land level;
+    the boats (`boat-small`, `boat-large`, the cog built at 1.75 px a unit) float with their waterline `MER` (× the
+    scale) px under their anchor, foam round it. Also `lighthouse` (its open lantern a holy-light flame by day and the
+    night's brightest glow), `crates`, `barrels`, `nets`. Lanterns of new models get `flamme()` (the flame showing
+    through the panes).
+  - **A new map, end to end:** write `maps/<id>.json`; build the sprites of each look; bake each look with a
     test `--racine` first and look at it (day and night), then into the mod; write `carte-<id>.js` by hand like
     carte-valbrume.js (its looks with `dossier: "<id>-<look>"`, buildings at their layout points with boxes, spots,
-    chimneys, glows, standards; FLANE, ROAD, RIVER, LAKE, DECK, walkers, cats...), importing
-    `WORLD, TILES, FRONTS, EXT` from `carte-<id>-data.js`; add it to kit.js `CARTES`. `layouts/essai.json` is a
+    chimneys, glows, standards; FLANE, ROAD, EAU, DECK, walkers, cats...), importing
+    `WORLD, TILES, FRONTS, EXT` from `carte-<id>-data.js`; add it to kit.js `CARTES`. `maps/essai.json` is a
     test layout only (not in the mod).
 - **Camera:** horizontal and vertical (drag, two-axis wheel), kept inside the bands; selecting a hero
   brings the village back into view.
@@ -542,7 +573,7 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
 - **Repo tooling** (`tools/`, not installed): `install.sh` copies the mod, layout and theme
   into the Herdr home (`--integrations` links the hook and plugin); `sync_creatures.py`,
   `sync_heroes.py`, `bake_world.py`, `bake_lands.py`, `bake_wide.py`, `ui.py` rebuild the art from `tools/sources/`;
-  `bake_map.py` (with `mapbake/`) bakes a map from its layout in `layouts/`.
+  `bake_map.py` (with `mapbake/`) bakes a map from its layout in `maps/`.
 - **Art** (`art/`):
   - heroes: 30 race×class sprites with `idle`, `rest`, `work` and 4-way walk frames,
     plus night-graded copies; `walk_dr` / `walk_ul` and `work-g` (fighting towards the left) are exact horizontal

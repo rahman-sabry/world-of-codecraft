@@ -679,6 +679,237 @@ def ruin():
         v.ell(ix, y1 + 1, iz, ir, 2.2, ir * 1.2, LEAF)
     return v
 
+# ---------------------------------------------------------------- the port (maps/port.json)
+# The sea is drawn flat like the ground, but reads as lying MER units below the land: quay walls drop to it, the pier
+# stands on piles in it, boats float on it (their waterline at z = -MER, their anchor the land-level point above it).
+MER = 10
+PAL[54] = Mat('#b8382c', t_plaster, light=1.15, hs=22)  # lighthouse red paint
+PAL[55] = Mat('#ece6da', t_plaster, light=1.1, hs=14)   # whitewash
+PAL[56] = Mat('#e8f4f6', t_noise, params={'amp': 0.6}, light=1.05, hs=10)  # foam at a waterline
+PAL[57] = Mat('#5e6a5a', t_noise, params={'amp': 1.2, 'sc': 1.0}, hs=16)  # fishing net, wet and tarred
+PAL[58] = Mat('#958c84', t_stone, params={'ch': 5, 'bl': 11}, hs=24)  # quay ashlar (no moss: the land's moss rule is by height)
+PAL[59] = Mat('#5a5664', t_stone, params={'ch': 5, 'bl': 9}, hs=22)   # its wet foot
+RED_P, WHITE_P, FOAM, NET, QUAI, QUAI_D = 54, 55, 56, 57, 58, 59
+
+def flamme(v, x, y, z):
+    """The flame showing through the panes of kit3d.lantern(v, x, y, z) (it is shut inside its iron box otherwise)."""
+    v.box(x - 2.3, x + 2.3, y - 1.2, y + 1.2, z - 3.2, z, FIRE); v.box(x - 1.2, x + 1.2, y - 2.3, y + 2.3, z - 3.2, z, FIRE)
+
+def quay(axis):
+    """A quay wall segment, 32 units along its axis (44.8 px: a run of them at 'pas' 44 joins up), its face towards the
+    viewer (+y for 'x', +x for 'y') dropping MER units from the land (z = 0) to the sea, a coping on top and a
+    bollard; the land is behind it (-y / -x). The anchor (0, 0, 0) is the face's top edge, mid-segment."""
+    v = Vol(-18, 18, -18, 18, -MER - 1, 12)
+    def b(a0, a1, d0, d1, z0, z1, mat):  # a along the run, d out of the face
+        if axis == 'x': v.box(a0, a1, d0, d1, z0, z1, mat)
+        else: v.box(d0, d1, a0, a1, z0, z1, mat)
+    b(-16, 16, -9, 0, -MER, 0, QUAI)                      # the wall
+    b(-16, 16, -9, 0, -MER, -MER + 2.5, QUAI_D)           # wet foot
+    b(-16, 16, -10, 1.2, 0, 1.6, QUAI_D)                  # coping
+    for a in (-16, 0):                                    # coping joints
+        b(a, a + 0.6, -10, 1.2, 0.2, 1.6, COAL)
+    b(-11, -7, -6, -2, 1.6, 7, TIMBER)                    # bollard
+    b(-11.6, -6.4, -6.6, -1.4, 6.2, 7.6, METAL)
+    b(-9.5, -8.5, -0.2, 0.6, -MER + 3, -MER + 7, METAL)   # mooring ring
+    b(-10.5, -7.5, -0.2, 0.6, -MER + 2.6, -MER + 3.4, METAL)
+    rng = np.random.default_rng(31 if axis == 'x' else 37)
+    for k in range(5):                                    # weed at the foot
+        a = rng.uniform(-15, 13)
+        b(a, a + rng.uniform(1.5, 3.5), -0.4, 0.4, -MER, -MER + rng.uniform(1, 2.5), MOSS)
+    return v
+
+@bld('quay-x')
+def quay_x(): return quay('x')
+@bld('quay-y')
+def quay_y(): return quay('y')
+
+@bld('pier')
+def pier():
+    """A wooden pier along +x from the quay's face (x = 0, deck at land level) out to x = 80, on piles standing in
+    the sea; a lantern post and bollards at its end."""
+    L, w = 80, 8
+    v = Vol(-3, L + 4, -12, 12, -MER - 1, 32)
+    for yy in (-w, w - 1.5):
+        v.box(0, L, yy, yy + 1.5, -1.6, 0, TIMBER)
+    for xx in np.arange(0, L, 3.1):
+        v.box(xx, xx + 2.6, -w - 0.4, w + 0.4, 0, 1.4, PLANK)
+    for xx in np.arange(6, L, 16):
+        for yy in (-w - 1.6, w - 0.2):
+            v.box(xx, xx + 1.8, yy, yy + 1.8, -MER, 1, TIMBER)
+            v.box(xx - 0.2, xx + 2, yy - 0.2, yy + 2, -MER, -MER + 1.5, STONE_D)
+    for yy in (-w - 1.6, w - 0.2):  # the end's taller piles as bollards, with rope
+        v.box(L - 2, L, yy, yy + 1.8, -MER, 6, TIMBER)
+        v.box(L - 2.3, L + 0.3, yy - 0.3, yy + 2.1, 3.6, 4.6, ROPE)
+    v.box(L - 6, L - 4.4, -w + 1, -w + 2.6, 1.4, 26, TIMBER)  # lantern post
+    v.box(L - 6, L - 1, -w + 1.1, -w + 2.4, 24, 25.4, TIMBER)
+    lantern(v, L - 2, -w + 1.8, 22); flamme(v, L - 2, -w + 1.8, 22)
+    v.cyl(L - 14, w - 4, 2.4, 1.4, 2.6, ROPE, rin=1.0)
+    crate(v, 18, -w + 0.5, 5, z=1.4); crate(v, 18.5, -w + 0.8, 4, z=6.4)
+    for k in range(4):  # a ladder down the end
+        v.box(L, L + 1, -2, 2, -MER + 1 + k * 2.8, -MER + 1.8 + k * 2.8, WOOD_L)
+    for yy in (-2.4, 1.6):
+        v.box(L, L + 1.2, yy, yy + 0.8, -MER, 1.4, WOOD_L)
+    return v
+
+def hull(v, L, B, zb, zt, mat, rim, floor=None, sheer=2.0):
+    """A boat's hull along x (bow +x), L long, B wide at the beam, from its keel zb to its gunwale zt (rising sheer
+    towards both ends); hollow above 'floor' (None: decked at zt - 1.2); a rim band under the gunwale."""
+    hl, hb = L / 2, B / 2
+    def w(X, Z):
+        t = np.clip(np.abs(X) / hl, 0, 1)
+        k = np.where(X > 0, (1 - t ** 2.0), (1 - t ** 4.5)) ** 0.5
+        return hb * k * (0.62 + 0.38 * np.clip((Z - zb) / (zt - zb), 0, 1) ** 0.6)
+    top = lambda X: zt + sheer * np.clip(np.abs(X) / hl, 0, 1) ** 2
+    shell = lambda X, Y, Z: (np.abs(Y) <= w(X, Z)) & (Z >= zb) & (Z < top(X))
+    bb = (-hl - 1, hl + 1, -hb - 1, hb + 1, zb, zt + sheer + 1)
+    v.put(bb, shell, mat)
+    v.put(bb, lambda X, Y, Z: shell(X, Y, Z) & (Z > top(X) - 1.8), rim)
+    fl = zt - 1.2 if floor is None else floor
+    v.put(bb, lambda X, Y, Z: shell(X, Y, Z) & (np.abs(Y) <= w(X, Z) - 1.1) & (np.abs(X) < hl - 1.6) & (Z > fl), 0)
+    # foam where it meets the sea
+    v.put((-hl - 3, hl + 3, -hb - 3, hb + 3, zb, zb + 0.7),
+          lambda X, Y, Z: (np.abs(Y) <= w(np.clip(X, -hl * 0.97, hl * 0.97), zb) + 1.6) & (np.abs(X) <= hl + 1.4) & ~shell(X, Y, Z), FOAM)
+
+@bld('boat-small')
+def boat_small():
+    """A fishing skiff afloat (its waterline MER below the anchor): thwarts, oars shipped, a heap of net and a fish
+    basket."""
+    v = Vol(-22, 22, -10, 10, -MER - 1, 0)
+    zb = -MER
+    hull(v, 34, 11, zb, zb + 5.5, PLANK, PLANK_R, floor=zb + 1.2)
+    for xx in (-6, 5):
+        v.box(xx, xx + 2.4, -4.4, 4.4, zb + 3.4, zb + 4.4, WOOD_L)
+    v.capsule((-12, -3, zb + 5.6), (13, 2.4, zb + 5.2), 0.5, WOOD_L)
+    v.capsule((-11, 3, zb + 5.6), (12, -2.8, zb + 5.4), 0.5, WOOD_L)
+    v.ell(-11, 0, zb + 2.4, 3.6, 3, 1.8, NET)
+    v.cyl(9, 0, 2.2, zb + 1.2, zb + 4, HAY)
+    return v
+
+@bld('boat-large')
+def boat_large():
+    """A one-masted trading cog afloat, sail furled on its yard: a stern castle, rigging, a pennant, cargo on deck.
+    Built at a larger scale (build()): its waterline is MER * 1.75 px under its anchor."""
+    v = Vol(-42, 42, -16, 16, -MER - 1, 92)
+    zb, zt = -MER, 3
+    hull(v, 72, 22, zb, zt, PLANK, PLANK_R, floor=0, sheer=3.0)
+    v.box(-32, 30, -9, 9, -0.6, 0.6, WOOD_L)                       # deck
+    # stern castle with a rail and a door
+    v.box(-34, -20, -9.5, 9.5, 0, 9, PLANK)
+    v.box(-34.5, -19.5, -10, 10, 9, 10.2, TIMBER)
+    for yy in np.arange(-9.5, 10, 3.2):
+        v.box(-21, -19.6, yy, yy + 0.9, 10.2, 14, TIMBER)
+    for xx in np.arange(-34, -20, 3.2):
+        v.box(xx, xx + 0.9, 8.6, 9.6, 10.2, 14, TIMBER)
+    v.box(-34.5, -19.5, 8.5, 10, 13.6, 14.8, TIMBER)
+    v.box(-20.2, -19.4, -2.5, 2.5, 0, 7, COAL)
+    v.box(-20.4, -19.6, -2, 2, 0.4, 6.4, PLANK_R)
+    lantern(v, -34, 0, 19); flamme(v, -34, 0, 19)
+    v.box(-34.8, -33.2, -0.8, 0.8, 10.2, 15, METAL)
+    # mast, yard and the furled sail
+    v.cyl(2, 0, 1.5, 0, 82, TIMBER)
+    v.cyl(2, 0, 2.2, 74, 77, TIMBER)                             # top
+    v.box(0.8, 3.2, -17, 17, 60, 61.6, WOOD_L)                    # yard
+    v.put((-2, 6, -15, 15, 54, 62), lambda X, Y, Z: ((X - 2.6) / 2.6) ** 2 + ((Z - 58.6) / 3.0) ** 2 <= 1 - (np.abs(Y) / 15.5) ** 4, CLOTH_W)
+    for yy in (-10, -3, 4, 11):
+        v.box(1.8, 5.6, yy, yy + 0.8, 55, 61.8, ROPE)
+    flag(v, 2, 0, 82, 6, CLOTH_R, 12)
+    # rigging: stays to bow and stern, shrouds to the sides
+    v.capsule((2, 0, 74), (35, 0, 4), 0.35, ROPE)
+    v.capsule((2, 0, 74), (-33, 0, 14), 0.35, ROPE)
+    for s in (-1, 1):
+        for xx in (-2, 4):
+            v.capsule((2, 0, 70), (xx, s * 10.5, 2.8), 0.3, ROPE)
+    v.capsule((34, 0, 3.6), (42, 0, 8), 0.8, TIMBER)              # bowsprit
+    # cargo
+    crate(v, 10, -6, 6, z=0.6); crate(v, 10.5, -5.5, 5, z=6.6); crate(v, 17, -6, 6, z=0.6)
+    barrel(v, 13, 5, 2.8, 7, z=0.6); barrel(v, 19, 4.5, 2.8, 7, z=0.6)
+    v.cyl(-10, 3, 3, 0.6, 2, ROPE, rin=1.4)
+    return v
+
+@bld('lighthouse')
+def lighthouse():
+    """The harbour's lighthouse: a whitewashed tower with red bands on a stone base, a gallery, an open lantern whose
+    flame shows by day and lights the night, a copper dome. Lit window slits, a stone porch with its door."""
+    v = Vol(-34, 34, -34, 34, 0, 184)
+    v.cyl(0, 0, 21, 0, 9, STONE_D)
+    v.cyl(0, 0, 22, 8, 11, STONE)
+    rad = lambda Z: 16.5 - (Z - 11) * 0.04
+    band = lambda X, Y, Z: np.where(((Z - 11) // 24) % 2 == 1, RED_P, WHITE_P)
+    v.put((-18, 18, -18, 18, 11, 128), lambda X, Y, Z: X ** 2 + Y ** 2 <= rad(Z) ** 2, band)
+    # window slits facing the viewer, a stone sill under each
+    for ang, z in ((0.55, 34), (1.1, 62), (0.65, 88), (1.0, 110)):
+        R = rad(z)
+        def m(X, Y, Z, d0, d1, z0, z1, ang=ang, R=R, w=1.6):
+            an = np.arctan2(Y, X); da = np.abs(((an - ang + np.pi) % (2 * np.pi)) - np.pi) * R
+            dr = np.hypot(X, Y)
+            return (da <= w) & (Z >= z0) & (Z < z1) & (dr >= d0) & (dr <= d1)
+        bb = (-R - 3, R + 3, -R - 3, R + 3, z - 3, z + 12)
+        v.put(bb, lambda X, Y, Z, m=m: m(X, Y, Z, R - 2, R + 1, z, z + 8), 0)
+        v.put(bb, lambda X, Y, Z, m=m: m(X, Y, Z, R - 2, R - 1.2, z, z + 8), GLASS)
+        v.put(bb, lambda X, Y, Z, m=m: m(X, Y, Z, R - 1, R + 1.2, z - 1.4, z, w=2.6), STONE)
+    # porch with its door on the left (+y) face
+    v.box(-8, 8, 10, 23, 0, 20, STONE)
+    v.roof(-10, 10, 8, 25, 19, 29, ROOF_S, axis='y', th=2.5, fill=STONE)
+    door(v, 'y', 23, -4, 4, 11, arch=True)
+    lantern(v, 6.5, 24.5, 16); flamme(v, 6.5, 24.5, 16)
+    # gallery on corbels, an iron rail
+    v.put((-22, 22, -22, 22, 120, 130), lambda X, Y, Z: X ** 2 + Y ** 2 <= (12.5 + (Z - 120) * 0.75) ** 2, STONE_D)
+    v.cyl(0, 0, 20.5, 128, 131, STONE)
+    for k in range(28):
+        a = k / 28 * 2 * np.pi
+        v.box(19.6 * np.cos(a) - 0.5, 19.6 * np.cos(a) + 0.5, 19.6 * np.sin(a) - 0.5, 19.6 * np.sin(a) + 0.5, 131, 138, METAL)
+    v.cyl(0, 0, 20.4, 137.2, 138.6, METAL, rin=19)
+    # the lantern: a flame core behind iron mullions, a copper dome, a gold finial
+    v.cyl(0, 0, 11, 131, 134, STONE_D)
+    v.cyl(0, 0, 8.4, 134, 152, HOLY)
+    for k in range(8):
+        a = k / 8 * 2 * np.pi + 0.2
+        v.box(9 * np.cos(a) - 0.8, 9 * np.cos(a) + 0.8, 9 * np.sin(a) - 0.8, 9 * np.sin(a) + 0.8, 134, 152, METAL)
+    v.cyl(0, 0, 10, 151, 153.4, METAL)
+    v.cone(0, 0, 11.5, 153, 168, ROOF_G, p=1.5)
+    v.cyl(0, 0, 0.9, 166, 176, GOLD); v.ell(0, 0, 172, 1.8, 1.8, 1.8, GOLD)
+    v.box(-0.4, 0.4, -5, 5, 177, 178, METAL); v.box(-3, 3, -0.4, 0.4, 175, 180, METAL)
+    # rocks and a coil of rope at its foot
+    rng = np.random.default_rng(8)
+    for k in range(9):
+        a = rng.uniform(-0.6, 2.2); d = rng.uniform(22, 30)
+        rx, ry = d * np.cos(a), d * np.sin(a)
+        v.ell(rx, ry, 1.5, rng.uniform(2.5, 4.5), rng.uniform(2, 4), rng.uniform(2, 3.5), STONE_D)
+    return v
+
+@bld('crates')
+def crates():
+    v = Vol(-14, 14, -14, 14, 0, 22)
+    crate(v, -9, -6, 8); crate(v, 0, -7, 8); crate(v, -8.5, -5.5, 7, z=8); crate(v, -4, 3, 7)
+    v.ell(7, 6, 3.4, 3.6, 3, 3.6, CLOTH_W); v.box(6.2, 7.8, 5.2, 6.8, 6.6, 7.6, ROPE)
+    return v
+
+@bld('barrels')
+def barrels():
+    v = Vol(-14, 14, -14, 14, 0, 22)
+    barrel(v, -4, -3, 3.5, 9); barrel(v, 3.5, -4, 3.5, 9); barrel(v, -1, 4, 3.5, 9); barrel(v, 0, -3.5, 3.2, 8, z=9)
+    v.put((4, 14, 2, 10, 0, 8), lambda X, Y, Z: ((Y - 6) ** 2 + (Z - 3.6) ** 2 <= (3.2 + 0.8 * np.sin(np.clip((X - 5) / 8, 0, 1) * np.pi)) ** 2) & (X > 5) & (X < 13), PLANK)
+    for xx in (6.2, 11):
+        v.put((xx - 1, xx + 1, 1, 11, 0, 9), lambda X, Y, Z, xx=xx: ((Y - 6) ** 2 + (Z - 3.6) ** 2 <= 3.7 ** 2) & (np.abs(X - xx) < 0.6), METAL)
+    return v
+
+@bld('nets')
+def nets():
+    """Nets drying: two poles, a net sagging between them with cork floats along its head rope, a heap at the foot."""
+    v = Vol(-20, 20, -10, 10, 0, 30)
+    for xx in (-14, 14):
+        v.box(xx - 0.9, xx + 0.9, -0.9, 0.9, 0, 26, TIMBER)
+    v.box(-15, 15, -0.5, 0.5, 23, 24, ROPE)
+    sag = lambda X: 23 - 3.5 * (1 - (X / 14) ** 2)
+    cell = lambda X, Z: (np.mod(X + 0.3, 2.6) < 0.7) | (np.mod(Z - sag(X) + 40, 2.6) < 0.7)
+    v.put((-14, 14, -0.6, 0.6, 6, 24), lambda X, Y, Z: (Z <= 23) & (Z > sag(X) - 14 + 3 * (X / 14) ** 2) & cell(X, Z), NET)
+    for xx in np.arange(-12, 13, 4):
+        v.ell(xx, 0.6, 22.6, 1.1, 0.8, 0.9, CLOTH_Y)
+    v.ell(-6, 4, 1.6, 6, 3.6, 2.2, NET); v.ell(-2, 5, 3, 3.2, 2.4, 1.6, NET)
+    for xx in (-9, -4, 0):
+        v.ell(xx, 6.8, 2.2, 1, 0.8, 0.9, CLOTH_Y)
+    return v
+
 def fit(r, name):
     """A look with a base (winter): the sprite cut to the base look's box (same size and anchor, from its meta.json),
     so the map's layout data (fronts, anchors) stays the same; a bare tree fits inside its summer crown's box."""
@@ -694,7 +925,7 @@ def fit(r, name):
 
 def build(name):
     t = time.time()
-    s = {'magetower': 1.3}.get(name, S_B)
+    s = {'magetower': 1.3, 'boat-large': 1.75}.get(name, S_B)  # the cog drawn larger: a ship, not a house's length
     engine.VS_DEFAULT[0] = 1 / s
     v = B[name]()
     if LOOK['materiaux']: MATERIAUX[LOOK['materiaux']](PAL)

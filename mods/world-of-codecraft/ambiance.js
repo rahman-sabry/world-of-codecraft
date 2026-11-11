@@ -10,7 +10,7 @@
 // almost instant switch instead of a slow crossfade.
 
 import { div, image, svg } from "gpui-kit";
-import { readQuotas, left as timeLeft, hash, look } from "./kit.js";
+import { readQuotas, left as timeLeft, hash, look, nomCarte } from "./kit.js";
 import { CREATURES } from "./creatures-data.js";
 import { lieux } from "./lieux.js";
 import { t as tr } from "./i18n.js";
@@ -285,7 +285,7 @@ export class Ambiance {
       const coins = Math.max(0, Math.min(5, Math.ceil(this.quota.left / 20)));
       const [tx, ty] = TREASURY;
       out.push({ z: ty + 3, el: div().id("tresor").absolute().left(tx - 14).top(ty - 12 - coins * 3).w(28).h(14 + coins * 3)
-        .tooltip(tr("treasury", this.quota.left))
+        .tooltip(tr("treasury", this.quota.left, nomCarte()))
         .children(Array.from({ length: coins }, (_, i) => image(`${ART}/res-or.svg`).absolute().left(i % 2 ? 9 : 5).top(coins * 3 - i * 3).w(14).h(12))) });
       // fair pennants over the square on the last day before the weekly reset
       const left = this.quota.resets - now;

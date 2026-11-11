@@ -1,12 +1,12 @@
 // The command panel (left part of the bottom strip), drawn for place.js: a carved oak frame,
-// "Map of Valbrume" (the minimap from place.js, in a small iron frame, and the map and look switches under it), and
+// "Map of Valbrume" (the shown map's name; the minimap from place.js, in a small iron frame, and the map and look switches under it), and
 // "Selected unit": the focused hero full-length in a gold portrait frame, name, class,
 // state gem, quest, and the Go / Next buttons. The isometric world itself stays in place.js.
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { run, home, readTextFile } from "herdr";
-import { CLASSES, RACE_FR, QUEST, heroDesc, selectedAddress, reroll, champion, ART, CARTES, carte, changeCarte, look, changeLook, monde } from "./kit.js";
+import { CLASSES, RACE_FR, QUEST, heroDesc, selectedAddress, reroll, champion, ART, CARTES, carte, changeCarte, look, changeLook, monde, nomCarte } from "./kit.js";
 import { gradient } from "./kit.js";
 import { t } from "./i18n.js";
 import { P, frame, frameT, bar, pic, txt, title, button, gem, mark, portraitCard, well } from "./ui.js";
@@ -95,6 +95,14 @@ function choix(id, nom, n, change, prevTip, nextTip) {
     .child(fleche("suiv", "›", 1, nextTip));
 }
 
+/** The day's boss's dot on a minimap (b = [x, y, fallen], WORLD, k its scale): red alive, muted fallen; [] = none. */
+export function bossDot(b, WORLD, k) {
+  if (!b) return [];
+  const [x, y, mort] = b;
+  return [div().absolute().left((x - WORLD.x) * k - 3).top(Math.min(WORLD.h, Math.max(0, y)) * k - 4).size(6)
+    .bg(mort ? "#6b5a5e" : "#ff3048").border_1().border_color("#000000")];
+}
+
 /** The whole panel, `width` wide; `minimap` is place.js's minimap element. Under it the map switch (wocc.map) and the
  *  shown map's look switch (wocc.look), for every copy. */
 export function commandPanel(width, minimap, sel) {
@@ -102,9 +110,9 @@ export function commandPanel(width, minimap, sel) {
   return div().id("commande").relative().flex_none().w(width).h_full().bg(P.leather)
       .child(gradient("#2b1e16", "#100b0a", 165))
     .child(v_flex().absolute().left(T).right(T).top(T).bottom(T).gap(6)
-      .child(heading(t("map")))
+      .child(heading(t("map", nomCarte())))
       .child(div().relative().flex_none().self_start().p(5).bg("#0c0a0e").child(minimap).children(frame("fin")))
-      .child(choix("carte", t("maps")[carte().nom], CARTES.length, changeCarte, t("mapPrevTip"), t("mapNextTip")))
+      .child(choix("carte", nomCarte(), CARTES.length, changeCarte, t("mapPrevTip"), t("mapNextTip")))
       .child(choix("look", t("looks")[look().nom], carte().looks.length, changeLook, t("lookPrevTip"), t("lookNextTip")))
       .child(heading(t("selected")))
       .child(card(sel)))
@@ -140,6 +148,7 @@ export class Commande {
       .child(image(`${monde()}/minicarte.png`).absolute().left(0).top(0).w(mw).h(mh))
       .children((v.dots ?? []).map(([x, y, st]) => div().absolute().left((x - WORLD.x) * k - 2).top(Math.min(WORLD.h, Math.max(0, y)) * k - 3).size(4)
         .bg(DOT[st] ?? "#ffffff").border_1().border_color("#000000")))
+      .children(bossDot(v.boss, WORLD, k)) // the day's boss (place.js)
       .child(div().absolute().left(((v.cam - WORLD.x) / WORLD.w) * mw).top(0).w((v.vw / WORLD.w) * mw).h(mh).border_1().border_color("#ffffff"));
   }
 

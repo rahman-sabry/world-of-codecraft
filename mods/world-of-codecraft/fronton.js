@@ -13,7 +13,7 @@ import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { spaces, agents, run, props, layout, nextCommand, window as appWindow } from "herdr";
 import { freshStat } from "./commande.js";
-import { VILLAGE, ART, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left, selectedAddress, bossDuJour, remiseBoss, nomBoss, trophees, minuit, especeBoss, palier, serieEnJeu, PALIERS } from "./kit.js";
+import { nomCarte, ART, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left, selectedAddress, bossDuJour, remiseBoss, nomBoss, trophees, minuit, especeBoss, palier, serieEnJeu, PALIERS } from "./kit.js";
 import { CREATURES } from "./creatures-data.js";
 import { P, DECO, TEXTE, bar, pic, txt, button, mark, banner } from "./ui.js";
 import { DEMO_SPACES } from "./demo.js";
@@ -199,7 +199,7 @@ export default class Fronton {
           .child(div().absolute().left(10).top(3).child(pic("blason", 30, 36)))
           .child(v_flex().absolute().left(46).top(0).bottom(0).justify_center()
             .child(div().font_family(DECO).font_weight(700).text_size(17).line_height(1.1).text_color(P.goldHi).child("World of Codecraft"))
-            .child(txt(t("villageOf", VILLAGE), 13, P.muted, 700).line_height(1.1))))
+            .child(txt(t("villageOf", nomCarte()), 13, P.muted, 700).line_height(1.1))))
         .when(Boolean(gold), (el) => el.child(gold))
         .when(Boolean(wood), (el) => el.child(wood))
         .child(this.plaque("res-heros", pic("ic-heros", 26, 22), `${busy} / ${all.length}`, t("heroesAtWork"), t("heroesTip", busy, all.length)))

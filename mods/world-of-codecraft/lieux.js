@@ -1,4 +1,4 @@
-// Where things are on the shown map (kit.js carte(): its data module, carte-valbrume.js), resolved once per map:
+// Where things are on the shown map (kit.js carte(): its data module, carte-valbrume.js, carte-port.js), resolved once per map:
 // building-relative spots, boxes, chimneys, glows and standards made absolute, and the road's arc lengths. Every
 // reader goes through lieux(), so switching maps needs no reload.
 
@@ -10,7 +10,7 @@ const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 const plus = (at) => ([dx, dy]) => [at[0] + dx, at[1] + dy];
 const boite = ({ at, box: [dx, dy, w, h] }) => [at[0] + dx, at[1] + dy, w, h];
 
-/** A map's layout, absolute. Its own fields (FLANE, ROAD, RIVER, LAKE, DECK, VICTOIRE, BASCULE, the village life's...)
+/** A map's layout, absolute. Its own fields (FLANE, ROAD, EAU, DECK, VICTOIRE, BASCULE, the village life's...)
  *  as they are, plus:
  *  - SPOTS: feet points per class building (kit.js CLASSES bat), from its building's (the market's for etal1) spots;
  *  - BUILDINGS: hit boxes [x, y, w, h] and names (in the current language) by building;
@@ -53,14 +53,27 @@ function toLine([x, y], pts) {
   return best;
 }
 
-/** Open ground a unit may stand on (there is no ground map at run time): the bridge's deck, the road, or near a
+/** p in one of the map's water shapes (EAU, map px): a polyline within its half width `demi` (a river), an ellipse
+ *  [cx, cy, rx, ry] (a lake), a polygon (a sea, a basin). */
+function dansEau([x, y], e) {
+  if (e.ligne) return toLine([x, y], e.ligne) < e.demi;
+  if (e.ellipse) { const [cx, cy, rx, ry] = e.ellipse; return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1; }
+  let dedans = false;
+  for (let i = 0, P = e.polygone, j = P.length - 1; i < P.length; j = i++) {
+    const [ax, ay] = P[i], [bx, by] = P[j];
+    if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) dedans = !dedans;
+  }
+  return dedans;
+}
+
+/** Open ground a unit may stand on (there is no ground map at run time): a deck (bridge, pier), the road, or near a
  *  known standing spot outside every building's box (hit boxes: larger than the buildings, they overlap the road);
  *  never the water. */
 export function walkable(p) {
   const [x, y] = p;
-  const { DECK, RIVER, RIVER_R, LAKE, ROAD, ROAD_R, BUILDINGS, FLANE, SPOTS, SPOT_R } = lieux();
+  const { DECK, EAU, ROAD, ROAD_R, BUILDINGS, FLANE, SPOTS, SPOT_R } = lieux();
   if (toLine(p, DECK) < 14) return true;
-  if (toLine(p, RIVER) < RIVER_R || ((x - LAKE[0]) / LAKE[2]) ** 2 + ((y - LAKE[1]) / LAKE[3]) ** 2 < 1) return false;
+  if (EAU.some((e) => dansEau(p, e))) return false;
   if (toLine(p, ROAD) < ROAD_R) return true;
   if (Object.values(BUILDINGS).some(({ box: [bx, by, bw, bh] }) => x > bx && x < bx + bw && y > by && y < by + bh)) return false;
   return [...FLANE, ...Object.values(SPOTS).flat()].some(([sx, sy]) => Math.hypot(sx - x, sy - y) < SPOT_R);

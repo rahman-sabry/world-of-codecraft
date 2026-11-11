@@ -11,7 +11,8 @@ art/<map>-<look>/. A look record:
   materiaux   None, or a palette transform applied once a model is built (tex.MATERIAUX: "hiver" = snow on faces
               turned up, ice for water)
   arbres_nus  oaks and autumn trees grow a leafless crown (buildings.bare)
-  sol         ground-kind texture overrides, kind -> variant of extras.ground_tex ("neige", "glace")
+  sol         ground-kind texture overrides, kind -> variant of extras.ground_tex ("neige", "glace"; the sea's "froide":
+              colder, ice at its edges)
   herbe       grass tint: sec / dru (RGB factors on dry patches / lush hollows), brins (grass blades over edges)
   fleurs      flowers sprinkled on the grass"""
 import os
@@ -20,7 +21,8 @@ LOOKS = {
     "ete": dict(assets="assets/", monde="monde", base=None, materiaux=None, arbres_nus=False, sol={},
                 herbe=dict(sec=(1.07, 1.02, 0.86), dru=(0.92, 1.0, 1.05), brins="#7fb850"), fleurs=True),
     "hiver": dict(assets="assets-hiver/", monde="monde-hiver", base="ete", materiaux="hiver", arbres_nus=True,
-                  sol={"grass": "neige", "dirt": "neige", "paved": "neige", "water": "glace", "crop": "neige"},
+                  sol={"grass": "neige", "dirt": "neige", "paved": "neige", "water": "glace", "crop": "neige",
+                       "sand": "neige", "sea": "froide"},
                   herbe=dict(sec=(1.03, 1.03, 1.01), dru=(0.92, 0.96, 1.04), brins="#eef3f8"), fleurs=False),
 }
 

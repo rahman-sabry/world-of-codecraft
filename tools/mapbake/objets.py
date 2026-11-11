@@ -45,7 +45,8 @@ def dans(u, v, zones):
 
 
 def objets(c):
-    """The layout's explicit objects and fence runs, in the layout's order."""
+    """The layout's explicit objects and fence runs, in the layout's order. A run is n segments of '<modele>-<axe>'
+    (default the fence) 'pas' iso units apart along its axis, with its own 'sur' and 'front' (as an object's)."""
     O = []
     for ob in c["batiments"] + c["props"]:
         O.append(dict(nom="b-" + ob["modele"], u=ob["u"], v=ob["v"], dp=ob["dp"], role=ob["role"],
@@ -57,8 +58,9 @@ def objets(c):
         for k in range(f["n"]):
             t = k * f.get("pas", 44)
             u, v = w2s(x + t, y, o) if f["axe"] == "x" else w2s(x, y + t, o)
-            O.append(dict(nom="b-fence-" + f["axe"], u=int(round(u)), v=int(round(v)), dp=2, role="cloture", sur=[],
-                          box=None, front=None, ou=f"clotures[{i}] post {k} at ({int(round(u))}, {int(round(v))})"))
+            O.append(dict(nom=f"b-{f.get('modele', 'fence')}-{f['axe']}", u=int(round(u)), v=int(round(v)), dp=2,
+                          role="cloture", sur=f.get("sur", []), box=None, front=f.get("front"),
+                          ou=f"clotures[{i}] post {k} at ({int(round(u))}, {int(round(v))})"))
     return O
 
 
