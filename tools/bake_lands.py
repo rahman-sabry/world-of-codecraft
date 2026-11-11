@@ -8,7 +8,7 @@ the market, two more fields, the river following its own line), the village's ob
 north-edge trees are no longer cut), and new objects stand around it: a forest to the north, oaks, bushes,
 rocks and fences to the south. The village tiles are rewritten from the composite only if no building pixel
 changed (the forest's soft shadows reach the top of the village's grass).
-Writes art/monde/{nord,sud}-{0,1,2}-{jour,nuit}.png and terre-data.js.
+Writes art/monde/{nord,sud}-{0,1,2}-{jour,nuit}.png and terre-data.js (THEME=hiver: art/monde-hiver/, see bake_world.py).
 """
 import inspect, json, os, sys
 import numpy as np
@@ -16,9 +16,10 @@ from PIL import Image
 
 MOD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mods", "world-of-codecraft")
 ART = os.environ.get("ART") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "village-art")
-OUT = os.path.join(MOD, "art", "monde")
 os.chdir(ART)
 sys.path.insert(0, ART)
+import theme  # noqa: E402
+OUT = os.path.join(MOD, "art", theme.MONDE)
 import compose as C  # noqa: E402
 import compose2 as C2  # noqa: E402
 import compose3 as C3  # noqa: E402

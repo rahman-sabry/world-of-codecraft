@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from engine import Vol, render, trim, save2x, ramp, outline_of, vnoise2, hash3, BAYER, hx
 from tex import *
+from theme import ASSETS
 
 FONT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'mods', 'world-of-codecraft', 'fonts') + '/'
 
@@ -80,6 +81,12 @@ CB = ramp('#9c958c', hs=24, light=1.18)
 WR = ramp('#2f80b4', hs=14, light=1.35)
 SO = ramp('#7a5434', hs=22)
 WH = ramp('#d6ae4a', hs=16, light=1.25)
+if HIVER:  # snow for the grass, slush over the dirt (DR_ETE: the brown showing through), ice for the water
+    DR_ETE = DR
+    GR = ramp('#d2dce8', hs=12, light=1.16, dark=0.62, cool=224)
+    GR2 = ramp('#c6d2e2', hs=12, light=1.16, dark=0.62, cool=224)
+    DR = ramp('#a69c96', hs=16, light=1.28, dark=0.5)
+    WR = ICE_RAMP
 
 def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
     """x,y world coords (float arrays); sx,sy screen px for dithering. Returns RGB float. Period 32 world units."""
@@ -114,7 +121,10 @@ def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
         lv = lv + (h > 0.93) * 2.0 - (h < 0.05) * 1.0
         lv = lv - (np.abs(((x + y * 0.0) % 16) - 8) < 0.7) * 0.0
         lv = lv + BAYER[sy % 4, sx % 4] * 0.3
-        return DR[np.clip(np.round(lv), 0, 6).astype(int)]
+        idx = np.clip(np.round(lv), 0, 6).astype(int)
+        if HIVER:  # packed snow, the mud showing in ruts
+            return np.where((vnoise2(x, y, 6, 14, P) < 0.36)[..., None], DR_ETE[np.clip(idx - 1, 0, 6)], DR[idx])
+        return DR[idx]
     if kind == 'paved':
         s = 8.0
         gx = np.floor(x / s); gy = np.floor((y + (gx % 2) * s / 2) / s)
@@ -125,12 +135,20 @@ def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
         mortar = (fx < 0.6) | (fy < 0.6)
         lv = np.where(mortar, 0.6, lv)
         lv = lv + BAYER[sy % 4, sx % 4] * 0.3
-        return CB[np.clip(np.round(lv), 0, 6).astype(int)]
+        c = CB[np.clip(np.round(lv), 0, 6).astype(int)]
+        if HIVER:  # snow in the joints and in drifts over the stones
+            drift = mortar | (vnoise2(x, y, 12, 22, P) + (sid - 0.5) * 0.3 > 0.72)
+            c = np.where(drift[..., None], GR[np.clip(np.round(lv * 0.4 + 3.2), 0, 6).astype(int)], c)
+        return c
     if kind == 'water':
         n = vnoise2(x, y, 16, 31, P) * 1.0 + vnoise2(x, y, 8, 32, P) * 0.6
         lv = 2.0 + n + macro
-        wv = np.sin((x - y) * 0.55 + vnoise2(x, y, 8, 33, P) * 6.0) + np.sin(x * 0.39 + y * 0.39 + variant)
-        lv = lv + (wv > 1.55) * 2.6 + (wv > 1.85) * 1.0
+        if HIVER:  # ice: frosted patches, dark cracks with a lit lip
+            cr = np.abs(np.sin((x * 0.5 + y * 0.21) * 0.45 + vnoise2(x, y, 10, 34, P) * 7.0)) + (vnoise2(x, y, 5, 35, P) - 0.5) * 0.3
+            lv = lv + (vnoise2(x, y, 9, 36, P) > 0.62) * 1.5 - (cr < 0.07) * 1.8 + ((cr >= 0.07) & (cr < 0.16)) * 0.9
+        else:
+            wv = np.sin((x - y) * 0.55 + vnoise2(x, y, 8, 33, P) * 6.0) + np.sin(x * 0.39 + y * 0.39 + variant)
+            lv = lv + (wv > 1.55) * 2.6 + (wv > 1.85) * 1.0
         lv = lv + BAYER[sy % 4, sx % 4] * 0.3
         return WR[np.clip(np.round(lv), 0, 6).astype(int)]
     if kind == 'crop':
@@ -145,6 +163,10 @@ def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
         lvp = 2.6 + (furrow - 1.2) * 1.0 + (h - 0.5) * 1.5
         green = (np.floor(y / 16) % 2 == 1)
         pc = np.where(green[..., None], GR[np.clip(np.round(lvp + 0.3), 0, 6).astype(int)], WH[np.clip(np.round(lvp), 0, 6).astype(int)])
+        if HIVER:  # snow along the ridges, the soil dark in the furrows, a few stalks of stubble
+            snow = GR[np.clip(np.round(lv + 1.4 + BAYER[sy % 4, sx % 4] * 0.3), 0, 6).astype(int)]
+            c = np.where((furrow < 2.5 + (vnoise2(x, y, 6, 43, P) - 0.5) * 1.2)[..., None], snow, c)
+            return np.where((plant & (h > 0.86))[..., None], WH[np.clip(np.round(lvp - 1), 0, 6).astype(int)], c)
         return np.where(plant[..., None], pc, c)
     raise KeyError(kind)
 
@@ -225,19 +247,19 @@ def ui_frame(W=260, Hh=150, title='Valbrume'):
     return np.array(img)
 
 if __name__ == '__main__':
-    os.makedirs('assets', exist_ok=True)
-    meta = json.load(open('assets/meta.json')) if os.path.exists('assets/meta.json') else {}
+    os.makedirs(ASSETS, exist_ok=True)
+    meta = json.load(open(ASSETS + 'meta.json')) if os.path.exists(ASSETS + 'meta.json') else {}
     Y = ramp('#f2c230', hs=30, light=1.25, dark=0.35); Q = ramp('#ffd65a', hs=18, light=1.3, dark=0.35)
-    save2x(shade_glyph(np.kron(mask_from(EXCL), np.ones((2, 2), bool)), Y), 'assets/m-blocked.png')
-    save2x(shade_glyph(np.kron(mask_from(QUES), np.ones((2, 2), bool)), Q), 'assets/m-done.png')
-    save2x(ring(54, 27, ramp('#4fc04a', hs=24)), 'assets/ring-selected.png')
-    save2x(ring(54, 27, ramp('#f2c230', hs=24)), 'assets/ring-blocked.png')
-    save2x(ring(54, 27, ramp('#e8b040', hs=20), thick=1, ticks=False), 'assets/ring-done.png')
+    save2x(shade_glyph(np.kron(mask_from(EXCL), np.ones((2, 2), bool)), Y), ASSETS + 'm-blocked.png')
+    save2x(shade_glyph(np.kron(mask_from(QUES), np.ones((2, 2), bool)), Q), ASSETS + 'm-done.png')
+    save2x(ring(54, 27, ramp('#4fc04a', hs=24)), ASSETS + 'ring-selected.png')
+    save2x(ring(54, 27, ramp('#f2c230', hs=24)), ASSETS + 'ring-blocked.png')
+    save2x(ring(54, 27, ramp('#e8b040', hs=20), thick=1, ticks=False), ASSETS + 'ring-done.png')
     for name, v in icons().items():
         r = trim(render(v, PAL, ao_strength=0.3, dither=0.15, ground=False))
-        save2x(r['color'], f'assets/{name}.png')
+        save2x(r['color'], ASSETS + f'{name}.png')
     for k in ('grass', 'dirt', 'paved', 'water', 'crop'):
-        save2x(tile(k), f'assets/t-{k}.png')
-    save2x(tile('grass', 1), 'assets/t-grass-flowers.png')
-    save2x(ui_frame(), 'assets/ui-panel.png')
+        save2x(tile(k), ASSETS + f't-{k}.png')
+    save2x(tile('grass', 1), ASSETS + 't-grass-flowers.png')
+    save2x(ui_frame(), ASSETS + 'ui-panel.png')
     print('ok')

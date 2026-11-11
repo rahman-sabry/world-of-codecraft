@@ -2,7 +2,7 @@
 //   walkers on the road (peasant woman and farmer by day, a merchant when 2+ heroes work, a guard with a
 //   lantern at night), pausing between stops; hens pecking by the barn (asleep at night), a cat at the
 //   tavern door, three roaming cats (sitting at their stops, or beside an idle hero now and then), a stag at
-//   the forest edge at dawn and dusk, sparrows circling over the fields, fish leaping in the river; the treasury in front of the town hall (coins = account A's weekly quota left)
+//   the forest edge at dawn and dusk, sparrows circling over the fields, fish leaping in the river (not in winter: it is frozen); the treasury in front of the town hall (coins = account A's weekly quota left)
 //   and fair pennants over the square the day before the weekly reset.
 // Walks are native linear `left`/`top` transitions, one leg at a time: a 1 s data timer only starts the
 // next leg (and flips the sprite) when one ends, so the cost is one redraw every few seconds.
@@ -10,7 +10,7 @@
 // almost instant switch instead of a slow crossfade.
 
 import { div, image, svg } from "gpui-kit";
-import { readQuotas, left as timeLeft, hash } from "./kit.js";
+import { readQuotas, left as timeLeft, hash, carte } from "./kit.js";
 import { CREATURES } from "./creatures-data.js";
 import { FRONTS } from "./monde-data.js";
 import { t as tr } from "./i18n.js";
@@ -267,7 +267,7 @@ export class Ambiance {
         .child(unswap(img("cerf", "broute"), 9000)).child(swap(img("cerf", "alerte"), 9000)) });
     }
     // fish leaping: shown only near the top of the arc; a ring where it left the water
-    for (const [fx, fy, per] of FISH) {
+    for (const [fx, fy, per] of carte().id === "hiver" ? [] : FISH) {
       out.push({ z: fy, el: div().absolute().left(fx).top(fy).w(0).h(0)
         .child(div().absolute().left(-9).top(-3).w(18).h(6).rounded_full().border_1().border_color("#e6f6ffcc")
           .loop("opacity", { from: 1, to: -5, period: per, easing: "linear" }))

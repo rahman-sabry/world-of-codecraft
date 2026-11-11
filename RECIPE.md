@@ -42,7 +42,8 @@ the clock. The art is original: it imitates no existing game.
   - the tab title and folder;
   - iron buttons: split right, split down, zoom and close.
 - **Village** (bottom, 400 px). On the left, a command panel:
-  - "Map of Valbrume": a minimap with unit dots and the camera frame;
+  - "Map of Valbrume": a minimap with unit dots and the camera frame, and under it the map switch
+    (‹ map name ›): "Valbrume" or "Valbrume in winter" (« Valbrume sous la neige »);
   - "Selected unit": the focused agent as a full-length portrait card with name, class
     and race, program, state and quest, plus Go and Next buttons.
 
@@ -55,6 +56,11 @@ the clock. The art is original: it imitates no existing game.
   - west of the village, farmland: fields with fences and a windmill; east, past a wooden footbridge over
     the river at the village road's end, a lake with a jetty and a rowboat;
   - in the top-left corner, a chronicle of the last 4 events on dark tags.
+
+  Two maps share that layout: Valbrume (summer) and Valbrume in winter. Winter has snow on the ground and on
+  every roof and top, a frozen river and lake, bare oaks, snow-dusted pines, bushes as snowy mounds, slush on the
+  road, light snow falling, and no leaping fish. Everything else (heroes, raids, boss, cats, walkers, banners,
+  crown, bridge, window glow at night) is the same.
 
 ## How it behaves
 
@@ -249,8 +255,20 @@ the clock. The art is original: it imitates no existing game.
     with the heroes, behind front cut-outs like the walkers. The 1 s ambient timer starts each
     leg; no chronicle line, no click.
 - **« Animations » toggle** under the minimap (store key `wocc.anim`, default on). Off:
-  heroes stand on still frames, no walking, no scenes, enemies, apprentices, village life or smoke, and
+  heroes stand on still frames, no walking, no scenes, enemies, apprentices, village life, smoke or snow, and
   no activity polling (about 10 % of a core instead of 27 % on an M2 Pro).
+- **Map switch** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande` block):
+  ‹ and › cycle the maps (kit.js `CARTES`), store key `wocc.map` (`"valbrume"`, the default, or `"hiver"`),
+  so every copy re-renders at once and the choice survives restarts; the camera stays where it is. The world's
+  images (tiles, bands, front cut-outs, minimap) come from the shown map's folder (`monde()`: `art/monde/` or
+  `art/monde-hiver/`, same file names); only that map's images are referenced. Rings and quest marks stay in
+  `art/monde/`. `monde-data.js` and `terre-data.js` serve both maps: same layout, same data.
+- **Winter only:** no leaping fish (the river is frozen), and light snow over the view, above the world and under
+  the chronicle, while animated. A `.loop` swings there and back, so a flake on a `top` loop would climb back up;
+  instead each flake stream is a wheel (`art/neige-{0,1,2}.svg`, 7 flakes of 3-4 px on its rim, 480 px, over a dark twin wheel 1 px lower right turning in step, so the flakes show over snow) turned by
+  the native `svg.spin` (17-26 s a turn, staggered per wheel) inside a 100×390 px `overflow_hidden` window that
+  shows only its right-hand sector, where the rim goes down: flakes drift in and fall along a shallow arc without
+  ever rising. Wheels every 90 px across and 330 px down (about 30-40 flakes in view), no timer and no redraw.
 
 ## Immersive mode
 
@@ -283,6 +301,31 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   the bridge's front rail in four pieces (its mask is `b-bridge-rail`, the rail alone) and the objects just in
   front of the walk.
   About 40 seconds (sprite loads are cached); `CACHE=x.npz` reuses the composite.
+- **Themes (the winter map):** `tools/village-art/theme.py` reads `THEME` (unset: summer; `hiver`: winter). Each
+  theme renders its sprites into its own folder (`assets/`, `assets-hiver/`) and bakes into its own folder of the
+  mod (`art/monde/`, `art/monde-hiver/`); the summer path is unchanged (its sprites and bakes come out
+  pixel-identical). Bake each map with the same chain:
+
+      sh tools/village-art/build_assets.sh                # summer sprites first: winter cuts to their boxes
+      P=tools/village-art/.venv/bin/python
+      $P tools/bake_world.py && $P tools/bake_lands.py && $P tools/bake_wide.py
+      THEME=hiver sh tools/village-art/build_assets.sh
+      THEME=hiver $P tools/bake_world.py && THEME=hiver $P tools/bake_lands.py && THEME=hiver $P tools/bake_wide.py
+
+  Winter is palette and texture overrides on the summer models, not new models, except the bare trees:
+  - sprites (`tex.hiver(PAL)`, called once a model is built): every non-glowing material but glass, metal and gold
+    gets snow (`SNOW`, `#d6e0ec`, a 7-step ramp with the usual cool darks) on the faces turned up (`snowy`: normal z
+    over 0.5, 0.38 for roofs, the edge broken by noise), so roofs keep their eaves and outline in their own colour;
+    pines are dusted (0.3, patches), bushes snowed over but for their undersides, the well's water is ice;
+    `tree-oak` and `tree-autumn` grow a leafless crown (`bare` in buildings.py: forked limbs, snow on the bark);
+  - every winter sprite is cut to its summer box (`fit`: same size and anchor), so the layout data does not change;
+  - ground (`extras.py`, `compose2.ground`): grass becomes snow (two cool ramps, blue hollows instead of dry
+    patches, no flowers, snow lips instead of grass blades), the road packed snow with mud in the ruts, the square's
+    cobbles snow in the joints and drifts, the water pale ice with frosted patches and cracks (its foam rim white),
+    the fields snow along the ridges with dark soil in the furrows.
+  `bake_world.py` checks in winter that every sprite keeps its summer box and silhouette (alpha), the bare trees'
+  silhouettes excepted; the building-pixel checks of bake_lands.py and bake_wide.py run within the theme. The
+  winter chain rewrites `monde-data.js` and `terre-data.js` with the same content (check with `git diff`).
 - **Camera:** horizontal and vertical (drag, two-axis wheel), kept inside the bands; selecting a hero
   brings the village back into view.
 - **Panel bridge:** the village publishes its camera and units to the store (`wocc.view`, only when
@@ -339,7 +382,8 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
 - **Art** (`art/`):
   - heroes: 30 race×class sprites with `idle`, `rest`, `work` and 4-way walk frames,
     plus night-graded copies;
-  - the baked world: day and night tiles, front cut-outs for depth, the minimap;
+  - the baked world: day and night tiles, front cut-outs for depth, the minimap, per map (`monde/`,
+    `monde-hiver/`); the snow wheels `neige-*.svg`;
   - UI chrome: PNGs at 2×;
   - SVG icons.
 

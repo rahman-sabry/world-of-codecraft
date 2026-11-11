@@ -4,6 +4,8 @@ so Herdr only draws a few big images plus the live units.
 
   tools/village-art/build_assets.sh && tools/village-art/.venv/bin/python tools/bake_world.py
 
+THEME=hiver (both commands) bakes the winter map from assets-hiver/ into art/monde-hiver/ instead, after checking
+that its sprites keep the summer boxes and silhouettes (all but the bare trees'): the same layout, the same data.
 Writes, under art/monde/:
   jour-<k>.png, nuit-<k>.png   the 3000x400 logical world cut in 1000-px-wide tiles (PNG at 2x: 2000x800)
   avant-<name>-<jour|nuit>.png front cut-outs: an object's own pixels taken from the baked world, drawn again
@@ -21,8 +23,9 @@ os.chdir(ART)
 sys.path.insert(0, ART)
 import compose2 as C2  # noqa: E402
 import compose3 as C3  # noqa: E402
+import theme  # noqa: E402
 
-OUT = os.path.join(MOD, "art", "monde")
+OUT = os.path.join(MOD, "art", theme.MONDE)
 os.makedirs(OUT, exist_ok=True)
 W, H = C3.W, C3.H
 TILE = 1000
@@ -37,6 +40,17 @@ class _Meta(dict):
     def __missing__(self, k):
         return {'w': 1, 'h': 1, 'ax': 0, 'ay': 0}  # the old demo heroes: dropped just below
 
+
+if theme.HIVER:
+    summer = json.load(open("assets/meta.json"))
+    assert C2.META == summer, "the winter sprites' boxes differ from the summer ones"
+    same = 0
+    for name in summer:
+        a = np.asarray(Image.open(f"assets/{name}.png"))[..., 3] > 0
+        b = np.asarray(Image.open(f"{theme.ASSETS}{name}.png"))[..., 3] > 0
+        assert name in ("b-tree-oak", "b-tree-autumn") or (a == b).all(), f"{name}: its winter silhouette differs"
+        same += int((a == b).all())
+    print(f"winter sprites: {len(summer)} boxes as in summer, {same} silhouettes as in summer (the others: bare trees)")
 
 C2.META = _Meta(C2.META)
 O, _E = C2.scene()

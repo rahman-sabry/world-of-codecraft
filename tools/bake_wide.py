@@ -19,6 +19,7 @@ the mod stays valid. The old tiles are rewritten from the composite only if no b
 changed by day (only the new land's shadows and the night glow may reach the old edges).
 Writes art/monde/{jour,nuit}-{ouest,0,1,2,est}.png, {nord,sud}-<same>-{jour,nuit}.png, minicarte.png, and
 the WORLD and TILES lines of monde-data.js and terre-data.js. About 10 minutes; CACHE=x.npz reuses the composite.
+THEME=hiver: the winter map, into art/monde-hiver/ (see bake_world.py); the data comes out the same.
 """
 import functools, inspect, json, os, re, sys
 import numpy as np
@@ -27,9 +28,10 @@ from PIL import Image
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 MOD = os.path.join(os.path.dirname(TOOLS), "mods", "world-of-codecraft")
 ART = os.environ.get("ART") or os.path.join(TOOLS, "village-art")
-OUT = os.path.join(MOD, "art", "monde")
 os.chdir(ART)
 sys.path.insert(0, ART)
+import theme  # noqa: E402
+OUT = os.path.join(MOD, "art", theme.MONDE)
 import compose as C  # noqa: E402
 import compose2 as C2  # noqa: E402
 import compose3 as C3  # noqa: E402

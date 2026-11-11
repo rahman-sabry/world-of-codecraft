@@ -467,12 +467,27 @@ def canopy(v, cx, cy, cz, r, mat, seed=1, n=9):
         v.put((bx - br - 2, bx + br + 2, by - br - 2, by + br + 2, bz - br - 2, bz + br + 2),
               lambda X, Y, Z, bx=bx, by=by, bz=bz, br=br: (X - bx) ** 2 + (Y - by) ** 2 + ((Z - bz) * 1.1) ** 2 <= (br + 1.4 * (hash3(np.floor(X / 2).astype(np.int64), np.floor(Y / 2).astype(np.int64), np.floor(Z / 2).astype(np.int64), 5) - 0.5) * 2) ** 2, mat)
 
+def bare(v, z0, r, seed=1):
+    """Winter: a leafless crown for a summer canopy of radius r, limbs forking out of the trunk from z0 (thinner
+    at each fork); the snow on them comes from the winter bark (tex.hiver)."""
+    rng = np.random.default_rng(seed)
+    def limb(a, ang, tilt, length, rad, depth):
+        b = (a[0] + length * np.cos(ang) * np.cos(tilt), a[1] + length * np.sin(ang) * np.cos(tilt), a[2] + length * np.sin(tilt))
+        v.capsule(a, b, rad, BARK)
+        if depth:
+            for s in (-1, 1):
+                limb(b, ang + s * rng.uniform(0.3, 0.7), min(1.3, tilt + rng.uniform(0.0, 0.35)), length * 0.72, max(0.7, rad * 0.7), depth - 1)
+    for k in range(5):
+        ang = k / 5 * 2 * np.pi + rng.uniform(-0.4, 0.4)
+        limb((0, 0, z0 + k * 2.4), ang, rng.uniform(0.45, 0.8), r * 0.52, 1.8, 3)
+
 @bld('tree-oak')
 def oak():
     v = Vol(-34, 34, -34, 34, 0, 96)
     v.put((-6, 6, -6, 6, 0, 50), lambda X, Y, Z: X ** 2 + Y ** 2 <= (2.6 + 3.2 * np.clip(1 - Z / 9, 0, 1) ** 2) ** 2, BARK)
     v.capsule((0, 0, 30), (10, -4, 46), 1.8, BARK); v.capsule((0, 0, 32), (-9, 6, 44), 1.8, BARK)
-    canopy(v, 0, 0, 52, 27, LEAF, seed=3, n=12)
+    if HIVER: bare(v, 34, 26, seed=3)
+    else: canopy(v, 0, 0, 52, 27, LEAF, seed=3, n=12)
     return v
 
 @bld('tree-pine')
@@ -494,7 +509,8 @@ def bush():
 def autumn():
     v = Vol(-26, 26, -26, 26, 0, 80)
     v.put((-6, 6, -6, 6, 0, 40), lambda X, Y, Z: X ** 2 + Y ** 2 <= (2.2 + 2.6 * np.clip(1 - Z / 8, 0, 1) ** 2) ** 2, BARK)
-    canopy(v, 0, 0, 50, 19, LEAF_A, seed=11, n=9)
+    if HIVER: bare(v, 30, 18, seed=11)
+    else: canopy(v, 0, 0, 50, 19, LEAF_A, seed=11, n=9)
     return v
 
 @bld('rocks')
@@ -662,18 +678,34 @@ def ruin():
         v.ell(ix, y1 + 1, iz, ir, 2.2, ir * 1.2, LEAF)
     return v
 
+def fit(r, name):
+    """Winter: the sprite cut to its summer box (same size and anchor, from assets/meta.json), so the map's layout
+    data (fronts, anchors) stays the same; a bare tree fits inside its summer crown's box."""
+    m = json.load(open('assets/meta.json'))['b-' + name]
+    ax, ay = r['anchor']; x0, y0 = ax - m['ax'], ay - m['ay']
+    assert x0 >= 0 and y0 >= 0, (name, 'outside its summer box')
+    for k in ('color', 'shadow', 'emis', 'nightlit', 'cast'):
+        cut = r[k][y0:y0 + m['h'], x0:x0 + m['w']]
+        assert (cut[..., 3] > 0).sum() == (r[k][..., 3] > 0).sum(), (name, k, 'outside its summer box')
+        r[k] = cut
+    r['anchor'] = (m['ax'], m['ay'])
+    return r
+
 def build(name):
     t = time.time()
     s = {'magetower': 1.3}.get(name, S_B)
     engine.VS_DEFAULT[0] = 1 / s
     v = B[name]()
-    r = trim(render(v, PAL, S=s))
+    if HIVER: hiver(PAL)
+    r = render(v, PAL, S=s)
+    r = fit(r, name) if HIVER else trim(r)
     print(name, 'rendered', r['color'].shape, 'anchor', r['anchor'], f'{time.time() - t:.1f}s', flush=True)
     return r
 
 if __name__ == '__main__':
     import os
-    OUT = os.environ.get('OUT', 'assets')
+    from theme import ASSETS
+    OUT = os.environ.get('OUT', ASSETS.rstrip('/'))
     os.makedirs(OUT, exist_ok=True)
     meta = {}
     if os.path.exists(OUT + '/meta.json'): meta = json.load(open(OUT + '/meta.json'))

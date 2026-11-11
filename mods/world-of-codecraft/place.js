@@ -1,8 +1,8 @@
 // La place (bottom strip): Valbrume seen from above, isometric pixel art (direction A, v3).
 // Left, the RTS-style command panel: minimap (click to move the camera) and the selected unit.
 // Right, the village: the static world (ground, buildings, props, shadows, night lights) is baked
-// by tools/bake_world.py into a few big images, day and night, exactly as the approved mocks;
-// only the units, their markers, front cut-outs (depth), glows and smoke are live.
+// by tools/bake_world.py into a few big images, day and night, exactly as the approved mocks (one folder per
+// map, kit.js monde()); only the units, their markers, front cut-outs (depth), glows, smoke and snow are live.
 //
 // Every agent is a hero of its class: working = `work` loop at its class building; idle = `idle`,
 // strolling from spot to spot (FLANE) with a pause at each; blocked = `idle` + flashing `!` + red ring +
@@ -11,10 +11,10 @@
 // while a visible unit needs it; movement itself is a native `left`/`top` transition. Heroes whose
 // frames aren't synced yet (tools/sync_heroes.py) stand still and breathe natively.
 
-import { div, image } from "gpui-kit";
+import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, spaces, run, setAgentOrder, props, layout, shared, setShared } from "herdr";
-import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss, champion, bannieres } from "./kit.js";
+import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss, champion, bannieres, carte, monde } from "./kit.js";
 import { WORLD, TILES, FRONTS } from "./monde-data.js";
 import { HEROES } from "./heros-data.js";
 import { SPOTS, FLANE, ROAD, BUILDINGS, MARCHE, market, SMOKE, GLOWS, BANNIERES } from "./lieux.js";
@@ -27,7 +27,7 @@ import { commandPanel, MINI_INSET, watchStat } from "./commande.js";
 import { EXT } from "./terre-data.js";
 
 const ART = "mods/world-of-codecraft/art";
-const MONDE = `${ART}/monde`;
+const MONDE = `${ART}/monde`; // rings and quest marks (the world's own images: monde(), the shown map's)
 const PANEL = 262; // command panel width (lines up with the quest board)
 const RANK = { blocked: 0, done: 1, working: 2, idle: 3, garde: 4 };
 const LOG_KEY = "wocc.chronicle";
@@ -521,6 +521,24 @@ export default class Place {
     return out;
   }
 
+  /** Winter: light snow over the view (above the world, under the chronicle). Each wheel (neige-k.svg, a few flakes on
+   *  its rim) turns natively and shows only its right-hand sector, where the rim goes down: the flakes fall and never
+   *  climb back, as a `top` loop (there and back) would. A twin wheel 1 px lower right, dark and turning in step (same
+   *  period, same render), edges each flake so it shows over the snow too. */
+  neige(vw, vh) {
+    if (!this.live || carte().id !== "hiver") return [];
+    const out = [];
+    for (let y = -60, r = 0; y < vh; y += 330, r++) {
+      for (let x = -40 + (r % 2) * 45, k = 0; x < vw; x += 90, k++) {
+        const roue = (dx, color) => svg(`${ART}/neige-${(k + r) % 3}.svg`).absolute().left(dx - 380).top(dx - 45).size(480).text_color(color)
+          .spin(17000 + ((k * 7 + r * 5) % 9) * 1100);
+        out.push(div().absolute().left(x).top(y).w(100).h(390).overflow_hidden()
+          .child(roue(1, "#3a4a6a99")).child(roue(0, "#ffffff")));
+      }
+    }
+    return out;
+  }
+
   glows(nightK) {
     if (nightK <= 0) return [];
     return GLOWS.map((g) => {
@@ -543,8 +561,8 @@ export default class Place {
   /** A front cut-out (the object's own baked pixels), crossfaded like the world. */
   front(f, nightK) {
     let el = div().absolute().left(f.x).top(f.y).w(f.w).h(f.h);
-    if (nightK < 1) el = el.child(image(`${MONDE}/avant-${f.key}-jour.png`).absolute().left(0).top(0).w(f.w).h(f.h));
-    if (nightK > 0) el = el.child(image(`${MONDE}/avant-${f.key}-nuit.png`).absolute().left(0).top(0).w(f.w).h(f.h).opacity(nightK));
+    if (nightK < 1) el = el.child(image(`${monde()}/avant-${f.key}-jour.png`).absolute().left(0).top(0).w(f.w).h(f.h));
+    if (nightK > 0) el = el.child(image(`${monde()}/avant-${f.key}-nuit.png`).absolute().left(0).top(0).w(f.w).h(f.h).opacity(nightK));
     return el;
   }
 
@@ -593,7 +611,7 @@ export default class Place {
         if (typeof lx === "number") { this.camX = WORLD.x + (lx / mw) * WORLD.w - vw / 2; this.manual = true; cx.notify(); }
         cx.stop_propagation();
       })
-      .child(image(`${MONDE}/minicarte.png`).absolute().left(0).top(0).w(mw).h(mh))
+      .child(image(`${monde()}/minicarte.png`).absolute().left(0).top(0).w(mw).h(mh))
       .children(units.map((u) => {
         let d = div().absolute().left((u.x - WORLD.x) * k - 2).top(u.y * k - 3).size(4).bg(col[u.a.status] ?? "#ffffff").border_1().border_color("#000000");
         if (u.a.status === "blocked") d = d.when(this.live, (e) => e.loop("opacity", { from: 0.2, to: 1, period: 420 }));
@@ -606,14 +624,14 @@ export default class Place {
   camV() {
     const h = this.h ?? WORLD.h, top = -EXT.nord, bottom = WORLD.h + EXT.sud;
     if (h >= bottom - top) return (top + bottom - h) / 2;
-    const c = this.camY ?? (WORLD.h / 2 - 40 - h / 2);
+    const c = Number.isFinite(this.camY) ? this.camY : WORLD.h / 2 - 40 - h / 2; // a NaN (bad world data) must not stick
     return Math.max(top, Math.min(bottom - h, c));
   }
 
   /** The world x at the left of the view (the world spans WORLD.x to WORLD.x + WORLD.w), kept inside it. */
   cam(vw, c = this.camX) {
     const max = Math.max(WORLD.x, WORLD.x + WORLD.w - vw);
-    return Math.max(WORLD.x, Math.min(max, c ?? (WORLD.x + WORLD.w / 2 - vw / 2)));
+    return Math.max(WORLD.x, Math.min(max, Number.isFinite(c) ? c : WORLD.x + WORLD.w / 2 - vw / 2));
   }
 
   chronicle() {
@@ -744,9 +762,10 @@ export default class Place {
     // immersive layout: the lands around the village (tools/bake_lands.py, terre-data.js) and a vertical camera too
     const worldTop = imm ? -this.camV() : Math.round(((this.h ?? WORLD.h) - WORLD.h) / 2);
     const glide = this.drag ? { duration: 16, easing: "linear" } : { duration: 650, easing: "ease-in-out" };
+    const M = monde();
     const band = (name, y) => [
-      ...EXT.tiles.map((tl) => image(`${MONDE}/${name}-${tl.k}-jour.png`).absolute().left(tl.x).top(y).w(1000).h(EXT[name])),
-      ...(nightK > 0 ? EXT.tiles.map((tl) => image(`${MONDE}/${name}-${tl.k}-nuit.png`).absolute().left(tl.x).top(y).w(1000).h(EXT[name]).opacity(nightK)) : []),
+      ...EXT.tiles.map((tl) => image(`${M}/${name}-${tl.k}-jour.png`).absolute().left(tl.x).top(y).w(1000).h(EXT[name])),
+      ...(nightK > 0 ? EXT.tiles.map((tl) => image(`${M}/${name}-${tl.k}-nuit.png`).absolute().left(tl.x).top(y).w(1000).h(EXT[name]).opacity(nightK)) : []),
     ];
 
     // the camera glides (650 ms) except while the view is dragged, where it follows the pointer
@@ -754,8 +773,8 @@ export default class Place {
       .transition("left", glide).transition("top", glide);
     const world = layer("monde")
       .when(imm, (el) => el.children(band("nord", -EXT.nord)).children(band("sud", WORLD.h)))
-      .children(TILES.map((tl) => image(`${MONDE}/jour-${tl.k}.png`).absolute().left(tl.x).top(0).w(tl.w).h(WORLD.h)))
-      .when(nightK > 0, (el) => el.children(TILES.map((tl) => image(`${MONDE}/nuit-${tl.k}.png`).absolute().left(tl.x).top(0).w(tl.w).h(WORLD.h).opacity(nightK))))
+      .children(TILES.map((tl) => image(`${M}/jour-${tl.k}.png`).absolute().left(tl.x).top(0).w(tl.w).h(WORLD.h)))
+      .when(nightK > 0, (el) => el.children(TILES.map((tl) => image(`${M}/nuit-${tl.k}.png`).absolute().left(tl.x).top(0).w(tl.w).h(WORLD.h).opacity(nightK))))
       .children(this.glows(nightK))
       .children(this.hitboxes())
       .children(things.map((th) => th.el))
@@ -768,7 +787,7 @@ export default class Place {
         if (Math.abs(s.width - this.w) > 10 || s.height !== this.h) { this.w = s.width; this.h = s.height; cx.notify(); }
       })
       .when(!imm, (el) => el.child(panel))
-      .child(div().id("vue").flex_1().h_full().relative().overflow_hidden().bg("#3f6b2c")
+      .child(div().id("vue").flex_1().h_full().relative().overflow_hidden().bg(carte().id === "hiver" ? "#c9d3df" : "#3f6b2c")
         .on_scroll_wheel((e, cx) => {
           if (imm) { this.camX = this.cam(vw) - e.delta.x; this.camY = this.camV() - e.delta.y; }
           else this.camX = this.cam(vw) - (Math.abs(e.delta.x) > Math.abs(e.delta.y) ? e.delta.x : e.delta.y);
@@ -791,6 +810,7 @@ export default class Place {
         .on_mouse_up("left", (_e, cx) => { if (this.drag) { this.drag = null; cx.notify(); } })
         .on_hover((over, cx) => { if (!over && this.drag) { this.drag = null; cx.notify(); } })
         .child(world)
+        .children(this.neige(vw, this.h ?? WORLD.h))
         .child(this.chronicle()));
   }
 }

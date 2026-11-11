@@ -1,12 +1,12 @@
 // The command panel (left part of the bottom strip), drawn for place.js: a carved oak frame,
-// "Map of Valbrume" (the minimap from place.js, in a small iron frame), the « Animations »
+// "Map of Valbrume" (the minimap from place.js, in a small iron frame, and the map switch under it), the « Animations »
 // toggle, and "Selected unit": the focused hero full-length in a gold portrait frame, name, class,
 // state gem, quest, and the Go / Next buttons. The isometric world itself stays in place.js.
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { run, home, readTextFile } from "herdr";
-import { CLASSES, RACE_FR, QUEST, heroDesc, selectedAddress, reroll, champion, ART } from "./kit.js";
+import { CLASSES, RACE_FR, QUEST, heroDesc, selectedAddress, reroll, champion, ART, carte, changeCarte, monde } from "./kit.js";
 import { gradient } from "./kit.js";
 import { t } from "./i18n.js";
 import { P, frame, frameT, bar, pic, txt, title, button, gem, mark, portraitCard, well } from "./ui.js";
@@ -68,7 +68,7 @@ function card(sel) {
   const { a, h } = sel;
   const st = a.status;
   const word = QUEST[st]?.mot ?? t("onGuard");
-  return h_flex().flex_1().min_h(0).gap(8).px(2).pt(8).items_start()
+  return h_flex().flex_1().min_h(0).gap(8).px(2).pt(4).items_start()
     .child(v_flex().flex_none().gap(4)
       // the champion's crown (today's boss slain by its subagent) on the frame, over its head
       .child(div().relative().child(portraitCard(h))
@@ -90,7 +90,16 @@ function card(sel) {
 /** The « Animations » toggle: on = animated heroes, walks, activity scenes and enemies; off = still images. */
 function toggle(anim) {
   return button("animations", [gem(anim.on ? "working" : "idle", true), txt(t("animations"), 15, P.cream, 800), txt(anim.on ? t("yes") : t("no"), 15, anim.on ? P.working : P.muted, 800)],
-    anim.toggle, { tip: anim.on ? t("animOnTip") : t("animOffTip") }).w_full();
+    anim.toggle, { h: 24, tip: anim.on ? t("animOnTip") : t("animOffTip") }).w_full();
+}
+
+/** The map switch: ‹ the shown map's name ›, cycling through the maps (wocc.map) for every copy. */
+function choixCarte() {
+  const fleche = (id, c, d, tip) => button(id, txt(c, 16, P.cream, 800), () => changeCarte(d), { w: 28, h: 22, tip });
+  return h_flex().flex_none().mt(-4).gap(4).items_center()
+    .child(fleche("carte-prec", "‹", -1, t("mapPrevTip")))
+    .child(div().flex_1().min_w(0).flex().justify_center().child(txt(t("maps")[carte().id], 15, P.cream, 800).truncate()))
+    .child(fleche("carte-suiv", "›", 1, t("mapNextTip")));
 }
 
 export function commandPanel(width, minimap, sel, anim = null) {
@@ -100,6 +109,7 @@ export function commandPanel(width, minimap, sel, anim = null) {
     .child(v_flex().absolute().left(T).right(T).top(T).bottom(T).gap(6)
       .child(heading(t("map")))
       .child(div().relative().flex_none().self_start().p(5).bg("#0c0a0e").child(minimap).children(frame("fin")))
+      .child(choixCarte())
       .when(Boolean(anim), (el) => el.child(toggle(anim)))
       .child(heading(t("selected")))
       .child(card(sel)))
@@ -114,7 +124,6 @@ import { heroOf, guards, C as KC } from "./kit.js";
 import { DEMO_SELECTED } from "./demo.js";
 import { WORLD } from "./monde-data.js";
 
-const MONDE = "mods/world-of-codecraft/art/monde";
 const DOT = { blocked: KC.quest, done: KC.gold, working: "#7dff6a", idle: "#cfc8da", garde: "#9aa4b1" };
 
 /** Role "commande" (immersive layout): the command panel beside the terminal, under the board. The village
@@ -133,7 +142,7 @@ export class Commande {
         if (typeof lx === "number") setShared("wocc.goto", { x: WORLD.x + (lx / mw) * WORLD.w, at: Date.now() });
         cx.stop_propagation();
       })
-      .child(image(`${MONDE}/minicarte.png`).absolute().left(0).top(0).w(mw).h(mh))
+      .child(image(`${monde()}/minicarte.png`).absolute().left(0).top(0).w(mw).h(mh))
       .children((v.dots ?? []).map(([x, y, st]) => div().absolute().left((x - WORLD.x) * k - 2).top(Math.min(WORLD.h, Math.max(0, y)) * k - 3).size(4)
         .bg(DOT[st] ?? "#ffffff").border_1().border_color("#000000")))
       .child(div().absolute().left(((v.cam - WORLD.x) / WORLD.w) * mw).top(0).w((v.vw / WORLD.w) * mw).h(mh).border_1().border_color("#ffffff"));

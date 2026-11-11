@@ -5,8 +5,9 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 from engine import over, vnoise2, hash3, BAYER, hx, ramp
 from extras import ground_tex, DR, WR, FONT
+from theme import ASSETS
 
-A = 'assets/'
+A = ASSETS
 META = json.load(open(A + 'meta.json'))
 W, H = 2000, 400
 U0, V0 = 1000, 200

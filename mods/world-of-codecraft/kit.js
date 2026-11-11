@@ -12,6 +12,18 @@ export const TITLE = "Cinzel"; // Roman capitals, headings only (fonts/, OFL)
 export const UI = "Alegreya Sans"; // sturdy humanist text, everything else (fonts/, OFL)
 export const VILLAGE = "Valbrume";
 
+// The maps: the same Valbrume (same layout, same monde-data.js and terre-data.js), each baked into its own folder of
+// art/ (tools/bake_*.py, THEME=hiver for the winter one). The shown one is the store key wocc.map, kept across restarts.
+const CARTES = [{ id: "valbrume", dossier: "monde" }, { id: "hiver", dossier: "monde-hiver" }];
+/** The shown map: { id, dossier }. */
+export const carte = () => CARTES.find((c) => c.id === shared("wocc.map")) ?? CARTES[0];
+/** The folder of the shown map's world images (tiles, bands, front cut-outs, minimap). */
+export const monde = () => `${ART}/${carte().dossier}`;
+/** Shows the next map (d = 1) or the previous one (d = -1). */
+export function changeCarte(d) {
+  setShared("wocc.map", CARTES[(CARTES.indexOf(carte()) + d + CARTES.length) % CARTES.length].id);
+}
+
 export const C = {
   wood: "#7a4e2a", woodLight: "#a8693a", woodPale: "#c98b52", woodDark: "#4a2e17", woodInk: "#2a1a0e",
   iron: "#3b3542", ironLight: "#6b6574", rivet: "#9a93a3",

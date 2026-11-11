@@ -91,6 +91,8 @@ const S = {
     newDistrict: "District", newDistrictTip: "Found a new district (a new space)",
     // command panel
     map: "Map of Valbrume",
+    maps: { valbrume: "Valbrume", hiver: "Valbrume in winter" },
+    mapPrevTip: "Previous map", mapNextTip: "Next map",
     selected: "Selected unit",
     noUnit: "No unit selected",
     clickHero: "Click a hero in the village",
@@ -196,6 +198,8 @@ const S = {
     newQuest: "Quête", newQuestTip: "Afficher une nouvelle quête (nouvel onglet dans ce quartier)",
     newDistrict: "Quartier", newDistrictTip: "Fonder un nouveau quartier (nouvel espace)",
     map: "Carte de Valbrume",
+    maps: { valbrume: "Valbrume", hiver: "Valbrume sous la neige" },
+    mapPrevTip: "Carte précédente", mapNextTip: "Carte suivante",
     selected: "Unité choisie",
     noUnit: "Aucune unité choisie",
     clickHero: "Clic sur un héros du village",

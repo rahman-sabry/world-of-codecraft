@@ -8,8 +8,9 @@ from scipy import ndimage
 import compose2 as C2
 import compose as C
 from engine import over, BAYER, L
+from theme import ASSETS
 
-A = 'assets/'
+A = ASSETS
 W, H = C2.W, C2.H
 load = C.load
 SHC = np.array([26, 20, 56], np.float32)

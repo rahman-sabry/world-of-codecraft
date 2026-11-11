@@ -1,6 +1,7 @@
 """Material textures + the Valbrume palette (ids are global so every asset shares them)."""
 import numpy as np
-from engine import Mat, hash3, ramp, hx
+from engine import Mat, hash3, ramp, hx, outline_of
+from theme import HIVER
 
 def tangent_coords(P, n, p):
     ax = np.argmax(np.abs(n), 1)
@@ -204,3 +205,40 @@ ROPE    = M(44, '#c9a46a', t_noise, hs=12)
 APPLE   = M(45, '#d8452e', t_noise, params={'amp': 0.5}, hs=20)
 PUMPKIN = M(46, '#e07a24', t_noise, params={'amp': 0.6}, hs=18)
 CABBAGE = M(47, '#7fb04a', t_leaf, hs=20)
+
+# ---------------------------------------------------------------- winter (THEME=hiver)
+def t_snow(P, n, p, lv):
+    return (blob3(P, 1.5, 101) - 0.5) * 0.5 + (blob3(P, 4.0, 102) - 0.5) * 0.15
+
+def snowy(tex, thr, amt=1.0):
+    """tex, with snow (SNOW's ramp, its own grain) on the faces turned up: normal z over thr, its edge broken by
+    noise; amt < 1 leaves patches of the material showing."""
+    def f(P, n, p, lv):
+        r = tex(P, n, p, lv) if tex else np.zeros(len(P), np.float32)
+        off, swap = r if isinstance(r, tuple) else (r, np.zeros(len(P), np.int64))
+        cover = (n[:, 2] + (blob3(P, 2.0, 103) - 0.5) * 0.24 > thr) & (blob3(P, 3.0, 104) < amt)
+        return np.where(cover, t_snow(P, n, p, lv), off), np.where(cover, SNOW, swap)
+    return f
+
+if HIVER:
+    SNOW = M(53, '#d6e0ec', t_snow, hs=12, light=1.14, dark=0.5, cool=224)
+    ICE_RAMP = ramp('#9cc6dc', hs=10, light=1.3, dark=0.55)
+
+def hiver(pal):
+    """Winter over the summer palette: snow on every face turned up (roofs, tops, decks, branches, rocks); the
+    pines dusted, the bushes under snow but for their undersides, the well's water frozen. Glass, metal, gold and
+    the glows stay as they are. Called on PAL once the model has added its own materials."""
+    for k, mt in pal.items():
+        if getattr(mt, 'hiver', False) or mt.emissive is not None or k in (GLASS, METAL, GOLD, SNOW):
+            continue
+        mt.hiver = True
+        if k == WATER:
+            mt.ramp = ICE_RAMP; mt.outline = outline_of(ICE_RAMP)
+        elif k == LEAF_D:
+            mt.tex = snowy(t_leaf, 0.3, 0.62)
+        elif k == LEAF_F:
+            mt.tex = snowy(t_leaf, -0.25); mt.p = {}
+        elif k in (ROOF_R, ROOF_B, ROOF_V, ROOF_T, ROOF_G, ROOF_S, 49, 50):
+            mt.tex = snowy(mt.tex, 0.38)
+        else:
+            mt.tex = snowy(mt.tex, 0.5)
