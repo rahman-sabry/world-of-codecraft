@@ -33,8 +33,40 @@ const LOG_KEY = "wocc.chronicle";
 const TICK = 100; // ms: the shared frame timer (10 fps)
 const ONLY_SELECTED = false; // if CPU is too high: frame-animate only the selected unit
 const PAUSE = (addr, n) => 15000 + (hash(`${addr}:pause:${n}`) % 25000); // an idle hero's stop at each stroll spot
-const STAY = (addr, n) => 30000 + (hash(`${addr}:poste:${n}`) % 30000); // a working hero's stay on each spot
+const STAY = (addr, n) => 10000 + (hash(`${addr}:poste:${n}`) % 10000); // a working hero's stay on each spot
 const NEAR = 300; // a working hero moves on only to a spot this close (px)
+const BLINK = 500; // ms a unit blinks in when it comes, or its ghost blinks out when it leaves
+// on/off about 3 times over BLINK (an opacity loop pushed far outside 0..1 clamps to a near-instant switch)
+const clignote = (e) => e.loop("opacity", { from: -6, to: 7, period: 166, easing: "linear" });
+// An apprentice's summon: its hero casts (`work`) CAST ms, a gold ring opens on the ground at its feet and sparkles
+// rise, and it blinks in LEAD ms in. Each stage is a frame-timer redraw that changes the native transitions' targets.
+const SUMMON = 1400;
+const LEAD = 350;
+const CAST = 1000;
+const OUVRE = 100; // the ring opens and the sparkles rise from here
+const FONDU = 700; // and fade from here
+const ADIEU = [100, 300]; // a leaving apprentice's sparkles: rise, then fade, within its BLINK ghost window
+/** How many of these thresholds (ms) dt has passed. */
+const etape = (dt, seuils) => seuils.filter((s) => dt >= s).length;
+
+/** The summon ring at a feet point: halo.svg from 0.2x to 2.5x (of 48 x 20 px), opacity 0 -> 0.9 -> 0 (stage 0, 1, 2). */
+function anneau(k, v) {
+  const w = v ? 120 : 10, h = v ? 50 : 4, tr = { duration: 900, easing: "ease-out" };
+  return image(`${ART}/halo.svg`).id(`anneau-${k}`).absolute().left(-w / 2).top(-h / 2).w(w).h(h).opacity(v === 1 ? 0.9 : 0)
+    .transition("left", tr).transition("top", tr).transition("width", tr).transition("height", tr)
+    .transition("opacity", { duration: 400, easing: "linear" });
+}
+
+/** n sparkles (etincelle.svg) over a feet point, spread over 2r px and staggered by `pas` ms: hidden at stage 0, shown
+ *  and rising `monte` px at stage 1, faded at stage 2. */
+function etincelles(id, n, v, { r, pas, monte, duree, fondu }) {
+  return Array.from({ length: n }, (_, k) => {
+    const x = Math.round(r * ((2 * k) / (n - 1) - 1)) - 5, y = -10 - (k % 2) * 6;
+    const tr = (duration) => ({ duration, delay: k * pas, easing: "ease-out" });
+    return image(`${ART}/etincelle.svg`).id(`${id}-${k}`).absolute().left(x).top(v ? y - monte : y).size(10).opacity(v === 1 ? 1 : 0)
+      .transition("top", tr(duree)).transition("opacity", tr(fondu));
+  });
+}
 
 // Where each class works (demo heroes only: the others work where they stand).
 const WORK = { mage: "tour", artificier: "atelier", guerrier: "caserne", pretre: "temple", rodeur: "grange", voleur: "etal1" };
@@ -111,6 +143,10 @@ export default class Place {
     this.postes = new Map(); // address -> { n, goal, at }: a working hero's spot (arrival time, moves so far)
     this.timer = null;
     this.sig = "";
+    this.vus = null; // key (address, or hero:subagent id) -> its frame and feet point on the last live render; null = next is a first one
+    this.nes = new Map(); // key -> when it came (blinking in)
+    this.fantomes = new Map(); // key -> its last frame and feet point, and when it left (blinking out)
+    this.invocations = new Map(); // apprentice key -> its summon: { t0, x, y (its feet point), hero }
     this.act = new Activites(); // what each hero does while working (Claude Code hook)
     this.amb = new Ambiance(route); // village life: walkers, animals, treasury, fair (only when animated)
     this.live = true; // the « Animations » toggle (shared wocc.anim): off = still images, no walk, no scenes
@@ -252,7 +288,7 @@ export default class Place {
       const goal = goals.get(addr);
       let m = this.mob.get(addr);
       if (!m) { m = { x: goal[0], y: goal[1], goal, group: u.group, legs: [] }; this.mob.set(addr, m); }
-      else if (m.goal.join() !== goal.join() && !this.live) { m.x = goal[0]; m.y = goal[1]; m.goal = goal; m.group = u.group; m.legs = []; }
+      else if (m.goal.join() !== goal.join() && !this.live) { m.x = goal[0]; m.y = goal[1]; m.goal = goal; m.legs = []; }
       else if (m.goal.join() !== goal.join()) {
         const here = this.pos(m, t);
         const speed = HEROES[`${RACE_EN[u.h.race]}-${CLS_EN[u.h.cls]}`]?.speed ?? 42;
@@ -264,8 +300,9 @@ export default class Place {
           m.legs.push({ a: pts[i - 1], b: pts[i], t0, t1 });
           t0 = t1;
         }
-        m.x = goal[0]; m.y = goal[1]; m.goal = goal; m.group = u.group;
+        m.x = goal[0]; m.y = goal[1]; m.goal = goal;
       }
+      m.group = u.group; // also when it keeps its spot (a stroller turning working where it stands)
       if (m.legs.length && t >= m.legs[m.legs.length - 1].t1 + TRAIL) m.legs = []; // kept while its apprentices still walk them
       const p = this.pos(m, t);
       out.push({ a: u.a, h: u.h, x: p.x, y: p.y, leg: p.leg, key: `${RACE_EN[u.h.race]}-${CLS_EN[u.h.cls]}` });
@@ -281,6 +318,7 @@ export default class Place {
     const H = HEROES[u.key];
     let name;
     if (u.leg) name = walkAnim(u.leg.b[0] - u.leg.a[0], u.leg.b[1] - u.leg.a[1]);
+    else if ([...this.invocations.values()].some((s) => s.hero === u.a.address && Date.now() - s.t0 < CAST)) name = "work"; // summoning
     else name = (u.a.status === "working" && this.act.anim(u.a.address)) || (u.a.status === "working" ? "work" : "idle");
     const info = H?.anims?.[name];
     if (info) return { name, info, frames: true };
@@ -314,8 +352,10 @@ export default class Place {
       body = div().absolute().left(-ax).top(-ay).w(w).h(hh)
         .children(Array.from({ length: an.info.n }, (_, i) =>
           image(`${dir}/${String(i).padStart(2, "0")}${suffix}.png`).absolute().left(0).top(0).w(w).h(hh).opacity(i === k ? 1 : 0)));
+      u.vu = { src: `${dir}/${String(k).padStart(2, "0")}${suffix}.png`, w, h: hh, ax, ay };
     } else {
       // no frames yet: the standing sprite, breathing (1 px) or bobbing while it walks
+      u.vu = { src: `${ART}/heros/${u.key}/stand${suffix}.png`, w, h: hh, ax, ay };
       body = div().absolute().left(-ax).top(-ay).w(w).h(hh)
         .child(image(`${ART}/heros/${u.key}/stand${suffix}.png`).absolute().left(0).top(0).w(w).h(hh)
           .when(this.live, (e) => e.loop("top", u.leg ? { from: 0, to: -2, period: 380 } : { from: 0, to: -1, period: 2600 + (hash(a.address) % 900) })));
@@ -371,7 +411,72 @@ export default class Place {
       const k = u.fps ? Math.floor(((t + u.ph) / 1000) * u.fps) % u.n : 0;
       s += `${u.addr}:${u.ph}:${k}:${p.leg ? p.leg.t0 : "-"};`;
     }
+    // a blink in or out that ends: redraw once to drop it
+    for (const [k, t0] of this.nes) s += `${k}:${t - t0 < BLINK};`;
+    for (const [k, g] of this.fantomes) s += `${k}:${t - g.t0 < BLINK}:${etape(t - g.t0, ADIEU)};`;
+    for (const [k, v] of this.invocations) s += `${k}:${etape(t - v.t0, [OUVRE, LEAD, FONDU, CAST, SUMMON])};`;
     return s;
+  }
+
+  // ---------------------------------------------------------------- blinking in and out
+
+  /** Who came or left since the last live render: a hero, a warrior or an apprentice that comes blinks in (nes), one
+   *  that leaves leaves a ghost at its last frame and feet point (fantomes), each for BLINK ms. An apprentice blinks
+   *  in only when its hero's activity file was already read (not the first read after a reload). on = false
+   *  (animations off, hidden, demo): nothing blinks, and the next render is a first one again (no blink for those
+   *  present then). */
+  passages(units, apps, on, t) {
+    if (!on) { this.vus = null; this.nes.clear(); this.fantomes.clear(); this.invocations.clear(); return; }
+    const now = new Map([...units.map((u) => [u.a.address, { ...u.vu, x: u.x, y: u.y }]), ...apps.map((ap) => [ap.key, { ...ap.vu, hero: ap.addr }])]);
+    if (this.vus) {
+      for (const [k, v] of now) if (!this.vus.has(k) && (!v.hero || this.lus.has(v.hero))) {
+        if (v.hero) this.invocations.set(k, { t0: t, x: v.x, y: v.y, hero: v.hero }); // an apprentice is summoned
+        this.nes.set(k, v.hero ? t + LEAD : t); // when its blink starts
+      }
+      for (const [k, v] of this.vus) if (!now.has(k)) this.fantomes.set(k, { ...v, t0: t });
+    }
+    for (const k of now.keys()) this.fantomes.delete(k);
+    for (const [k, t0] of this.nes) if (t - t0 >= BLINK || !now.has(k)) this.nes.delete(k);
+    for (const [k, g] of this.fantomes) if (t - g.t0 >= BLINK) this.fantomes.delete(k);
+    for (const [k, v] of this.invocations) if (t - v.t0 >= SUMMON) this.invocations.delete(k);
+    this.vus = now;
+    this.lus = new Set(units.filter((u) => this.act.files.has(u.a.address)).map((u) => u.a.address));
+  }
+
+  /** A unit's or an apprentice's element in a layer that blinks while it comes (always there: a stable tree); a summoned
+   *  apprentice is hidden until its blink starts. */
+  blink(k, el, t) {
+    const t0 = this.nes.get(k);
+    return div().absolute().left(0).top(0).w(0).h(0).when(t0 > t, (e) => e.opacity(0)).when(t0 <= t, clignote).child(el);
+  }
+
+  /** The glows at the feet of those blinking in (following their walk), the ghosts blinking out (an apprentice's with
+   *  sparkles rising) and the summons' rings (on the ground) and sparkles: [{ z, el, box }]. */
+  traces(units, apps, t) {
+    const out = [];
+    const glow = (k, x, y, leg) => {
+      const dur = leg ? Math.max(16, leg.t1 - t) : 16;
+      return { z: y + 2.5, el: div().id(`lueur-${k}`).absolute().left(Math.round(leg ? leg.b[0] : x)).top(Math.round(leg ? leg.b[1] : y)).w(0).h(0)
+        .transition("left", { duration: dur, easing: "linear" }).transition("top", { duration: dur, easing: "linear" })
+        .child(image(`${ART}/halo.svg`).absolute().left(-34).top(-14).w(68).h(28).opacity(0.6)) };
+    };
+    for (const u of units) if (this.nes.has(u.a.address)) out.push(glow(u.a.address, u.x, u.y, u.leg));
+    for (const ap of apps) if (this.nes.get(ap.key) <= t) out.push(glow(ap.key, ap.vu.x, ap.vu.y, ap.vu.leg));
+    for (const [k, g] of this.fantomes) {
+      out.push({ z: g.y + 3, box: { x: g.x - g.ax, y: g.y - g.ay, w: g.w, h: g.h, fy: g.y },
+        el: clignote(div().id(`fantome-${k}`).absolute().left(Math.round(g.x)).top(Math.round(g.y)).w(0).h(0))
+          .child(image(g.src).absolute().left(-g.ax).top(-g.ay).w(g.w).h(g.h)) });
+      if (g.hero) out.push({ z: g.y + 3.5, el: div().id(`adieu-${k}`).absolute().left(Math.round(g.x)).top(Math.round(g.y)).w(0).h(0)
+        .children(etincelles(`adieu-${k}`, 4, etape(t - g.t0, ADIEU), { r: 18, pas: 25, monte: 40, duree: 300, fondu: 120 })) });
+    }
+    for (const [k, v] of this.invocations) {
+      const e = etape(t - v.t0, [OUVRE, FONDU]);
+      const at = (id) => div().id(id).absolute().left(Math.round(v.x)).top(Math.round(v.y)).w(0).h(0);
+      out.push({ z: v.y + 2.5, el: at(`invocation-${k}`).child(anneau(k, e)) });
+      out.push({ z: v.y + 3.5, el: at(`invocation-etincelles-${k}`)
+        .children(etincelles(`etincelle-${k}`, 5, e, { r: 36, pas: 80, monte: 50, duree: 700, fondu: 250 })) });
+    }
+    return out;
   }
 
   hidden() {
@@ -574,24 +679,29 @@ export default class Place {
       return u.a.guard ? [] : this.act.apprentis(u, m, (tr, at) => this.pos(tr, at), m.x > 2700 ? -1 : 1, nightHeroes, t, !hidden && visible(u));
     }) : [];
     for (const ap of apps) if (ap.anim.fps || ap.anim.trail.legs.length) this.anims.push({ addr: ap.addr, ...ap.anim });
-    this.tick(cx, !hidden && this.anims.length > 0);
-    this.sig = this.frameSig(t);
 
     // depth: units by feet y (+3, like the compositor), front cut-outs above the units behind them
-    const things = units.map((u) => ({ z: u.y + 3, el: this.unit(u, u === sel, nightHeroes, t, u.animate) }));
+    const els = units.map((u) => this.unit(u, u === sel, nightHeroes, t, u.animate));
+    this.passages(units, apps, this.live && !hidden && !props()?.demo, t);
+    // the frame timer also runs while someone blinks in or out or is summoned, and redraws at each stage and its end
+    this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0));
+    this.sig = this.frameSig(t);
+    const things = units.map((u, i) => ({ z: u.y + 3, el: this.blink(u.a.address, els[i], t) }));
     for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); }
     const working = list.filter((a) => a.status === "working").length;
     this.amb.watch(cx, this.live && !hidden, { phase: sk.phase, wake: this.wake });
     const life = this.live ? this.amb.things(nightHeroes, sk.phase, working, units) : [];
     things.push(...life);
-    things.push(...apps);
+    things.push(...apps.map((ap) => ({ ...ap, el: this.blink(ap.key, ap.el, t) })));
+    const traces = this.traces(units, apps, t);
+    things.push(...traces);
     for (const fr of FRONTS) {
       const over = units.some((u) => {
         const an = this.anim(u);
         const x0 = u.x - an.info.ax, y0 = u.y - an.info.ay;
         return u.y + 3 < fr.z && x0 < fr.x + fr.w && x0 + an.info.w > fr.x && y0 < fr.y + fr.h && u.y > fr.y;
       });
-      const walkerBehind = [...life, ...apps].some((th) => th.box && behind(th.box).includes(fr));
+      const walkerBehind = [...life, ...apps, ...traces].some((th) => th.box && behind(th.box).includes(fr));
       if (over || walkerBehind) things.push({ z: fr.z, el: this.front(fr, nightK) });
     }
     things.sort((p, q) => p.z - q.z);

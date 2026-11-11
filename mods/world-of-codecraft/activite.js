@@ -11,7 +11,7 @@
 //                                failed = "Tests failing" (the result stays 5 s, whatever the scene)
 //   travail  bash and the rest   the usual `work` loop
 // plus, whatever the scene: a wax seal and "Sealed!" on a git commit, a carrier pigeon flying off east on a
-// git push; and, whatever the status, apprentices (one half-size hero per running subagent) trailing the hero.
+// git push; and, whatever the status, apprentices (one full-size hero per running subagent) trailing the hero.
 // Lot 2: six creatures in the draw (imp, wolf, goblin, boar, rust golem, spectre); a task with 3+ failed
 // tools brings the forest troll, a boss of 8 blows.
 // Anti-zapping: a scene changes only when the new one has been asked for 8 s and the current one has
@@ -44,31 +44,32 @@ export const DISTRICT = { atelier: ["golem", "gobelin"], grange: ["loup", "sangl
 const HOME = { artificier: "atelier", rodeur: "grange", pretre: "temple", voleur: "etal1" };
 const clsOf = (a) => (a.demoHero ? { mage: "mage", artificer: "artificier", ranger: "rodeur", priest: "pretre", rogue: "voleur", warrior: "guerrier" }[a.demoHero.split("-")[1]] : heroOf(a.address, a.program).cls);
 const RESULT = 5000; // a test result stays on screen this long
-const STUCK = 20000; // a fight with no blow for this long (delegating to subagents) no longer holds the hero
+const STUCK = 10000; // a fight with no blow for this long (delegating to subagents) no longer holds the hero
 const SCENE_OF = { pense: "pense", eclaire: "eclaire", web: "eclaire", code: "combat", commande: "combat", medite: "medite", test: "test" };
 const SUB_TTL = 30 * 60_000; // an activity file silent this long has no running subagents (as the hook drops them)
 const subsOf = (s) => (s && Date.now() - (s.t ?? 0) < SUB_TTL ? s.subs ?? 0 : 0);
 const KINDS = Object.keys(HEROES); // any race x class, for the apprentices
 // Apprentice slots: [dx (positive = away from the creature's side), dy, lag (ms) behind the hero in single file]
-const SLOTS = [[50, 12, 900], [-50, -20, 1800], [100, -6, 2700], [-100, -30, 3600]];
+const SLOTS = [[70, 12, 900], [-70, -20, 1800], [140, -6, 2700], [-140, -30, 3600]];
 const STEP = 40; // px/s an apprentice walks onto the hero's path and back out to its slot
-export const TRAIL = 3600 + (110 / STEP) * 1000; // the last apprentice ends its walk this long after the hero
+export const TRAIL = 3600 + (150 / STEP) * 1000; // the last apprentice ends its walk this long after the hero
+const GAP = 45; // px kept between apprentices
 const WORKS = new Set(["code", "commande", "test"]); // a subagent's acts shown with `work`
 const READS = new Set(["eclaire", "web"]); // and with the scroll over the head
 
 /** Where slot k stands by a hero standing at p: its offset, else mirrored, else pulled in (mirrored too), the first
- *  on walkable ground at least 30 px from the apprentices placed before it; else the first such point around the
+ *  on walkable ground at least GAP px from the apprentices placed before it; else the first such point around the
  *  hero; else a quarter of its offset. */
 function spot(p, k, side, taken) {
   const [dx0, dy] = SLOTS[k], dx = -side * dx0;
   for (const f of [1, 0.75, 0.5, 0.35]) for (const ox of [dx * f, -dx * f]) {
     const q = [p[0] + ox, p[1] + dy * Math.max(f, 0.5)];
-    if (walkable(q) && !taken.some((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) < 30)) return q;
+    if (walkable(q) && !taken.some((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) < GAP)) return q;
   }
   // a cramped spot (a shore, the bridge): the first free ground around the hero
-  for (const r of [30, 45, 60]) for (let i = 0; i < 12; i++) {
+  for (const r of [45, 65, 85]) for (let i = 0; i < 12; i++) {
     const q = [p[0] + r * Math.cos((i * Math.PI) / 6), p[1] + r * Math.sin((i * Math.PI) / 6)];
-    if (walkable(q) && !taken.some((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) < 30)) return q;
+    if (walkable(q) && !taken.some((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) < GAP)) return q;
   }
   return [p[0] + dx / 4, p[1] + dy / 4];
 }
@@ -300,13 +301,14 @@ export class Activites {
       .filter((v) => Date.now() - v.t < SUB_TTL).sort((p, q) => p.t0 - q.t0);
   }
 
-  /** Apprentices: one hero of any race and class at half size per running subagent (up to 4), each tied to its
+  /** Apprentices: one full-size hero of any race and class per running subagent (up to 4), each tied to its
    *  subagent id (its look, and its slot while it runs). Standing by the hero in its slot (on walkable ground), it
    *  plays what its subagent does: `work` while it edits, runs commands or tests, `idle` otherwise, with a small
    *  scroll over its head while it reads or searches. On the hero's walks they step onto its path, follow it in
    *  single file (walk frames by direction) and step out to their slots at the end. m = the hero's mob entry,
    *  pos(trail, t) = Place.pos, side = the creature's side (1 = right), animate = its frames run (else frame 0).
-   *  Depth-sorted world elements: [{ z, el, box, addr, anim }], anim = its frame timer entry (fps, n, ph, trail). */
+   *  Depth-sorted world elements: [{ z, el, box, addr, key, vu, anim }], anim = its frame timer entry (fps, n, ph,
+   *  trail), key = hero:subagent id, vu = its frame, feet point and leg now. */
   apprentis(u, m, pos, side, night, t, animate) {
     const addr = u.a.address;
     const subs = this.subagents(this.file(addr) ?? u.a.demoAct);
@@ -333,8 +335,7 @@ export class Activites {
       if (!A) return null;
       const ph = hash(x.id) % 997;
       const f = animate ? Math.floor(((t + ph) / 1000) * A.fps) % A.n : 0;
-      // half size: the art is 2x, so one art pixel lands on one screen pixel and stays sharp
-      const w = A.w / 2, h = A.h / 2, ax = A.ax / 2, ay = A.ay / 2;
+      const { w, h, ax, ay } = A; // full hero size
       const dir = `${ART}/heros/${key}/${name}`;
       const [gx, gy] = p.leg ? p.leg.b : [p.x, p.y];
       // the feet point glides to the end of its leg (transition always declared, as the heroes')
@@ -344,8 +345,10 @@ export class Activites {
         .child(div().absolute().left(-ax).top(-ay).w(w).h(h)
           .children(Array.from({ length: A.n }, (_, i) =>
             image(`${dir}/${String(i).padStart(2, "0")}${sfx}.png`).absolute().left(0).top(0).w(w).h(h).opacity(i === f ? 1 : 0))))
-        .when(!leg && READS.has(x.act), (e) => e.child(image(`${ART}/ic-parchemin.svg`).absolute().left(-5).top(-ay - 13).size(10)));
-      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, anim: { fps: animate ? A.fps : 0, n: A.n, ph, trail: tr } };
+        .when(!leg && READS.has(x.act), (e) => e.child(image(`${ART}/ic-parchemin.svg`).absolute().left(-9).top(-ay - 22).size(18)));
+      // vu: what it shows now (its ghost when it leaves; Place.passages)
+      const vu = { src: `${dir}/${String(f).padStart(2, "0")}${sfx}.png`, w, h, ax, ay, x: p.x, y: p.y, leg: p.leg };
+      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, key: `${addr}:${x.id}`, vu, anim: { fps: animate ? A.fps : 0, n: A.n, ph, trail: tr } };
     }).filter(Boolean);
   }
 

@@ -68,7 +68,7 @@ the clock. The art is original: it imitates no existing game.
 - **States:**
   - **working**: the hero plays its `work` animation where it stands when it turns working (mid-walk: at its
     point on the road), with no walk first; when another hero holds or heads for that exact point it is nudged
-    to the nearest free walkable point. Every 30 to 60 s (staggered per hero and per stop) it walks to another
+    to the nearest free walkable point. Every 10 to 20 s (staggered per hero and per stop) it walks to another
     free walkable point within 300 px (any `FLANE` or `SPOTS` point, or a `ROAD` point), never one another hero
     is heading for. It waits for a calm moment: not during meditation or tests, not while a creature is hurt
     but not yet felled (the move comes after the puff), and not while a hit, a test result, a seal or the
@@ -83,6 +83,22 @@ the clock. The art is original: it imitates no existing game.
 - **Movement:** when its spot changes, a hero walks there. Close spots are reached in
   a straight line. Farther ones follow the road, with a 4-direction walk animation.
   Each road leg is a native `left`/`top` transition.
+- **Blink in / blink out:** a hero, a warrior or an apprentice (per subagent id) that comes flickers on and off
+  about 3 times over 500 ms, then stays solid, with the halo glowing at its feet meanwhile (walking or working,
+  in place). One that leaves (agent gone, shell closed, subagent finished or expired) leaves a ghost at its last
+  frame and feet point that flickers out over 500 ms; the ghost is not a unit (no click, selection, camera,
+  chronicle, minimap dot, agent order or panel bridge). Nothing blinks on a village's first render (a reload, a
+  layout switch, a village block shown again, animations turned back on), nor for apprentices that appear with
+  their hero's first activity read; an apprentice changing slot or pose doesn't blink. With animations off or in
+  the demo, units appear and disappear at once. `Place.passages` compares each render's units and apprentices
+  (keys: address, `hero:subagent id`) with the last live one's.
+- **Summon and send-off (apprentices only):** an apprentice that comes is summoned over 1.4 s: its hero plays its
+  `work` frames for 1 s (not while it walks: its walk wins), a gold ring (`halo.svg`) opens on the ground at the
+  apprentice's feet from 10×4 to 120×50 px and fades (under the units there), and 5 sparkles (`etincelle.svg`)
+  rise from it and fade, staggered by 80 ms; the apprentice stays hidden 350 ms, then blinks in (with its glow)
+  while the ring fades under it. One that leaves gets 4 sparkles rising from its ghost during the 500 ms blink
+  out; no cast, no ring. Heroes and warriors keep the plain blink. Same suppression as the blink (first render,
+  animations off, hidden, demo).
 - **Selection:** the selected unit is the focused agent, or the focused pane's shell when it is a warrior on
   guard (`selectedAddress` in kit.js; Herdr's focused agent never goes empty). It gets a green ring and a
   health bar, and the camera glides to it (and follows it while it walks to work, not while it strolls).
@@ -138,20 +154,20 @@ the clock. The art is original: it imitates no existing game.
     5 s: knocked over + "Tests passed!", or "Tests failing";
   - compacting: sits cross-legged (`rest`), sparks orbit, a crystal pulses;
   - git commit: a seal and "Sealed!"; git push: a carrier pigeon flies off east;
-  - subagents: apprentices, one hero at half size per running subagent (up to 4, no more sprites past that),
+  - subagents: apprentices, one full-size hero per running subagent (up to 4, no more sprites past that),
     whatever the hero's status (not shells). Each is tied to its subagent id (oldest first): its race and class
     (any of the 30, by hash of the hero and the id, independent of the hero) and its slot stay while it runs.
-    Half size maps one art pixel to one screen pixel, so they stay sharp. They animate with the heroes' stacked
+    They animate with the heroes' stacked
     frames on the same frame timer, showing what their own subagent does (`subIds[id].act`): `work` while it
     edits, runs commands or tests; `idle` while it thinks, with a small scroll over the head while it reads,
-    searches or browses. Slots: 50 and 100 px to each side, alternating, 6 to 30 px in front or behind (the first
+    searches or browses. Slots: 70 and 140 px to each side, alternating, 6 to 30 px in front or behind (the first
     on the side away from the creature), each on walkable ground (`walkable` in lieux.js: the road, the bridge
     deck, or near a stroll or work spot outside the building boxes, never the river or the lake, measured on the
-    bake) at least 30 px from the others: else mirrored, pulled in, or the first free point around the hero. On
+    bake) at least 45 px from the others: else mirrored, pulled in, or the first free point around the hero. On
     the hero's walks they step onto its path, follow it in single file 0.9 to 3.6 s late (walk frames by
     direction) and step out to their slots at the end. Night frames at night. Depth by feet y with the heroes,
     behind front cut-outs like the walkers; not clickable, no chronicle line. When a subagent ends its
-    apprentice disappears. The activity file is read while the hero works, once when it is first seen, and
+    apprentice blinks out (and a new one blinks in). The activity file is read while the hero works, once when it is first seen, and
     while it has subagents (and an event in the last 30 min), so they stay after the main turn ends.
   - **Anti-zapping:** a scene changes only when asked for 8 s and the current one is 15 s
     old (20 s / 40 s to or from the forest edge); meditation, tests and the end switch at once.
@@ -246,7 +262,8 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   - data: `spaces()`, `agents()`, `panes()`, `focused()` and the store;
   - commands: `agent.focus`, `agent.next`, `pane.focus`, `space.select`, `tab.select`,
     `tab.new`, `space.new`, `pane.split`, `pane.zoom` and `pane.close`.
-- **Timers:** one shared 100 ms timer runs only while a visible unit animates or walks,
+- **Timers:** one shared 100 ms timer runs only while a visible unit animates or walks, or someone blinks in or out
+  or is summoned,
   and stops when its village block (`place` or `place-immersion`) is hidden. The clock ticks every 30 s; the sky and quotas
   update every 60 s.
 - **Files read and programs run:** the activity files in `~/.local/state/world-of-codecraft/`
@@ -284,6 +301,16 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   changes made after the transition exists, so adding it with the new target jumps there.
 - **Two-frame swaps need both loops:** the top frame `opacity -6 → 7`, the one below
   `7 → -6`, same period, linear, created on the same render (clamped, almost instant).
+- **Bounded blinks:** a `.loop` runs forever, so the blink loop (opacity `-6 → 7`, 166 ms) is declared only during
+  its 500 ms window, on a zero-size layer every unit and apprentice always has (a stable tree), and the ghost is
+  drawn only then. The frame timer's signature includes each window's end, so it redraws once to drop it, then
+  stops when nothing else animates.
+- **Summon stages:** the ring and the sparkles use no `.loop` (it swings there and back, and its phase is not the
+  summon's). They are drawn with ids at a starting size and opacity, and the frame timer's signature includes
+  each summon's stage (100 ms: open and rise, 350: blink, 700: fade, 1000: cast ends, 1400: gone; a ghost's
+  sparkles: 100 and 300 ms), so each stage redraws once with new targets that native `transition`s on
+  width/height/left/top/opacity carry (the sparkles' `delay` staggers them). Centred because left/top move with
+  width/height under the same easing.
 - **Walkers' depth** comes from where they really are on their leg; the 1 s ambient timer
   redraws when one passes behind or out from behind a front cut-out.
 - **Many hot reloads** (dozens) can exhaust the mod's JS heap ("out of memory", then
