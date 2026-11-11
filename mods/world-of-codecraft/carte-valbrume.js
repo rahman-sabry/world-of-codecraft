@@ -123,7 +123,7 @@ export const VALBRUME = {
   MOINEAUX: [180, 150],
 
   // the day's boss's lairs (activite.js antre; one a day, a hash of the date): the farmland west of the windmill and
-  // the lane east of the lake, on the road's open ground, with room for the boss's party on both its sides (300 px to
-  // the world's ends)
-  ANTRE: { ouest: { x: [-680, -330], y: [326, 364] }, est: { x: [3560, 3700], y: [302, 334] } },
+  // the lane east of the lake, on the road's open ground, where its party has room on both its sides (ring 0 and ring 1
+  // walkable at every species' size)
+  ANTRE: { ouest: { x: [-750, -300], y: [326, 364] }, est: { x: [3490, 3700], y: [302, 334] } },
 };

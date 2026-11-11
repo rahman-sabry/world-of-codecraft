@@ -163,7 +163,9 @@ the clock. The art is original: it imitates no existing game.
     the hero (red flash, "Ouch!"). A mage's creature stands 70 px off (the troll 115); other classes nearer or
     further by their class gap minus the mage's (`ECART`, see the raid), held back only where the near edge of the
     creature's `pret` box would come within 10 px of the hero's feet (`proche` in activite.js; never further than a
-    mage's for that): sprites may overlap, swings and lunges included, as by the raid boss;
+    mage's for that): sprites may overlap, swings and lunges included, as by the raid boss. The hero and its
+    apprentices working face the creature (or the dummy) as a raider faces the boss (`cible`, `travail`): on their left
+    past `BASCULE`;
   - running tests: a training dummy beside the hero, struck while they run; the result stays
     5 s: knocked over + "Tests passed!", or "Tests failing";
   - compacting: sits cross-legged (`rest`), sparks orbit, a crystal pulses;
@@ -193,9 +195,9 @@ the clock. The art is original: it imitates no existing game.
     parallel hit faster.
     **The boss in its lair:** the day's boss lives in the world all day (`Activites.arene`, made on first use each
     day, `boss` in activite.js), in one of two outskirts picked by a hash of the date (`antre`): the map's `ANTRE`
-    (`{ ouest, est: { x: [x0, x1], y: [y0, y1] } }`; Valbrume: the farmland west of the windmill, x -680 to -330, y
-    326 to 364, and the lane east of the lake, x 3560 to 3700, y 302 to 334, 300 px from the world's ends so a party
-    fits on both sides), else the world's outer 800 px at that end (150 px in) between 78% and 92% of its height. It
+    (`{ ouest, est: { x: [x0, x1], y: [y0, y1] } }`; Valbrume: the farmland west of the windmill, x -750 to -300, y
+    326 to 364, and the lane east of the lake, x 3490 to 3700, y 302 to 334: where, for every species, ring 0 and ring 1
+    are walkable on both sides of it), else the world's outer 800 px at that end (150 px in) between 78% and 92% of its height. It
     never comes into the village. Idle, it wanders its lair (`errance`, pure: from the day and the time only, so every
     village and every reload draws it at the same spot): each 50 s from one waypoint to the next at 12 px/s, then
     standing there; a waypoint is the first of 24 points hashed from the day and its index that is walkable with room
@@ -208,9 +210,10 @@ the clock. The art is original: it imitates no existing game.
     last 30 min), whatever its status, and the day's boss still stands, it is in the raid and fights the boss instead
     of its scene (`mene`). The first raider holds the boss where it is (its wander pauses). Every raider, the first
     included, teleports with its apprentices to its ring slot round the boss (place.js `sauter`, the portal below) and
-    remembers the goal it left (`retours`). While a raider is left, the boss stomps every 30 to 60 s (`pietine`): 60 to
-    120 px (the ring's flattening applied to its depth) to a walkable point of its lair with room on both sides, at 40
-    px/s; the whole party takes its slots afresh round the new spot (`replace`) and walks there, a few steps, no
+    remembers the goal it left (`retours`). While a raider is left, the boss stomps every 30 to 60 s (`pietine`): 120 to
+    220 px on screen (the ring's flattening applied to its depth) to a walkable point of its lair with room on both
+    sides; when 24 tries find none (the east lane is 210 px wide: about 4% of its stomps) the farthest such point of 24
+    others within 220 px, at least 60 px off; at 40 px/s; the whole party takes its slots afresh round the new spot (`replace`) and walks there, a few steps, no
     teleport. A hero whose subagents all end leaves the raid and teleports back to the goal it left. When none is left
     the boss walks back onto its wander path, to where its wander will be when it gets there, then wanders on. There
     is no flight. The raid lives in memory: a reload holds the boss afresh where it wanders.
@@ -226,10 +229,17 @@ the clock. The art is original: it imitates no existing game.
     members first (`prend`; else the nearest free walkable point within 400 px), an apprentice its hero's side but
     anywhere round the boss (`coin`). Members already placed never move when someone joins; a stomp re-runs the
     assignment in range order (melee first), each keeping its slot when still free. The hero plays `work` there,
-    facing the boss: hero work frames face right and Herdr cannot flip an image, so a member whose boss stands on its
-    left plays the mirrored set `work-g` (activite.js `face`, read by place.js `anim`). An apprentice walks to its spot
-    from its hero's file (with its hero's walk, else straight, 40 px/s), plays `work` facing the boss whatever its
-    subagent does, and walks back into the file when the raid ends; with no free slot it stays in the file.
+    facing the boss. Herdr cannot flip an image, and the `work` frames do not all face the same way: every mage and
+    priest casts to the right, the human, orc and dwarf rangers shoot right and the dwarf and elf warriors strike on the
+    right, but the elf and undead rangers draw on the left and the human, orc and undead warriors bring their axes down
+    on the left; artificers (an anvil in front) and rogues (a spin both ways) face the viewer and count as right.
+    Checked by eye on every frame and kept as `face` (1 / -1) per look in heros-data.js (`FACE_LEFT` in
+    sync_heroes.py). A fighter plays `work` when its frames face its foe, else the mirrored `work-g` (`travail` in
+    activite.js, from the foe's side, `face`, and the look's `face`; place.js `anim`): while it fights and stands, at
+    its portal, summoning, and once arrived after a stomp's walk (walking, its walk frames by direction). An apprentice
+    walks to its spot from its hero's file (with its hero's walk, else straight, 40 px/s), plays `work` facing the boss
+    whatever its subagent does (in its hero's file too, facing the hero's foe), and walks back into the file when the
+    raid ends; with no free slot it stays in the file. Not fighting, a hero plays its own `work` frames.
     **The teleport** (place.js `sauter`, activite.js `portail`, `porte`; 1.4 s): a portal opens where the hero stands
     (from 100 ms), it and its apprentices (gathered on its file slots by it) fade into it from 400 ms (300 ms), a
     second portal opens at its goal from 400 ms, they show there from 700 ms and fade in, the first portal closes from
@@ -267,8 +277,8 @@ the clock. The art is original: it imitates no existing game.
     minion in turn (`touche` and a flash, 900 ms); 4 fell it (the felled puff, 1.2 s) and a fresh one stands in its
     place. A minion whose subagent ends flees (turns, walks 150 px off, fades, 1.2 s), and a newer
     subagent waiting past the 3 takes the free place; when all end, all flee. The hero plays `work` and stays where it
-    stands, its scene waits; it faces its minions as a raider faces the boss (`work-g` when `rangs` puts them on its
-    left), and so do its apprentices playing `work`. No HP, no trophies, no streak, no chronicle line, nothing stored; at midnight they go and
+    stands, its scene waits; it faces its minions as a raider faces the boss (`travail`, from the side `rangs` puts
+    them on), and so do its apprentices. No HP, no trophies, no streak, no chronicle line, nothing stored; at midnight they go and
     the new day's boss comes. None in the demo, or for shells.
     **Champion's crown:** the hero whose subagent dealt the last blow wears a small gold crown (art/couronne.svg,
     13 × 9) over its head until midnight: in the village (a child of its unit, so it walks and sorts with it; above its
@@ -591,7 +601,7 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   `bake_map.py` (with `mapbake/`) bakes a map from its layout in `maps/`.
 - **Art** (`art/`):
   - heroes: 30 race×class sprites with `idle`, `rest`, `work` and 4-way walk frames,
-    plus night-graded copies; `walk_dr` / `walk_ul` and `work-g` (fighting towards the left) are exact horizontal
+    plus night-graded copies; `walk_dr` / `walk_ul` and `work-g` (`work` turned the other way) are exact horizontal
     mirrors made by `sync_heroes.py` (`--mirrors` remakes them from the frames already in `art/heros/`, no source);
   - the baked world: day and night tiles, front cut-outs for depth, the minimap, per look (`monde/`,
     `monde-hiver/`); the snow wheels `neige-*.svg`;

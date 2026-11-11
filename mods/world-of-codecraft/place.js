@@ -19,7 +19,7 @@ import { HEROES } from "./heros-data.js";
 import { lieux, market } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
-import { Activites, TRAIL, VOYAGE, PORTAIL, portail } from "./activite.js";
+import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail } from "./activite.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
 import { commandPanel, MINI_INSET, watchStat, bossDot } from "./commande.js";
@@ -366,7 +366,7 @@ export default class Place {
     else if ([...this.invocations.values()].some((s) => s.hero === u.a.address && Date.now() - s.t0 < CAST)) name = "work"; // summoning
     else if (this.act.melee(u.a.address)) name = "work"; // fighting the raid boss or its minions
     else name = (u.a.status === "working" && this.act.anim(u.a.address)) || (u.a.status === "working" ? "work" : "idle");
-    if (name === "work" && this.act.face(u) < 0) name = "work-g"; // facing the raid boss or its minions on its left
+    if (name === "work") name = travail(u.key, this.act.face(u)); // facing the foe it fights (the raid boss, minions, a creature)
     const info = H?.anims?.[name];
     if (info) return { name, info, frames: true };
     return { name: "stand", info: H?.stand ?? { w: 50, h: 85, ax: 25, ay: 83 }, frames: false };

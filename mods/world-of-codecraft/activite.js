@@ -76,7 +76,7 @@ const ERRE = 12; // px/s the day's boss wanders its lair at (errance)
 const PAS = 50000; // ms per wander waypoint: it walks to the next, then stands there
 const PIETINE = 40; // px/s its stomps in a raid and its walk back onto its wander path
 const STOMP = [30000, 60000]; // ms between two stomps while a raid holds it
-const SAUT = [60, 120]; // px a stomp takes it
+const SAUT = [120, 220]; // px a stomp takes it (fewer when its lair has no such room: pietine)
 export const VOYAGE = [400, 700]; // a hero's teleport's stages (portail): fade into the portal, show at the far end
 export const PORTAIL = 1400; // and its end, both portals closed
 const SBIRES = 3; // minions at most per hero
@@ -167,6 +167,10 @@ export function errance(day, t) {
 
 /** The wait before a raided boss's next stomp (STOMP). */
 const attente = () => STOMP[0] + Math.random() * (STOMP[1] - STOMP[0]);
+
+/** The work frames of look key (a hero's or an apprentice's, "orc-warrior") that face side (1 right, -1 left;
+ *  0 = no foe: its own `work`): `work-g` when its `work` frames face the other way (heros-data.js face). */
+export const travail = (key, side) => (side && side * (HEROES[key]?.face ?? 1) < 0 ? "work-g" : "work");
 
 /** Off raid boss A's body for feet at q: corps px off its x in front of its first hero's line, its whole half width
  *  (demi) behind it, where the boss would hide them. */
@@ -259,13 +263,26 @@ export class Activites {
     return Boolean(this.raid(addr)) || this.sbires.has(addr);
   }
 
-  /** The side a hero standing at u fights towards (1 = right, -1 = left: its mirrored `work-g` frames, as hero work
-   *  frames face right): a raider the boss's, a hero with minions theirs (rangs); 1 when it does not fight. */
+  /** The side a hero standing at u fights towards (1 = right, -1 = left; travail picks its frames): a raider the
+   *  boss's, a hero with minions theirs (rangs), one fighting its scene's creature or the dummy theirs (cible); 0 when
+   *  it does not fight. */
   face(u) {
     const addr = u.a.address, A = this.raid(addr) && this.arene;
     if (A) return A.x < u.x ? -1 : 1;
     if (this.sbires.has(addr)) return rangs(u, sbire(), u.x > lieux().BASCULE ? -1 : 1).side;
-    return 1;
+    return this.cible(u) ?? 0;
+  }
+
+  /** The side of the creature (or the training dummy) a hero standing at u fights outside a raid (creature): on its
+   *  right, on its left past BASCULE; null when none is drawn. */
+  cible(u) {
+    const addr = u.a.address;
+    if (u.leg || u.portail || this.raid(addr)) return null;
+    const s = this.file(addr) ?? u.a.demoAct;
+    if (!s) return null;
+    const sc = this.scene(addr);
+    if (sc !== "combat" && sc !== "test" && !recent(s.essai?.t, RESULT)) return null;
+    return u.x > lieux().BASCULE ? -1 : 1;
   }
 
   /** The day's boss, made on first use each day (and on another map): in today's lair (antre), on its wander's spot
@@ -344,22 +361,26 @@ export class Activites {
     return changed;
   }
 
-  /** A stomp: SAUT px to a walkable point of its lair with room on both its sides (cotes; the first of 12 random
-   *  tries), at PIETINE px/s; the whole party takes its slots afresh round the new spot (replace) and walks there.
-   *  True when it moved. */
+  /** A stomp: SAUT px (on screen) to a walkable point of its lair with room on both its sides (cotes; the first of 24
+   *  random tries), else the farthest such point of 24 others in its lair within SAUT[1] px (at least 60 px off), at PIETINE
+   *  px/s; the whole party takes its slots afresh round the new spot (replace) and walks there. True when it moved. */
   pietine(now) {
     const A = this.arene, Z = antre(A.day);
     A.next = now + attente();
-    for (let k = 0; k < 12; k++) {
+    const bon = (q) => q[0] >= Z.x[0] && q[0] <= Z.x[1] && q[1] >= Z.y[0] && q[1] <= Z.y[1] && walkable(q) && cotes(A.day, q);
+    const loin = (q) => Math.hypot(q[0] - A.x, q[1] - A.y);
+    const tirage = Array.from({ length: 24 }, () => {
       const a = Math.random() * 2 * Math.PI, d = SAUT[0] + Math.random() * (SAUT[1] - SAUT[0]);
-      const q = [Math.round(A.x + Math.cos(a) * d), Math.round(A.y + Math.sin(a) * d * APLAT)];
-      if (q[0] < Z.x[0] || q[0] > Z.x[1] || q[1] < Z.y[0] || q[1] > Z.y[1] || !walkable(q) || !cotes(A.day, q)) continue;
-      A.pas = { a: [A.x, A.y], b: q, t0: now, t1: now + (Math.hypot(q[0] - A.x, q[1] - A.y) / PIETINE) * 1000 };
-      [A.x, A.y] = q;
-      this.replace();
-      return true;
-    }
-    return false;
+      return [Math.round(A.x + Math.cos(a) * d), Math.round(A.y + Math.sin(a) * d * APLAT)];
+    });
+    const repli = Array.from({ length: 24 }, () => [Math.round(Z.x[0] + Math.random() * (Z.x[1] - Z.x[0])), Math.round(Z.y[0] + Math.random() * (Z.y[1] - Z.y[0]))])
+      .filter((q) => loin(q) >= 60 && loin(q) <= SAUT[1]).sort((p, o) => loin(o) - loin(p));
+    const q = tirage.find((q) => loin(q) >= SAUT[0] && bon(q)) ?? repli.find(bon);
+    if (!q) return false;
+    A.pas = { a: [A.x, A.y], b: q, t0: now, t1: now + (loin(q) / PIETINE) * 1000 };
+    [A.x, A.y] = q;
+    this.replace();
+    return true;
   }
 
   /** The party takes its ring slots afresh round the boss's new spot, by fighting range: melee looks first (raiders
@@ -803,6 +824,7 @@ export class Activites {
       return walkable(q) ? { q, foe: mx } : null;
     };
     const ici = (w) => { const p = pos(w.tr, t); return [p.x, p.y]; };
+    const cree = !raid && this.cible(u); // its hero's scene creature or dummy, outside a raid: those working face it
     const pt = portail(m, t), fileA = pt && at(pt.P.a); // its hero's teleport: the file slots by its first portal
     return drawn.map((x, i) => {
       const k = slots.get(x.id), key = KINDS[hash(`${addr}:${x.id}`) % KINDS.length], id = `${addr}:${x.id}`;
@@ -828,9 +850,10 @@ export class Activites {
         if (d || tr.legs.length) this.ou.set(id, { tr, det: Boolean(d) }); else this.ou.delete(id);
       } else tr = trail(m.legs, starts[i], ends[i], SLOTS[k][2]);
       const p = pos(tr, t), leg = p.leg && (p.leg.a[0] !== p.leg.b[0] || p.leg.a[1] !== p.leg.b[1]) ? p.leg : null;
-      // fighting on its own spot it faces its foe; by its hero (on the creature's side) it faces the hero's: the mirrored set on the left
-      const name = leg ? walkAnim(leg.b[0] - leg.a[0], leg.b[1] - leg.a[1]) : d ? (d.foe < p.x ? "work-g" : "work")
-        : !WORKS.has(x.act) ? "idle" : raid && side < 0 ? "work-g" : "work";
+      // in a fight it plays `work` facing its foe (on its own spot: its foe's side; in its hero's file: the hero's
+      // creature's), whatever its subagent does; else what its subagent does
+      const name = leg ? walkAnim(leg.b[0] - leg.a[0], leg.b[1] - leg.a[1]) : d ? travail(key, d.foe < p.x ? -1 : 1)
+        : raid ? travail(key, side) : !WORKS.has(x.act) ? "idle" : travail(key, cree ?? 0);
       const A = HEROES[key]?.anims?.[name];
       if (!A) return null;
       const ph = hash(x.id) % 997;
@@ -855,15 +878,11 @@ export class Activites {
 
   /** The creature a fighting unit faces, as its own depth-sorted world element: { z, el } or null. */
   creature(u, night) {
-    const addr = u.a.address;
-    if (u.leg || u.portail || this.raid(addr)) return null;
-    const s = this.file(addr) ?? u.a.demoAct;
-    if (!s) return null;
-    const sc = this.scene(addr);
-    const dummy = sc === "test" || recent(s.essai?.t, RESULT);
-    if (sc !== "combat" && !dummy) return null;
     // on the hero's right and a little nearer the viewer, facing it (left side near the world's right end)
-    const side = u.x > lieux().BASCULE ? -1 : 1;
+    const side = this.cible(u);
+    if (side === null) return null;
+    const addr = u.a.address, s = this.file(addr) ?? u.a.demoAct;
+    const dummy = this.scene(addr) === "test" || recent(s.essai?.t, RESULT);
     // creatures are drawn larger (BETE); the troll is wide: keep it off the hero (a mage's; nearer or further by class)
     const sp = !dummy && (boss(s) ? "troll" : species(addr, s.tache ?? 0, Math.floor((s.coups ?? 0) / blowsFor(s)), clsOf(u.a)));
     const off = dummy ? 44 : proche(u, boss(s) ? 115 : 70, sp, side);
