@@ -54,7 +54,11 @@ def receive(c, name, u, v, objects, idx, night):
     return c
 
 def compose(night=False, objects=None, effects=None):
-    g, kind = C2.ground()
+    return compose_sol(C2.ground()[0], night, objects, effects)
+
+def compose_sol(g, night=False, objects=None, effects=None):
+    """compose() on a given ground (RGB float, H x W: the canvas); objects in canvas px."""
+    H, W = g.shape[:2]
     img = np.zeros((H, W, 4), np.float32); img[..., :3] = g; img[..., 3] = 255
     emis = np.zeros((H, W, 4), np.float32); nl = np.zeros((H, W, 3), np.float32)
     sh = np.zeros((H, W), np.float32)

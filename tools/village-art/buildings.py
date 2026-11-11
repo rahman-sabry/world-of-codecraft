@@ -6,6 +6,7 @@ from gi import render, trim
 S_B = 1.4
 import engine; engine.VS_DEFAULT[0] = 1 / S_B
 from kit3d import *
+from theme import LOOK, LOOKS
 
 B = {}
 def bld(name):
@@ -486,7 +487,7 @@ def oak():
     v = Vol(-34, 34, -34, 34, 0, 96)
     v.put((-6, 6, -6, 6, 0, 50), lambda X, Y, Z: X ** 2 + Y ** 2 <= (2.6 + 3.2 * np.clip(1 - Z / 9, 0, 1) ** 2) ** 2, BARK)
     v.capsule((0, 0, 30), (10, -4, 46), 1.8, BARK); v.capsule((0, 0, 32), (-9, 6, 44), 1.8, BARK)
-    if HIVER: bare(v, 34, 26, seed=3)
+    if LOOK['arbres_nus']: bare(v, 34, 26, seed=3)
     else: canopy(v, 0, 0, 52, 27, LEAF, seed=3, n=12)
     return v
 
@@ -509,7 +510,7 @@ def bush():
 def autumn():
     v = Vol(-26, 26, -26, 26, 0, 80)
     v.put((-6, 6, -6, 6, 0, 40), lambda X, Y, Z: X ** 2 + Y ** 2 <= (2.2 + 2.6 * np.clip(1 - Z / 8, 0, 1) ** 2) ** 2, BARK)
-    if HIVER: bare(v, 30, 18, seed=11)
+    if LOOK['arbres_nus']: bare(v, 30, 18, seed=11)
     else: canopy(v, 0, 0, 50, 19, LEAF_A, seed=11, n=9)
     return v
 
@@ -679,14 +680,14 @@ def ruin():
     return v
 
 def fit(r, name):
-    """Winter: the sprite cut to its summer box (same size and anchor, from assets/meta.json), so the map's layout
-    data (fronts, anchors) stays the same; a bare tree fits inside its summer crown's box."""
-    m = json.load(open('assets/meta.json'))['b-' + name]
+    """A look with a base (winter): the sprite cut to the base look's box (same size and anchor, from its meta.json),
+    so the map's layout data (fronts, anchors) stays the same; a bare tree fits inside its summer crown's box."""
+    m = json.load(open(LOOKS[LOOK['base']]['assets'] + 'meta.json'))['b-' + name]
     ax, ay = r['anchor']; x0, y0 = ax - m['ax'], ay - m['ay']
-    assert x0 >= 0 and y0 >= 0, (name, 'outside its summer box')
+    assert x0 >= 0 and y0 >= 0, (name, 'outside its base look box')
     for k in ('color', 'shadow', 'emis', 'nightlit', 'cast'):
         cut = r[k][y0:y0 + m['h'], x0:x0 + m['w']]
-        assert (cut[..., 3] > 0).sum() == (r[k][..., 3] > 0).sum(), (name, k, 'outside its summer box')
+        assert (cut[..., 3] > 0).sum() == (r[k][..., 3] > 0).sum(), (name, k, 'outside its base look box')
         r[k] = cut
     r['anchor'] = (m['ax'], m['ay'])
     return r
@@ -696,9 +697,9 @@ def build(name):
     s = {'magetower': 1.3}.get(name, S_B)
     engine.VS_DEFAULT[0] = 1 / s
     v = B[name]()
-    if HIVER: hiver(PAL)
+    if LOOK['materiaux']: MATERIAUX[LOOK['materiaux']](PAL)
     r = render(v, PAL, S=s)
-    r = fit(r, name) if HIVER else trim(r)
+    r = fit(r, name) if LOOK['base'] else trim(r)
     print(name, 'rendered', r['color'].shape, 'anchor', r['anchor'], f'{time.time() - t:.1f}s', flush=True)
     return r
 

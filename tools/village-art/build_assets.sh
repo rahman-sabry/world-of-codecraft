@@ -1,16 +1,16 @@
 #!/bin/sh
-# Render the direction A sprites (buildings, props, trees, ground tiles) into tools/village-art/assets/, or with
-# THEME=hiver the winter ones into assets-hiver/ (cut to the summer boxes: build the summer assets first).
+# Render the direction A sprites (every model of buildings.py's registry, props, trees, ground tiles) into the look's
+# folder (theme.py): unset THEME, the summer ones into tools/village-art/assets/; THEME=hiver the winter ones into
+# assets-hiver/ (cut to the summer boxes: build the base look's assets first).
 # A few seconds per model. Needs numpy, scipy, pillow:
 #   uv venv tools/village-art/.venv && uv pip install --python tools/village-art/.venv/bin/python numpy scipy pillow
 set -eu
 cd "$(dirname "$0")"
 PY=${PY:-.venv/bin/python}
-A=assets
-[ "${THEME:-}" = hiver ] && A=assets-hiver
+A=$("$PY" -c 'import theme; print(theme.ASSETS.rstrip("/"))')
 mkdir -p "$A"
-for n in tavern townhall magetower forge barracks temple barn stall-red stall-blue stall-green well noticeboard campfire \
-         tree-oak tree-pine bush tree-autumn rocks fence-x fence-y windmill dock ruin bridge bridge-rail; do
+MODELS=$("$PY" -c 'import buildings; print(*buildings.B)')
+for n in $MODELS; do
   OUT=$A/p-$n "$PY" buildings.py "$n" >/dev/null &
 done
 wait

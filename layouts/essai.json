@@ -1,0 +1,59 @@
+{
+  "id": "essai",
+  "origine": [1000, 200],
+  "monde": {"x": 0, "w": 2000, "h": 400, "nord": 400, "sud": 400},
+  "tuile": 1000,
+  "sol": [
+    {"sol": "dirt", "ligne": [[0, 335], [180, 322], [380, 350], [560, 340], [760, 350], [980, 345], [1150, 330], [1300, 318], [1395, 300], [1509, 358], [1600, 385], [1800, 388], [2000, 372]], "demi": 15},
+    {"sol": "dirt", "ligne": [[1230, 323], [1260, 200], [1210, 60], [1270, -150], [1230, -400]], "demi": 13},
+    {"sol": "paved", "boite": [780, 300], "demi": [130, 95]},
+    {"sol": "crop", "boite": [70, 175], "demi": [45, 35]},
+    {"sol": "crop", "boite": [300, 470], "demi": [80, 50]},
+    {"sol": "crop", "boite": [620, 520], "demi": [70, 40]},
+    {"sol": "water", "ligne": [[1700, -400], [1600, -150], [1540, 150], [1512, 299], [1392, 359], [1300, 520], [1250, 800]], "demi": 26},
+    {"sol": "water", "ellipse": [1920, 110], "demi": [100, 70], "rivage": 24}
+  ],
+  "batiments": [
+    {"modele": "windmill", "at": [100, 262]},
+    {"modele": "barn", "at": [240, 245]},
+    {"modele": "forge", "at": [470, 255]},
+    {"modele": "townhall", "at": [780, 290], "dp": 60},
+    {"modele": "tavern", "at": [1070, 245]},
+    {"modele": "temple", "at": [1720, 290], "dp": 45},
+    {"modele": "bridge", "at": [1452, 329], "dp": 26, "sur": ["water", "dirt"], "front": {"masque": "bridge-rail", "pieces": 4}}
+  ],
+  "props": [
+    {"modele": "well", "at": [800, 390], "dp": 10},
+    {"modele": "stall-red", "at": [960, 398], "dp": 10},
+    {"modele": "noticeboard", "at": [600, 300], "dp": 6},
+    {"modele": "rocks", "at": [1330, 380]},
+    {"modele": "bush", "at": [1600, 190]}
+  ],
+  "clotures": [
+    {"axe": "x", "iso": [-138, 676], "n": 4},
+    {"axe": "y", "iso": [-24, 568], "n": 3}
+  ],
+  "exclusions": [[1370, 1540, 270, 380]],
+  "dispersions": [
+    {"zone": [-40, 2040, -392, 4], "essais": 2600, "graine": 4, "densite": [1.0, 0.35],
+     "modeles": {"tree-pine": 4, "tree-oak": 2, "tree-autumn": 1}, "espacement": [40, 18], "herbe": [26, 60]},
+    {"zone": [-30, 2030, 10, 175], "essais": 700, "graine": 11, "densite": 0.7,
+     "modeles": {"tree-pine": 3, "tree-oak": 1, "tree-autumn": 1}, "espacement": [40, 18], "herbe": [26, 60]},
+    {"zone": [-30, 2030, 175, 396], "essais": 300, "graine": 23, "densite": 0.4, "dp": 8,
+     "modeles": {"tree-oak": 2, "tree-autumn": 1}, "espacement": [70, 30], "herbe": [30, 70]},
+    {"zone": [-30, 2030, 175, 396], "essais": 500, "graine": 24, "densite": 0.3, "dp": 4,
+     "modeles": {"bush": 2, "rocks": 1}, "espacement": [50, 22], "herbe": [16, 0]},
+    {"zone": [-30, 2030, 600, 796], "essais": 700, "graine": 25, "densite": 0.5, "dp": 8,
+     "modeles": {"tree-oak": 2, "tree-autumn": 1, "tree-pine": 1}, "espacement": [70, 30], "herbe": [30, 70]},
+    {"zone": [-30, 2030, 430, 796], "essais": 900, "graine": 26, "densite": 0.2, "dp": 4,
+     "modeles": {"bush": 2, "rocks": 1}, "espacement": [50, 22], "herbe": [16, 0]}
+  ],
+  "heros": {
+    "ROAD": [[0, 335], [180, 322], [380, 350], [560, 340], [760, 350], [980, 345], [1150, 330], [1300, 318], [1395, 300], [1509, 358], [1600, 385], [1800, 388], [2000, 372]],
+    "ROAD_R": 30,
+    "DECK": [[1395, 300], [1509, 358]],
+    "FLANE": [[340, 300], [640, 360], [960, 390], [1250, 370], [1560, 395], [1880, 400]],
+    "SPOTS": [[330, 330], [560, 310], [880, 380], [1160, 300], [1760, 400]],
+    "SPOT_R": 60
+  }
+}

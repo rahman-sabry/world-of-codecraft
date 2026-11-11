@@ -7,7 +7,7 @@ from scipy import ndimage
 import compose as C
 from engine import over, vnoise2, hash3, BAYER, hx, ramp
 from extras import ground_tex, DR, WR
-from theme import ASSETS, HIVER
+from theme import ASSETS, LOOK
 
 A = ASSETS
 META = json.load(open(A + 'meta.json'))
@@ -55,16 +55,14 @@ def ground():
     # large-scale hue drift on grass (dry ochre patches / lush blue-green hollows)
     hue = vnoise2(x, y, 55, 94) - 0.5
     g = kind == 0
-    dry = np.array([1.07, 1.02, 0.86]); lush = np.array([0.92, 1.0, 1.05])
-    if HIVER:  # winter: bright crusted snow and blue hollows
-        dry = np.array([1.03, 1.03, 1.01]); lush = np.array([0.92, 0.96, 1.04])
+    dry = np.array(LOOK['herbe']['sec']); lush = np.array(LOOK['herbe']['dru'])  # the look's (theme.py); winter: crusted snow, blue hollows
     tint = np.where((hue > 0)[..., None], 1 + (dry - 1) * np.clip(hue * 2.4, 0, 1)[..., None], 1 + (lush - 1) * np.clip(-hue * 2.4, 0, 1)[..., None])
     out[g] = out[g] * tint[g]
     # warm sun / cool sky on the ground: soft cloud-light modulation, quantised + dithered
     cl = vnoise2(x, y, 120, 95)
     q = np.floor((cl - 0.5) * 6 + BAYER[v % 4, u % 4] * 0.8) / 6
     out = out * (1 + q[..., None] * np.array([0.10, 0.08, 0.04]))
-    fl = (kind == 0) & (hash3(np.floor(x).astype(np.int64), np.floor(y).astype(np.int64), np.zeros_like(u), 77) > 0.996) & (not HIVER)
+    fl = (kind == 0) & (hash3(np.floor(x).astype(np.int64), np.floor(y).astype(np.int64), np.zeros_like(u), 77) > 0.996) & LOOK['fleurs']
     cols = np.array([hx('#f4e9c8'), hx('#f2c94c'), hx('#d86a8a'), hx('#9fb6ff')], np.float32)
     out[fl] = cols[(hash3(u[fl], v[fl], v[fl] * 0, 3) * 4).astype(int) % 4]
     gm = kind == 0
@@ -72,7 +70,7 @@ def ground():
     out[border] = out[border] * 0.82
     # grass blades overhanging path edges (lit tips)
     over_ = gm & ~np.roll(gm, -1, 0) & (hash3(u, v, u * 0, 5) > 0.5)
-    out[np.roll(over_, 1, 0) & ~gm] = out[np.roll(over_, 1, 0) & ~gm] * 0.6 + np.array(hx('#eef3f8' if HIVER else '#7fb850')) * 0.4
+    out[np.roll(over_, 1, 0) & ~gm] = out[np.roll(over_, 1, 0) & ~gm] * 0.6 + np.array(hx(LOOK['herbe']['brins'])) * 0.4
     bank = (d >= 0) & (d < 2.2); out[bank] = DR[1]
     foam = (d < 0) & (d > -1.6); out[foam] = WR[6] * 0.9
     sh_ = (d < -1.6) & (d > -7); out[sh_] = out[sh_] * 0.72 + WR[5] * 0.28

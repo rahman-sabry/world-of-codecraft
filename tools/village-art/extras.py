@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from engine import Vol, render, trim, save2x, ramp, outline_of, vnoise2, hash3, BAYER, hx
 from tex import *
-from theme import ASSETS
+from theme import ASSETS, LOOK
 
 FONT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'mods', 'world-of-codecraft', 'fonts') + '/'
 
@@ -81,11 +81,14 @@ CB = ramp('#9c958c', hs=24, light=1.18)
 WR = ramp('#2f80b4', hs=14, light=1.35)
 SO = ramp('#7a5434', hs=22)
 WH = ramp('#d6ae4a', hs=16, light=1.25)
-if HIVER:  # snow for the grass, slush over the dirt (DR_ETE: the brown showing through), ice for the water
-    DR_ETE = DR
+SOL = LOOK['sol']  # the look's ground-kind overrides (theme.py): snow for the grass, slush over the dirt (DR_ETE: the
+DR_ETE = DR        # brown showing through), ice for the water
+if SOL.get('grass') == 'neige':
     GR = ramp('#d2dce8', hs=12, light=1.16, dark=0.62, cool=224)
     GR2 = ramp('#c6d2e2', hs=12, light=1.16, dark=0.62, cool=224)
+if SOL.get('dirt') == 'neige':
     DR = ramp('#a69c96', hs=16, light=1.28, dark=0.5)
+if SOL.get('water') == 'glace':
     WR = ICE_RAMP
 
 def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
@@ -122,7 +125,7 @@ def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
         lv = lv - (np.abs(((x + y * 0.0) % 16) - 8) < 0.7) * 0.0
         lv = lv + BAYER[sy % 4, sx % 4] * 0.3
         idx = np.clip(np.round(lv), 0, 6).astype(int)
-        if HIVER:  # packed snow, the mud showing in ruts
+        if SOL.get('dirt') == 'neige':  # packed snow, the mud showing in ruts
             return np.where((vnoise2(x, y, 6, 14, P) < 0.36)[..., None], DR_ETE[np.clip(idx - 1, 0, 6)], DR[idx])
         return DR[idx]
     if kind == 'paved':
@@ -136,14 +139,14 @@ def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
         lv = np.where(mortar, 0.6, lv)
         lv = lv + BAYER[sy % 4, sx % 4] * 0.3
         c = CB[np.clip(np.round(lv), 0, 6).astype(int)]
-        if HIVER:  # snow in the joints and in drifts over the stones
+        if SOL.get('paved') == 'neige':  # snow in the joints and in drifts over the stones
             drift = mortar | (vnoise2(x, y, 12, 22, P) + (sid - 0.5) * 0.3 > 0.72)
             c = np.where(drift[..., None], GR[np.clip(np.round(lv * 0.4 + 3.2), 0, 6).astype(int)], c)
         return c
     if kind == 'water':
         n = vnoise2(x, y, 16, 31, P) * 1.0 + vnoise2(x, y, 8, 32, P) * 0.6
         lv = 2.0 + n + macro
-        if HIVER:  # ice: frosted patches, dark cracks with a lit lip
+        if SOL.get('water') == 'glace':  # ice: frosted patches, dark cracks with a lit lip
             cr = np.abs(np.sin((x * 0.5 + y * 0.21) * 0.45 + vnoise2(x, y, 10, 34, P) * 7.0)) + (vnoise2(x, y, 5, 35, P) - 0.5) * 0.3
             lv = lv + (vnoise2(x, y, 9, 36, P) > 0.62) * 1.5 - (cr < 0.07) * 1.8 + ((cr >= 0.07) & (cr < 0.16)) * 0.9
         else:
@@ -163,7 +166,7 @@ def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
         lvp = 2.6 + (furrow - 1.2) * 1.0 + (h - 0.5) * 1.5
         green = (np.floor(y / 16) % 2 == 1)
         pc = np.where(green[..., None], GR[np.clip(np.round(lvp + 0.3), 0, 6).astype(int)], WH[np.clip(np.round(lvp), 0, 6).astype(int)])
-        if HIVER:  # snow along the ridges, the soil dark in the furrows, a few stalks of stubble
+        if SOL.get('crop') == 'neige':  # snow along the ridges, the soil dark in the furrows, a few stalks of stubble
             snow = GR[np.clip(np.round(lv + 1.4 + BAYER[sy % 4, sx % 4] * 0.3), 0, 6).astype(int)]
             c = np.where((furrow < 2.5 + (vnoise2(x, y, 6, 43, P) - 0.5) * 1.2)[..., None], snow, c)
             return np.where((plant & (h > 0.86))[..., None], WH[np.clip(np.round(lvp - 1), 0, 6).astype(int)], c)

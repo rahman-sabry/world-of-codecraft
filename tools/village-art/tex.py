@@ -1,7 +1,7 @@
 """Material textures + the Valbrume palette (ids are global so every asset shares them)."""
 import numpy as np
 from engine import Mat, hash3, ramp, hx, outline_of
-from theme import HIVER
+from theme import LOOK
 
 def tangent_coords(P, n, p):
     ax = np.argmax(np.abs(n), 1)
@@ -206,7 +206,7 @@ APPLE   = M(45, '#d8452e', t_noise, params={'amp': 0.5}, hs=20)
 PUMPKIN = M(46, '#e07a24', t_noise, params={'amp': 0.6}, hs=18)
 CABBAGE = M(47, '#7fb04a', t_leaf, hs=20)
 
-# ---------------------------------------------------------------- winter (THEME=hiver)
+# ---------------------------------------------------------------- winter (the look's materiaux "hiver", theme.py)
 def t_snow(P, n, p, lv):
     return (blob3(P, 1.5, 101) - 0.5) * 0.5 + (blob3(P, 4.0, 102) - 0.5) * 0.15
 
@@ -220,9 +220,9 @@ def snowy(tex, thr, amt=1.0):
         return np.where(cover, t_snow(P, n, p, lv), off), np.where(cover, SNOW, swap)
     return f
 
-if HIVER:
+if LOOK['materiaux'] == 'hiver':
     SNOW = M(53, '#d6e0ec', t_snow, hs=12, light=1.14, dark=0.5, cool=224)
-    ICE_RAMP = ramp('#9cc6dc', hs=10, light=1.3, dark=0.55)
+ICE_RAMP = ramp('#9cc6dc', hs=10, light=1.3, dark=0.55)  # the ground's ice (extras.py, sol "glace")
 
 def hiver(pal):
     """Winter over the summer palette: snow on every face turned up (roofs, tops, decks, branches, rocks); the
@@ -242,3 +242,5 @@ def hiver(pal):
             mt.tex = snowy(mt.tex, 0.38)
         else:
             mt.tex = snowy(mt.tex, 0.5)
+
+MATERIAUX = {'hiver': hiver}  # palette transforms a look may name (theme.py materiaux)

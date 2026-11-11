@@ -327,8 +327,10 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   the bridge's front rail in four pieces (its mask is `b-bridge-rail`, the rail alone) and the objects just in
   front of the walk.
   About 40 seconds (sprite loads are cached); `CACHE=x.npz` reuses the composite.
-- **Themes (the winter look):** `tools/village-art/theme.py` reads `THEME` (unset: summer; `hiver`: winter). Each
-  theme renders its sprites into its own folder (`assets/`, `assets-hiver/`) and bakes into its own folder of the
+- **Themes (the winter look):** `tools/village-art/theme.py` reads `THEME` (unset or `ete`: summer; `hiver`: winter)
+  and picks that look's record in `LOOKS` (see "Maps from a layout" below for its fields). Each
+  look renders its sprites into its own folder (`assets/`, `assets-hiver/`; `build_assets.sh` renders every model of
+  buildings.py's registry) and Valbrume's chain bakes into its own folder of the
   mod (`art/monde/`, `art/monde-hiver/`); the summer path is unchanged (its sprites and bakes come out
   pixel-identical). Bake each look with the same chain:
 
@@ -352,6 +354,76 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   `bake_world.py` checks in winter that every sprite keeps its summer box and silhouette (alpha), the bare trees'
   silhouettes excepted; the building-pixel checks of bake_lands.py and bake_wide.py run within the theme. The
   winter chain rewrites `monde-data.js` and `terre-data.js` with the same content (check with `git diff`).
+  Valbrume's chain (bake_world, bake_lands, bake_wide) is frozen: new maps use `bake_map.py`.
+- **Maps from a layout (`tools/bake_map.py`):** a new map is baked in one pass from a layout file,
+  `layouts/<id>.json`, with the same compositor, lighting, shadows and ground textures (`compose3.compose_sol`,
+  `extras.ground_tex`), one look per run (about 20 s for a 2000×1200 canvas):
+
+      sh tools/village-art/build_assets.sh && THEME=hiver sh tools/village-art/build_assets.sh   # sprites per look
+      P=tools/village-art/.venv/bin/python
+      $P tools/bake_map.py layouts/<id>.json --look ete && $P tools/bake_map.py layouts/<id>.json --look hiver
+
+  `--racine DIR` writes elsewhere than the mod (a test bake). It writes `art/<id>-<look>/` (`jour-<k>`, `nuit-<k>`,
+  `nord-<k>-<jour|nuit>`, `sud-<k>-…`, `avant-<key>-<jour|nuit>`, `minicarte.png`: the names place.js reads) and
+  `carte-<id>-data.js` (`WORLD`, `TILES`, `FRONTS`, `EXT`, the same for every look: winter sprites keep the summer
+  boxes, and the scatter is placed on the base look's sprites). The code: `tools/mapbake/` (`carte.py` the layout,
+  `sol.py` the ground, `objets.py` the objects and scatter, `verif.py` the checks).
+  - **Coordinates.** Map px `(u, v)` are the mod's `(x, y)`: `u` across the world (`monde.x` to `monde.x + w`), `v`
+    down from the village band's top (0 to `h`; the north band is `v < 0`, the south band `v >= h`). Iso ground
+    `(x, y)` (world units, `z` up) is the compositor's projection: `u = U0 + x − y`, `v = V0 + (x + y)/2 − z`, with
+    `[U0, V0]` = the layout's `origine` (Valbrume's is `[1500, 200]`). Points are map px; an object may give `iso`
+    instead of `at`. Ground widths, half sizes and radii are iso units (one iso unit along x is +1, +0.5 px).
+    Dithering and hashed ground details are keyed on map px, so the bands and the village band join seamlessly.
+  - **Layout schema** (unknown keys fail):
+    - `id`; `origine` `[U0, V0]`; `monde` `{x, w, h, nord: 400, sud: 400}` (the canvas: the village band and the
+      immersive bands); `tuile` (tile width, 1000).
+    - `sol`: ground shapes painted in order (a later one wins), each `{sol: <kind>, <geometry>, demi, bruit, rivage}`.
+      Geometry: `ligne` (polyline, `demi` = half width: roads, paths, rivers), `boite` (centre, `demi` `[x, y]` on
+      the iso axes: squares, fields), `ellipse` (centre, radii `demi` `[x, y]`: lakes), `polygone` (map px outline:
+      lakes, seas). `bruit` scales the edge noise (default per kind), `rivage` adds a slow shore wobble (bake_wide's
+      lake: 24). Kinds (`KINDS` in sol.py): `grass` (the default ground), `dirt`, `paved`, `water`, `crop`, each
+      with its edges: water kinds share one distance field (bank, foam, shallows), `dirt` and `water` are
+      `interdit` (nothing stands on them), `crop` gets a dark top edge. A new kind (sand, a sea shore) is an entry
+      in `KINDS` plus its texture (`TEX`, or a branch of `extras.ground_tex`).
+    - `batiments` (buildings and landmarks) and `props`: `{modele, at | iso, dp, sur, box, front}`. `modele` is a
+      buildings.py name (no `b-`); `dp` the depth bias (drawn at `v + dp`; 30 and 8 by default, as compose2's
+      scene: the town hall 60); `sur` the `interdit` kinds it may stand on (a bridge: `["water", "dirt"]`); `box`
+      the mod's hit box `[dx, dy, w, h]` for the walkable check (else its ground box); `front` see below.
+    - `clotures`: fence runs `{axe: x | y, de | iso, n, pas: 44}`: `n` posts of `fence-<axe>` along that iso axis.
+    - `dispersions`: seeded scatter bands `{zone: [u0, u1, v0, v1], essais, max, graine, modeles: {name: weight},
+      densite, espacement: [du, dv], herbe: [r, up], dp: 6, exclusions}`: `essais` draws in the zone (seed
+      `graine`), kept when a draw under `densite` (a number, or `[top, bottom]` across the zone) passes, the ground
+      round the base is all grass (`herbe`: `r` px each way, `r/2` down, `max(up, r/2)` up; trees ask for more, their
+      crown hides the ground above the trunk), it is outside every keep-out, `espacement` from every object placed so
+      far (explicit ones and earlier bands too) and its ground box clear of every building's; up to `max`.
+    - `exclusions`: keep-outs `[u0, u1, v0, v1]` for every band.
+    - `heros` (optional): `ROAD`, `ROAD_R`, `FLANE`, `SPOTS`, `SPOT_R`, `DECK` as in `carte-valbrume.js`: where the
+      heroes walk, for the checks and the front cut-outs (copy them into the map's `carte-<id>.js`).
+  - **Ground box** (`objets.emprise`): a model's opaque pixels at or below its anchor row (the front half of its
+    footprint) mirrored above it, on the base look's sprite.
+  - **Checks** (the bake stops before writing anything, listing every failure): every model is in buildings.py and
+    built for the look; no building's ground box overlaps another's, no prop, fence or scatter overlaps a
+    building's; no building's footprint (the inner 80 % of the diamond in its ground box) is on `dirt` or `water`
+    unless `sur` says so; no prop, fence or scatter base on them, no scatter in a keep-out; every `FLANE` and `SPOTS`
+    point is walkable by lieux.js `walkable()` (the deck; never water, read on the kind map; the road; else near a
+    spot and outside every building's box).
+  - **Front cut-outs:** an object gets one when a walkable point (the same rule, over the village band) lies within
+    32 px of its sides with its feet below the object's top and above `v + dp − 3`: a unit standing there is drawn
+    behind it (place.js's test). Without `heros`, bake_world's `FRONT_V` rule: every object based in the lower half
+    of the band. `front: true` forces one, `false` drops it, `{masque, pieces}` cuts it from another sprite in column
+    pieces at their own feet's depth (the bridge: `{"masque": "bridge-rail", "pieces": 4}`, bake_wide's rail). Cut
+    from the composite, kept to the village band, keys as bake_world's (`barn`, `bush-3`, `bridge-0`).
+  - **Looks** (`LOOKS` in theme.py, picked by `--look` / `THEME`): `assets` (its sprite folder), `monde` (Valbrume's
+    folder), `base` (the look whose boxes its sprites are cut to: `buildings.fit`), `materiaux` (a palette transform,
+    `tex.MATERIAUX`: `hiver`), `arbres_nus` (bare oaks and autumn trees), `sol` (ground-kind texture variants:
+    `{grass: neige, dirt: neige, paved: neige, water: glace, crop: neige}`), `herbe` (grass tint `sec` / `dru`, blade
+    colour `brins`), `fleurs`. `""` and `hiver` build and bake exactly as before (sprites checked byte-identical).
+  - **A new map, end to end:** write `layouts/<id>.json`; build the sprites of each look; bake each look with a
+    test `--racine` first and look at it (day and night), then into the mod; write `carte-<id>.js` by hand like
+    carte-valbrume.js (its looks with `dossier: "<id>-<look>"`, buildings at their layout points with boxes, spots,
+    chimneys, glows, standards; FLANE, ROAD, RIVER, LAKE, DECK, walkers, cats...), importing
+    `WORLD, TILES, FRONTS, EXT` from `carte-<id>-data.js`; add it to kit.js `CARTES`. `layouts/essai.json` is a
+    test layout only (not in the mod).
 - **Camera:** horizontal and vertical (drag, two-axis wheel), kept inside the bands; selecting a hero
   brings the village back into view.
 - **Panel bridge:** the village publishes its camera and units to the store (`wocc.view`, only when
@@ -416,7 +488,8 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   (`defaults read -g AppleLanguages`, `$LANG`). No network calls.
 - **Repo tooling** (`tools/`, not installed): `install.sh` copies the mod, layout and theme
   into the Herdr home (`--integrations` links the hook and plugin); `sync_creatures.py`,
-  `sync_heroes.py`, `bake_world.py`, `bake_lands.py`, `bake_wide.py`, `ui.py` rebuild the art from `tools/sources/`.
+  `sync_heroes.py`, `bake_world.py`, `bake_lands.py`, `bake_wide.py`, `ui.py` rebuild the art from `tools/sources/`;
+  `bake_map.py` (with `mapbake/`) bakes a map from its layout in `layouts/`.
 - **Art** (`art/`):
   - heroes: 30 race×class sprites with `idle`, `rest`, `work` and 4-way walk frames,
     plus night-graded copies;
