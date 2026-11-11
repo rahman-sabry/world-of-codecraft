@@ -10,13 +10,15 @@ Claude Code hook (async, never blocks). Writes ~/.local/state/world-of-codecraft
   coups    successful edits and commands this task (each one = a blow on the creature)
   err      consecutive tool failures, errT the last one (ms)
   subs     running subagents (len(subIds))
+  subCoups successful subagent tool calls, ever (monotonic per file; each one = 1 damage on the daily raid boss)
   subIds   {agent id: {t0 start, t last event (ms), act what it does (pense, then its tools' kind), outil}}, kept
            across turns until SubagentStop, a new session, or 30 min with no event from that subagent
   tache    prompt counter (seeds the creature drawn for the task)
   errTache tool failures this task (3+ = the next creature is a boss)
   essai    last test run {ok, t} (act "test" while it runs)   commitT / pushT  last git commit / push (ms)
 
-Outside Herdr (no HC_TERMINAL_ID) it does nothing. Subagents' own tool calls are ignored.
+Outside Herdr (no HC_TERMINAL_ID) it does nothing. Subagents' own tool calls leave the hero's scene alone: they only
+refresh their subIds entry and count in subCoups.
 """
 import fcntl, json, os, re, sys, time
 
@@ -82,6 +84,7 @@ with open(os.path.join(DIR, ".lock"), "w") as lk:
     except Exception:
         s = {}
     s.setdefault("tache", 0)
+    s.setdefault("subCoups", 0)  # present from the first event, so the village baselines a new terminal at 0
     aid = ev.get("agent_id")
     subIds = {}
     for k, v in (s.get("subIds") or {}).items():
@@ -96,6 +99,8 @@ with open(os.path.join(DIR, ".lock"), "w") as lk:
         subIds[aid]["t"] = now
         if name == "PreToolUse" and kind(tool):
             subIds[aid].update(act=kind(tool), outil=tool)
+    if sub and name == "PostToolUse":
+        s["subCoups"] += 1  # a successful subagent tool call: a blow on the raid boss
 
     def act(a):
         if s.get("act") != a:

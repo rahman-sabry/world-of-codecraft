@@ -1,6 +1,6 @@
 // World of Codecraft (village of Valbrume): shared bits of the mod. Palette, fonts, the hero
 // every agent becomes (race from its address, class from its program), the
-// hour of the day, the Claude quota fountains, and small wood/iron/parchment parts.
+// hour of the day, the daily raid boss, the Claude quota fountains, and small wood/iron/parchment parts.
 
 import { div, image, svg, PathBuilder, Background } from "gpui-kit";
 import { h_flex } from "gpui-base";
@@ -144,6 +144,39 @@ export function sky(d) {
 export const isNight = (d) => sky(d).phase !== "jour";
 
 export const hhmm = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+// ------------------------------------------------------------------ the daily raid boss
+// One boss a day (local midnight), its HP shared by every hero's raid: each successful subagent tool call (the hook's
+// subCoups) is 1 damage. Only the shown, live village writes these keys (Activites.degats).
+
+/** Calibrated on the person's subagents: a median 390 / mean 496 successful tool calls per weekday, so an ordinary
+ *  working day fells the boss and a light one doesn't. */
+export const BOSS_HP = 300;
+export const BOSS = "wocc.boss"; // { day, hp, max, slain, slainAt, by (the address that dealt the last blow) }
+export const TROPHEES = "wocc.trophees"; // { total (bosses slain), streak (consecutive days with a kill), lastDay }
+const TROLLS = ["Gruntak", "Morgrul", "Skarn", "Brokk", "Ughlar", "Thargol", "Vruuk", "Hobrak", "Dolgrim", "Krummok"];
+const deux = (n) => String(n).padStart(2, "0");
+/** The local date of d, "2026-11-11": the boss's day. */
+export const jour = (d) => `${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}`;
+/** The day before a day. */
+export const veille = (day) => { const [y, m, d] = day.split("-").map(Number); return jour(new Date(y, m - 1, d - 1)); };
+/** The next local midnight after d (ms): the next boss. */
+export const minuit = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+/** Today's boss as stored, or a fresh one at full HP when the stored one is another day's (or none yet). */
+export function bossDuJour(d = new Date()) {
+  const day = jour(d), b = shared(BOSS);
+  return b?.day === day ? b : { day, hp: BOSS_HP, max: BOSS_HP, slain: false };
+}
+/** The day's boss name, "Gruntak the Mossback" / "Gruntak le Moussu" (a hash of the date). */
+export function nomBoss(day) {
+  const ep = t("epithets");
+  return t("bossName", TROLLS[hash(day) % TROLLS.length], ep[hash(`${day}:epithete`) % ep.length]);
+}
+/** Bosses slain, and the streak still alive (its last kill today or yesterday, else 0). */
+export function trophees(d = new Date()) {
+  const T = shared(TROPHEES) ?? {}, day = jour(d);
+  return { total: T.total ?? 0, streak: T.lastDay === day || T.lastDay === veille(day) ? T.streak ?? 0 : 0 };
+}
 
 // ------------------------------------------------------------------ quotas
 // Claude accounts A and B, read only from the files the local poller writes.

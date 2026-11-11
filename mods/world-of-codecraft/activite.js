@@ -12,8 +12,10 @@
 //   travail  bash and the rest   the usual `work` loop
 // plus, whatever the scene: a wax seal and "Sealed!" on a git commit, a carrier pigeon flying off east on a
 // git push; and, whatever the status, apprentices (one full-size hero per running subagent) trailing the hero.
-// Raid: while a hero has running subagents, whatever its status, it stands and fights the forest troll drawn twice
-// as large, one pip per subagent; each subagent that ends is a blow, the last one fells it. It wins over the scenes.
+// Raid: while a hero has running subagents, whatever its status, it stands and fights the day's raid boss (the forest
+// troll drawn twice as large, kit.js bossDuJour), whose HP every hero shares: each successful subagent tool call is
+// 1 damage. At 0 HP it falls in a gold burst (no more raids that day); when a hero's subagents all end first, it flees
+// and keeps its HP. It wins over the scenes.
 // Lot 2: six creatures in the draw (imp, wolf, goblin, boar, rust golem, spectre); a task with 3+ failed
 // tools brings the forest troll, a boss of 8 blows.
 // Anti-zapping: a scene changes only when the new one has been asked for 8 s and the current one has
@@ -21,8 +23,8 @@
 // end of work switch at once).
 
 import { div, image } from "gpui-kit";
-import { home, readTextFile } from "herdr";
-import { hash, UI, C, heroOf, walkAnim } from "./kit.js";
+import { home, readTextFile, shared, setShared } from "herdr";
+import { hash, UI, C, heroOf, walkAnim, BOSS, TROPHEES, bossDuJour, veille } from "./kit.js";
 import { walkable } from "./lieux.js";
 import { CREATURES } from "./creatures-data.js";
 import { HEROES } from "./heros-data.js";
@@ -61,8 +63,12 @@ const WORKS = new Set(["code", "commande", "test"]); // a subagent's acts shown 
 const READS = new Set(["eclaire", "web"]); // and with the scroll over the head
 const GEANT = 2; // the raid boss drawn this much larger (art 2x: 4x4 screen px per art px)
 const LOIN = 170; // px from the hero's feet to the raid boss's
-const COUP = 900; // a raid blow (a subagent ended) shows this long
-const CHUTE = 1200; // the raid boss's fall (the felled puff) lasts this long
+const COUP = 900; // a raid blow (damage dealt in a poll) shows this long
+const CHUTE = 1200; // the raid boss's fall (the felled puff and the gold burst), or its flight, lasts this long
+const ETAPES = [100, 700]; // the fall's and the flight's stages: open / walk off from here, fade from here
+const etape = (dt) => ETAPES.filter((s) => dt >= s).length;
+const FUIR = 150; // px the raid boss walks away from the hero when it flees
+const VUS = "wocc.boss.vus"; // { address: the subCoups already counted as damage }, so a reload neither loses nor recounts
 // half the raid boss's width at its widest pose, plus an apprentice's half body: no apprentice's feet that close to its x
 const LARGE = Math.max(...Object.values(CREATURES.troll ?? {}).flatMap((p) => [p.ax, p.w - p.ax])) * GEANT + 25;
 
@@ -113,7 +119,8 @@ export class Activites {
     this.scenes = new Map(); // address -> { scene, since, cand, candSince }
     this.hits = new Map(); // address -> { coups, at, felled: [{ species, at }] }
     this.slots = new Map(); // address -> Map(subagent id -> apprentice slot)
-    this.raids = new Map(); // address -> { ids (running subagents), at (last blow), fin (the fall, 0 = none) }
+    this.raids = new Map(); // address -> { ids (running subagents), at (last blow), fin (its end, 0 = none), issue ("mort" | "fuite") }
+    this.abattu = null; // (address, day) when this village's damage slays the boss: the chronicle line (Place)
     this.timer = null;
     this.busy = false;
   }
@@ -124,38 +131,83 @@ export class Activites {
     return this.scenes.get(addr)?.scene ?? null;
   }
 
-  /** A hero's raid, while it has running subagents and through the boss's fall (null = none). */
+  /** A hero's raid, while it has running subagents and through the boss's fall or flight (null = none). */
   raid(addr) {
     const r = this.raids.get(addr);
     if (!r || this.off) return null;
-    if (!r.ids.length && Date.now() - r.fin >= CHUTE) { this.raids.delete(addr); return null; }
+    if (r.fin && Date.now() - r.fin >= CHUTE) { this.raids.delete(addr); return null; }
     return r;
   }
 
-  /** Follows a hero's running subagents (not demo heroes): one that ends is a blow, the last one fells the boss;
-   *  true when the raid changed. */
-  mene(addr, s, now) {
+  /** Follows a hero's running subagents (not demo heroes): a raid starts with the first one while today's boss stands,
+   *  the boss flees when the last one ends, and falls when it is slain (mort; tue: this hero dealt damage in the poll
+   *  that slew it, so a raid not drawn yet still shows the fall). A new subagent during the flight starts it again.
+   *  True when the raid changed. */
+  mene(addr, s, now, mort, tue) {
     const ids = this.subagents(s).map((x) => x.id);
     const r = this.raids.get(addr);
-    if (!r) {
-      if (!ids.length) return false;
-      this.raids.set(addr, { ids, at: 0, fin: 0 });
+    if (r && !r.fin) {
+      if (mort) Object.assign(r, { fin: now, issue: "mort" });
+      else if (!ids.length) Object.assign(r, { fin: now, issue: "fuite" });
+      else if (ids.join() === r.ids.join()) return false;
+      r.ids = ids;
       return true;
     }
-    const fini = r.ids.some((id) => !ids.includes(id));
-    if (!fini && ids.length === r.ids.length) return false;
-    if (ids.length) { if (fini) r.at = now; r.fin = 0; }
-    else if (r.ids.length) r.fin = now;
-    r.ids = ids;
+    if (tue) { this.raids.set(addr, { ids, at: now, fin: now, issue: "mort" }); return true; }
+    if (!ids.length || mort) return false;
+    this.raids.set(addr, { ids, at: 0, fin: 0, issue: null });
     return true;
   }
 
-  /** The raids' bounded windows open at t (a blow, a fall): the frame timer runs while one is, and its signature
-   *  changes when one ends (a redraw drops it). */
+  /** The shown, live village only (ecrit; not the demo): each hero's new successful subagent tool calls since its
+   *  stored count (VUS) are damage on today's boss, the first sight of a terminal only stores its count, and vanished
+   *  terminals are forgotten. The last blow slays the boss: trophies and the chronicle line. Returns { coups
+   *  (address -> damage dealt in this poll), tue (slain in this poll), boss (today's, after the damage) }. */
+  degats(lus, now) {
+    const coups = new Map();
+    let boss = bossDuJour(new Date(now));
+    if (!this.ecrit) return { coups, tue: false, boss };
+    const vus = { ...(shared(VUS) ?? {}) };
+    let neuf = false;
+    for (const [addr, s] of lus) {
+      const n = s?.subCoups;
+      if (typeof n !== "number" || vus[addr] === n) continue; // no file (or an older hook), or nothing new
+      const b = vus[addr];
+      vus[addr] = n;
+      neuf = true;
+      if (b === undefined) continue;
+      const d = n > b ? n - b : n; // fewer: its file started over (a session ended), every call in it is new
+      if (d > 0) coups.set(addr, d);
+    }
+    const alive = new Set((this.list ?? []).map((a) => a.address));
+    for (const k of Object.keys(vus)) if (!alive.has(k)) { delete vus[k]; neuf = true; }
+    if (neuf) setShared(VUS, vus);
+    if (boss.slain) { coups.clear(); return { coups, tue: false, boss }; } // it already fell today: no more blows
+    if (!coups.size) return { coups, tue: false, boss };
+    boss = { ...boss };
+    for (const [addr, d] of coups) {
+      boss.hp = Math.max(0, boss.hp - d);
+      if (!boss.hp) { Object.assign(boss, { slain: true, slainAt: now, by: addr }); break; }
+    }
+    setShared(BOSS, boss);
+    if (boss.slain) {
+      const T = shared(TROPHEES) ?? {};
+      const streak = T.lastDay === boss.day ? T.streak ?? 1 : T.lastDay === veille(boss.day) ? (T.streak ?? 0) + 1 : 1;
+      setShared(TROPHEES, { total: (T.total ?? 0) + 1, streak, lastDay: boss.day });
+      this.abattu?.(boss.by, boss.day);
+    }
+    return { coups, tue: boss.slain, boss };
+  }
+
+  /** The raids' bounded windows open at t (a blow, a fall or a flight, with its stages): the frame timer runs while
+   *  one is, and its signature changes at each stage and when one ends (a redraw drops it). */
   fenetres(t) {
     let s = "";
     if (this.off) return s;
-    for (const [k, r] of this.raids) if (t - r.at < COUP || (!r.ids.length && t - r.fin < CHUTE)) s += `${k}:${r.at}:${r.fin};`;
+    for (const [k, r] of this.raids) {
+      const fin = r.fin && t - r.fin < CHUTE;
+      if (t - r.at < COUP || fin) s += `${k}:${r.at}:${r.fin}:${fin ? etape(t - r.fin) : ""};`;
+    }
     return s;
   }
 
@@ -168,10 +220,12 @@ export class Activites {
     return !a.guard && !a.demoAct && (a.status === "working" || !this.files.has(a.address) || subsOf(this.files.get(a.address)) > 0);
   }
 
-  /** Polls the activity files while some agent works or has subagents; notifies only when something visible changes. */
-  watch(cx, list, hidden, off = false) {
+  /** Polls the activity files while some agent works or has subagents; notifies only when something visible changes.
+   *  ecrit: this copy deals the raid damage (not the demo); it polls only while shown and animated. */
+  watch(cx, list, hidden, off = false, ecrit = false) {
     this.list = list;
     this.off = off;
+    this.ecrit = ecrit;
     if (off) this.raids.clear();
     const need = !hidden && !off && list.some((a) => this.reads(a) || this.scenes.has(a.address));
     if (need && !this.timer) this.timer = cx.timer.every(POLL, (cx) => this.poll(cx));
@@ -185,16 +239,20 @@ export class Activites {
     try {
       const now = Date.now();
       const dir = `${home()}/.local/state/world-of-codecraft`;
+      const lus = []; // [address, its file (null: not read)]: the raids follow them once the damage is dealt
       for (const a of this.list ?? []) {
         if (a.demoAct) { changed = this.apply(a, a.demoAct, now) || changed; continue; }
-        if (!this.reads(a)) { changed = this.apply(a, null, now) || changed; changed = this.mene(a.address, null, now) || changed; continue; }
+        if (!this.reads(a)) { changed = this.apply(a, null, now) || changed; lus.push([a.address, null]); continue; }
         let s = null;
         try { s = JSON.parse((await readTextFile(`${dir}/${a.address}.json`)) ?? "null"); } catch { s = null; }
         const old = this.files.get(a.address);
         if (JSON.stringify(old) !== JSON.stringify(s)) { this.files.set(a.address, s); changed = true; }
         changed = this.apply(a, s, now) || changed;
-        changed = this.mene(a.address, s, now) || changed;
+        lus.push([a.address, s]);
       }
+      const { coups, tue, boss } = this.degats(lus, now);
+      for (const [addr, s] of lus) changed = this.mene(addr, s, now, boss.slain, tue && coups.has(addr)) || changed;
+      for (const addr of coups.keys()) { const r = this.raids.get(addr); if (r && !r.fin) { r.at = now; changed = true; } } // the boss flinches
       // short-lived flashes (blow on the creature, hero hit): redraw when they start or end
       for (const a of this.list ?? []) {
         const h = this.hits.get(a.address), s = this.files.get(a.address) ?? a.demoAct;
@@ -479,8 +537,9 @@ export class Activites {
     return out;
   }
 
-  /** The raid boss: the troll GEANT times its drawn size, LOIN px from the hero on the creature's side, one pip per
-   *  running subagent; hit COUP ms when one ends, felled (the puff) when the last one does. { z, el }. */
+  /** The raid boss: the troll GEANT times its drawn size, LOIN px from the hero on the creature's side, today's HP
+   *  (shared by every raid) in a bar over its head; hit COUP ms after each damage tick; when slain, the felled puff and a
+   *  gold burst; when it flees, it turns its back and walks FUIR px away, fading. { z, el }. */
   geant(u, r, night) {
     const D = CREATURES.troll;
     if (!D) return null;
@@ -489,18 +548,28 @@ export class Activites {
     const x = Math.round(u.x + side * LOIN), y = Math.round(u.y + 16);
     const g = side > 0 ? "" : "-g", sfx = night ? "-n" : "";
     const now = Date.now();
-    const sprite = (pose, extra) => {
+    const e = r.fin ? etape(now - r.fin) : 0;
+    const sprite = (pose, extra, gg = g) => {
       const p = D[pose];
-      return image(`${CRE}/troll/${pose}${g}${sfx}.png`).absolute().left(-p.ax * GEANT).top(-p.ay * GEANT + 4).w(p.w * GEANT).h(p.h * GEANT).when(Boolean(extra), extra);
+      return image(`${CRE}/troll/${pose}${gg}${sfx}.png`).absolute().left(-p.ax * GEANT).top(-p.ay * GEANT + 4).w(p.w * GEANT).h(p.h * GEANT).when(Boolean(extra), extra);
     };
+    if (r.issue === "fuite") {
+      // drawn where it stood, then (stage 1) given the far point and opacity 0, which its native transitions carry
+      const tr = { duration: CHUTE - ETAPES[0], easing: "ease-in" };
+      return { z: y + 3, el: div().id(`fuite-${addr}`).absolute().left(e ? x + side * FUIR : x).top(y).w(0).h(0).opacity(e ? 0 : 1)
+        .transition("left", tr).transition("opacity", tr)
+        .child(div().absolute().left(0).top(0).w(0).h(0).loop("top", { from: 0, to: -5, period: 320 })
+          .child(sprite("pret", null, side > 0 ? "-g" : ""))) };
+    }
     const out = [];
-    if (!r.ids.length) {
-      // felled: fades and rises in a puff, at the boss's size
+    if (r.issue === "mort") {
+      // felled: fades and rises in a puff, at the boss's size, in a gold burst
       const p = D.touche;
       out.push(image(`${CRE}/troll/touche${g}${sfx}.png`).absolute().left(side * 28 - p.ax * GEANT).top(-p.ay * GEANT).w(p.w * GEANT).h(p.h * GEANT)
         .loop("opacity", { from: 0.9, to: 0, period: CHUTE }).loop("top", { from: -p.ay * GEANT, to: -p.ay * GEANT - 32, period: CHUTE }));
       out.push(div().absolute().left(side * 28 - 24).top(-40).size(48).rounded_full().bg("#e8e2d0aa")
         .loop("opacity", { from: 0.8, to: 0, period: CHUTE }));
+      out.push(...eclat(addr, e, Math.round((D.pret.h * GEANT) / 2)));
     } else if (now - r.at < COUP) {
       out.push(sprite("touche"));
       out.push(div().absolute().left(-12).top(-D.pret.h * GEANT / 2 - 8).size(24).rounded_full().bg("#fff6d8")
@@ -509,12 +578,31 @@ export class Activites {
       out.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: 1700 + (hash(addr) % 400), easing: "linear" })));
       out.push(sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: 1700 + (hash(addr) % 400), easing: "linear" })));
     }
-    // health: one pip per running subagent over its head
-    const n = r.ids.length;
-    if (n) out.push(div().absolute().left(-2.5 * n).top(-D.pret.h * GEANT - 6).flex().gap(1)
-      .children(Array.from({ length: n }, () => div().w(4).h(3).bg("#e5685a").border_1().border_color("#000000"))));
+    // today's HP over its head while it fights
+    if (!r.fin) {
+      const b = bossDuJour(), W = 84;
+      out.push(div().absolute().left(-W / 2).top(-D.pret.h * GEANT - 12).w(W).h(8).bg("#1b1420").border_1().border_color("#000000")
+        .child(div().h_full().w(Math.round(((W - 2) * b.hp) / b.max)).bg("#e5685a")));
+    }
     return { z: y + 3, el: div().absolute().left(x).top(y).w(0).h(0).children(out) };
   }
+}
+
+/** The gold burst over a slain raid boss (mid px above its feet): a gold ring opening and 10 sparkles rising, gold
+ *  pixels and stars in turn. Hidden at stage 0, open at 1, faded at 2; the native transitions carry each stage. */
+function eclat(addr, e, mid) {
+  const tr = (duration, delay = 0) => ({ duration, delay, easing: "ease-out" });
+  const w = e ? 260 : 20, h = e ? 110 : 8;
+  const out = [image(`${ART}/halo.svg`).id(`eclat-${addr}`).absolute().left(-w / 2).top(-mid - h / 2).w(w).h(h).opacity(e === 1 ? 1 : 0)
+    .transition("left", tr(900)).transition("top", tr(900)).transition("width", tr(900)).transition("height", tr(900))
+    .transition("opacity", tr(400))];
+  for (let k = 0; k < 10; k++) {
+    const a = (k / 10) * 2 * Math.PI, x = Math.round(Math.cos(a) * 56) - 6, y = Math.round(Math.sin(a) * 44) - mid;
+    const el = k % 2 ? div().size(6).bg(C.goldLight).border_1().border_color(C.gold) : image(`${ART}/etincelle.svg`).size(12);
+    out.push(el.id(`eclat-${addr}-${k}`).absolute().left(x).top(e ? y - 70 : y).opacity(e === 1 ? 1 : 0)
+      .transition("top", tr(1000, k * 40)).transition("opacity", tr(300, k * 40)));
+  }
+  return out;
 }
 
 /** A parchment bubble over the hero. */

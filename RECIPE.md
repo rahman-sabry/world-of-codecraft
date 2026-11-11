@@ -15,7 +15,10 @@ the clock. The art is original: it imitates no existing game.
     "village of Valbrume" under it;
   - resource plaques, each an icon, a value and a caption: Gold (Claude account A),
     Wood (account B), Heroes ("1/2", heroes at work out of all heroes) and Fair (time
-    until the weekly quota reset);
+    until the weekly quota reset); then the day's raid boss (the troll, "214/300" and its name; slain: "Slain!" in
+    gold, the troll felled; tooltip: name, HP, who slew it, time to the next boss) and the trophies (a gold cup,
+    "3 slain", "streak 2 days"; tooltip). They show only when the bar has room beside everything else (a width
+    estimate): the trophies go first (their tooltip then joins the boss's), then the boss;
   - a parchment scroll in the middle with the shown district and quest;
   - on the right, an alert when a hero waits, then the sun or the moon, the canonical
     hour (Matins, Lauds, Terce, Sext, None, Vespers, Compline) and the clock.
@@ -137,8 +140,10 @@ the clock. The art is original: it imitates no existing game.
   Code hook; `integrations/opencode/wocc-activity.js`, an OpenCode plugin). Tests, commits
   and pushes are recognised only as real commands (start of line or after `;` `&` `|` `(`),
   with heredoc bodies and quoted strings removed first, so "git push" in a message doesn't count. Fields: `act`,
-  `outil`, `coups`, `err` / `errT`, `errTache`, `subs`, `subIds`, `tache`, `essai {ok, t}`,
-  `commitT`, `pushT`. Without them heroes keep the plain status behaviour.
+  `outil`, `coups`, `err` / `errT`, `errTache`, `subs`, `subIds`, `subCoups`, `tache`, `essai {ok, t}`,
+  `commitT`, `pushT`. Without them heroes keep the plain status behaviour. `subCoups` counts every successful
+  subagent tool call (`PostToolUse` with an `agent_id`; not the main session's tools, not failures), from 0 on the
+  file's first event and never reset (a `SessionEnd` deletes the file, so it starts over): the raid boss's damage.
   Running subagents are tracked by id (`subIds`: `agent_id` -> `{t0, t, act, outil}`: start, last event, and what
   it does, `pense` at the start then the kind of its tools, as the main hero's): added on `SubagentStart`,
   removed on `SubagentStop`, refreshed by the subagent's own tool events, kept when the main turn ends (`Stop`)
@@ -170,20 +175,39 @@ the clock. The art is original: it imitates no existing game.
     behind front cut-outs like the walkers; not clickable, no chronicle line. When a subagent ends its
     apprentice blinks out (and a new one blinks in). The activity file is read while the hero works, once when it is first seen, and
     while it has subagents (and an event in the last 30 min), so they stay after the main turn ends.
-  - **Raid:** while a hero (not a shell, not a demo hero) has running subagents (the apprentices' rule: ids with an
-    event in the last 30 min), whatever its status, it fights a raid boss instead of its scene. It plays `work`
-    where it stands and never moves on (a strolling idle hero stops where it is, as when it turns working; it
-    strolls again after the raid). The boss is the forest troll drawn at 2× its fight size (`GEANT`: 4×4 screen
-    px per art px), feet 170 px from the hero's (`LOIN`) on the creature's side (right; left past x 2700) and
-    16 px nearer the viewer, `pret` / `attaque` alternating, depth-sorted by its feet. Over its head, one pip per
-    running subagent. A subagent that ends (even when another starts in the same poll) is a blow: `touche` and an
-    impact flash for 900 ms, one pip fewer. When the last one ends it falls: the felled puff at its size, 1.2 s,
-    then the hero is back to its scene or stroll. The raid wins over thinking, scouting, combat, the dummy and
-    meditation (their anti-zapping state keeps running underneath); a test result, the seal, the pigeon and
-    "Ouch!" still show. In a raid every apprentice slot is on the side away from the boss (70, 115, 160, 205 px,
-    zigzagging 6 px in front and 30 px behind), and no apprentice's feet stand within the boss's half width plus
-    25 px of its x, wherever the search pulls or mirrors it. No raid with animations off, in the demo, or for
-    shells; no chronicle line.
+  - **Raid (daily boss):** one boss a day, from local midnight to the next, named by a hash of the date (a troll name and
+    an epithet, "Gruntak the Mossback" / "Gruntak le Moussu"; `nomBoss` in kit.js) with `BOSS_HP` = 300 HP (calibrated:
+    the person's subagents make a median 390 / mean 496 successful tool calls per weekday). Every successful subagent
+    tool call is 1 damage, whichever hero's subagent made it, so more subagents in parallel hit faster. While a hero
+    (not a shell, not a demo hero) has running subagents (the apprentices' rule: ids with an event in the last 30 min),
+    whatever its status, and the day's boss still stands, it fights its own troll instead of its scene; several
+    heroes raiding at once each draw one, all sharing the one HP pool. The hero plays `work` where it stands and never
+    moves on (a strolling idle hero stops where it is, as when it turns working; it strolls again after the raid). The
+    troll is drawn at 2× its fight size (`GEANT`: 4×4 screen px per art px), feet 170 px from the hero's (`LOIN`) on
+    the creature's side (right; left past x 2700) and 16 px nearer the viewer, `pret` / `attaque` alternating,
+    depth-sorted by its feet, with the day's HP in a bar over its head. A poll that deals damage makes it flinch
+    (`touche` and an impact flash, 900 ms). At 0 HP it falls: the felled puff at its size and a gold burst (a gold ring
+    opening and 10 sparkles rising, 1.2 s), every running raid's troll with it; the chronicle says "[Mage Tower]
+    Gruntak the Mossback is slain by Aldric, Human mage!"; the trophies count it (`total`, and `streak`: consecutive
+    days with a kill, alive while the last kill is today or yesterday); and no raid starts again until midnight
+    (apprentices still show, heroes play their scenes). When a hero's subagents all end with HP left, its troll flees:
+    it turns its back, walks 150 px away from the hero over 1.2 s and fades; its HP stays for the next raid that day.
+    The raid wins over thinking, scouting, combat, the dummy and meditation (their anti-zapping state keeps running
+    underneath); a test result, the seal, the pigeon and "Ouch!" still show. In a raid every apprentice slot is on the
+    side away from the boss (70, 115, 160, 205 px, zigzagging 6 px in front and 30 px behind), and no apprentice's
+    feet stand within the boss's half width plus 25 px of its x, wherever the search pulls or mirrors it. No raid
+    with animations off, in the demo, or for shells.
+    - **Store keys** (one writer: the shown, live village, as for the chronicle; the demo and a hidden copy write
+      nothing): `wocc.boss` = `{day, hp, max, slain, slainAt, by}` (the day's boss; another day's or none reads as a
+      fresh boss at full HP, `bossDuJour` in kit.js), `wocc.trophees` = `{total, streak, lastDay}`, and
+      `wocc.boss.vus` = `{address: subCoups already counted}`. Each poll the writer compares each read file's
+      `subCoups` with its stored count: the difference is damage (a lower count means the file started over: all of
+      it is new); a terminal seen for the first time with no stored count is only stored; terminals no longer among
+      the agents are dropped. So a reload or a switch of village neither recounts nor loses calls.
+    - **Limits:** damage is applied only by a shown village with animations on, from its activity poll (a hero's file
+      is read while it works, once when first seen, and while it has subagents). Calls made meanwhile are caught up
+      from the stored counts the next time that hero's file is read, so they may land after midnight on the next
+      day's boss. Calls made before a terminal's first sight are not counted.
   - **Anti-zapping:** a scene changes only when asked for 8 s and the current one is 15 s
     old (20 s / 40 s to or from the forest edge); meditation, tests and the end switch at once.
 - **Village life** (`ambiance.js`): walkers with pauses on the road (a peasant woman and a
@@ -278,7 +302,8 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   - commands: `agent.focus`, `agent.next`, `pane.focus`, `space.select`, `tab.select`,
     `tab.new`, `space.new`, `pane.split`, `pane.zoom` and `pane.close`.
 - **Timers:** one shared 100 ms timer runs only while a visible unit animates or walks, or someone blinks in or out
-  or is summoned, or a raid boss is hit or falls (its signature drops each window's end: `Activites.fenetres`),
+  or is summoned, or a raid boss is hit, falls or flees (its signature changes at each stage of the fall and the
+  flight, and drops each window's end: `Activites.fenetres`),
   and stops when its village block (`place` or `place-immersion`) is hidden. The clock ticks every 30 s; the sky and quotas
   update every 60 s.
 - **Files read and programs run:** the activity files in `~/.local/state/world-of-codecraft/`

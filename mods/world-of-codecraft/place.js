@@ -14,7 +14,7 @@
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, spaces, run, setAgentOrder, props, layout, shared, setShared } from "herdr";
-import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim } from "./kit.js";
+import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss } from "./kit.js";
 import { WORLD, TILES, FRONTS } from "./monde-data.js";
 import { HEROES } from "./heros-data.js";
 import { SPOTS, FLANE, ROAD, BUILDINGS, MARCHE, market, SMOKE, GLOWS } from "./lieux.js";
@@ -148,6 +148,11 @@ export default class Place {
     this.fantomes = new Map(); // key -> its last frame and feet point, and when it left (blinking out)
     this.invocations = new Map(); // apprentice key -> its summon: { t0, x, y (its feet point), hero }
     this.act = new Activites(); // what each hero does while working (Claude Code hook)
+    // the raid boss slain by this village's damage: a chronicle line (only the shown village deals damage)
+    this.act.abattu = (addr, day) => {
+      const a = agents().find((x) => x.address === addr), m = this.mob.get(addr), p = m && this.pos(m, Date.now());
+      this.say(`[${p ? quartier(p.x, p.y) : tr("villageTag")}] ${tr("bossSlain", nomBoss(day), heroTitle(heroOf(addr, a?.program)))}`, "done", addr);
+    };
     this.amb = new Ambiance(route); // village life: walkers, animals, treasury, fair (only when animated)
     this.live = true; // the « Animations » toggle (shared wocc.anim): off = still images, no walk, no scenes
     try { this.log = JSON.parse(localStorage.getItem(LOG_KEY) ?? "[]"); } catch { this.log = []; }
@@ -420,7 +425,7 @@ export default class Place {
     for (const [k, t0] of this.nes) s += `${k}:${t - t0 < BLINK};`;
     for (const [k, g] of this.fantomes) s += `${k}:${t - g.t0 < BLINK}:${etape(t - g.t0, ADIEU)};`;
     for (const [k, v] of this.invocations) s += `${k}:${etape(t - v.t0, [OUVRE, LEAD, FONDU, CAST, SUMMON])};`;
-    return s + this.act.fenetres(t); // a raid blow or fall that ends
+    return s + this.act.fenetres(t); // a raid blow, fall or flight: each stage and its end
   }
 
   // ---------------------------------------------------------------- blinking in and out
@@ -649,7 +654,7 @@ export default class Place {
     const order = [...list].sort((a, b) => RANK[a.status] - RANK[b.status] || b.seq - a.seq);
     if (!props()?.demo) setAgentOrder(order.map((a) => a.address));
     const gs = guards().slice(0, 4).map((p) => ({ address: p.terminal, pane: p.pane, guard: true, status: "garde", program: p.program, tab_name: p.title, focused: p.focused }));
-    this.act.watch(cx, order, this.hidden(), !this.live);
+    this.act.watch(cx, order, this.hidden(), !this.live, !props()?.demo);
     const units = this.units([...order, ...gs], t);
 
     // the selected unit = the focused shell when it is a guard, else the focused agent
@@ -688,7 +693,7 @@ export default class Place {
     // depth: units by feet y (+3, like the compositor), front cut-outs above the units behind them
     const els = units.map((u) => this.unit(u, u === sel, nightHeroes, t, u.animate));
     this.passages(units, apps, this.live && !hidden && !props()?.demo, t);
-    // the frame timer also runs while someone blinks in or out or is summoned, or a raid boss is hit or falls, and
+    // the frame timer also runs while someone blinks in or out or is summoned, or a raid boss is hit, falls or flees, and
     // redraws at each stage and its end
     this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0 || this.act.fenetres(t) !== ""));
     this.sig = this.frameSig(t);
