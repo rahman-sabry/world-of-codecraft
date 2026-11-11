@@ -572,19 +572,23 @@ export default class Place {
   etendards(nightK) {
     if (props()?.demo) return [];
     const out = BANNIERES.slice(0, bannieres()).map(([x, y], i) => this.etendard(x, y, ETOFFES[i], 2600 + i * 700, nightK));
-    // a victory day: red cup standards all over the world until midnight (VICTOIRE)
-    if (bossDuJour().slain) out.push(...VICTOIRE.map(([x, y], i) => this.etendard(x, y, 0, 2600 + (i % 4) * 700, nightK)));
+    // a victory day: red standards all over the world until midnight (VICTOIRE), the champion's portrait over the cup
+    const boss = bossDuJour();
+    if (boss.slain) out.push(...VICTOIRE.map(([x, y], i) => this.etendard(x, y, 0, 2600 + (i % 4) * 700, nightK, boss.heros)));
     return out;
   }
 
-  /** One standard: the pole's foot at (x, y), the banner of cloth `etoffe` swaying over `period` ms. */
-  etendard(x, y, etoffe, period, nightK) {
+  /** One standard: the pole's foot at (x, y), the banner of cloth `etoffe` swaying over `period` ms; with `heros`
+   *  (the slayer's { race, cls }), its framed portrait covers the cup charge and sways with the cloth. */
+  etendard(x, y, etoffe, period, nightK, heros) {
     return { z: y,
       el: div().absolute().left(x).top(y).w(0).h(0).opacity(1 - 0.55 * nightK)
         .child(div().absolute().left(-2).top(-82).w(4).h(82).bg("#4a2f1e").border_1().border_color("#1e120c"))
         .child(div().absolute().left(-21).top(-79).w(42).h(3).bg("#6b3f26").border_1().border_color("#1e120c"))
         .child(div().absolute().left(-4).top(-88).size(8).rounded_full().bg("#e0a32a").border_1().border_color("#6b3f10"))
-        .child(image(art(`banniere-${etoffe}-coupe`)).absolute().left(-19).top(-76).w(39).h(60)
+        .child(div().absolute().left(-19).top(-76).w(39).h(60)
+          .child(image(art(`banniere-${etoffe}-coupe`)).absolute().left(0).top(0).w(39).h(60))
+          .when(!!heros, (e) => e.child(image(art(`heros/${heros.race}-${heros.cls}-p22`)).absolute().left(7).top(13).size(24)))
           .when(this.live, (e) => e.loop("left", { from: -19, to: -18, period }))) };
   }
 

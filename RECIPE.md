@@ -230,8 +230,9 @@ the clock. The art is original: it imitates no existing game.
     second at a current streak of 3, a third at 7 (`bannieres()` in kit.js). World elements at depth = the pole's
     foot, sorted with the units. Dimmed at night (opacity 1 - 0.55 ×
     the night weight: 0.45 at night), a 1 px native sway while animated, still with animations off, none in the demo.
-    **Victory-day standards:** on a day the boss is slain (`bossDuJour().slain`), 12 more red cup standards (the same
-    pole and banner, `etendard` in place.js) stand around the whole world until midnight, `VICTOIRE` in lieux.js: the
+    **Victory-day standards:** on a day the boss is slain (`bossDuJour().slain`), 12 more red standards (the same
+    pole and banner, `etendard` in place.js; the slaying champion's framed portrait over the cup, the cup itself on
+    records without a `heros`) stand around the whole world until midnight, `VICTOIRE` in lieux.js: the
     west farmland, by the windmill, along the road by the barn and by the mage tower, the market square, by the temple,
     by the barracks, both ends of the footbridge, the lake shore west of the jetty, its east shore and the east lane.
     Each on open ground 25+ px off the road and 40+ px from every stroll and work spot (no unit stands in a pole), out
