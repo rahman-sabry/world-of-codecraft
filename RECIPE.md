@@ -201,16 +201,26 @@ the clock. The art is original: it imitates no existing game.
     that hero stands or is heading (`poser`, from place.js `units`), and stays on that spot until the raid ends. That
     first hero plays `work` where it stands and never moves on (a strolling idle hero stops where it is, as when it
     turns working; it strolls again after the raid). Every other hero that starts raiding while the boss is up walks
-    to a place by it (`place` in activite.js, kept while it raids; `RANGS`): the boss's other side at its own class
-    distance (as the first hero's, below), then a second row 70 px in front on each side (the first hero's side first), then 70 px behind,
-    then the same three rows 110 px further out; each on walkable ground inside the 400 px strip, 60 px from every
-    other raider's place, off the boss's footprint, with walkable ground 70 px further out for its apprentices (else
-    without that room, else the nearest free walkable point within 400 px). Rows 70 px apart keep each raider's
-    apprentices (6 px in front to 30 px behind it) out of the next row's. The walk is an ordinary walk (road legs,
+    to a slot on a ring round the boss (`place` in activite.js, kept while it raids and never moved: no reshuffling).
+    A slot is an angle round the boss on the ground (0 = beside it, + = nearer the viewer) and a ring, and the hero
+    stands at its own class gap (`ECART`) past the boss's half width along that angle, the ground flattened to 0.32 of
+    the width to fit the strip (`anneau`, centred on the first hero's line, 16 px behind the boss's feet): the inner
+    slots (`INNER`: beside the boss on the far side, then ±25° on the first hero's side, then ±25° on the far side)
+    go to melee first (warrior, rogue); the others (`OUTER`: ±45°, ±65°, then rings 75 and 150 px further out at 0°
+    and ±30°) to the artificer, priest, mage and ranger first, the inner slots last. So a late warrior still takes
+    a free inner slot. Each slot on walkable ground inside the 400 px strip, off the boss's body (its `pret` half
+    width + 10 px, `corps`) and `ESPACE` (an ellipse 48 px across, 28 px deep) from the first hero and every other
+    raider (else the nearest free walkable point within 400 px off its footprint). The walk is an ordinary walk (road legs,
     the frame timer, the camera following a selected hero); the hero then plays `work` there, facing the boss: hero
     work frames face right and Herdr cannot flip an image, so a raider whose boss stands on its left (the boss's x
     below its own) plays the mirrored set `work-g` instead (activite.js `face`, read by place.js `anim`; the first
-    hero too, past `BASCULE`). Its apprentices playing `work` turn the same way. A hero whose subagents all end leaves the raid: the first one stays where it is, another walks
+    hero too, past `BASCULE`). Its apprentices leave its file and fight on their own (`coin`): each takes the free
+    point nearest its hero among angles 0 to ±60° in 15° steps on the ring and the two further out (not beside the
+    boss on the first ring: the raiders' inner slots), at its own look's class gap, as free as a raider's place and
+    `ESPACE` from the other apprentices (kept while both raid; one a new raider's place comes too near moves). It
+    walks there (with its hero's walk, else straight, 40 px/s), plays `work` facing the boss (`work-g` on its left)
+    whatever its subagent does, and walks back into the file when the raid ends; with no free point it stays in the
+    file. A hero whose subagents all end leaves the raid: the first one stays where it is, another walks
     back to the goal it left for its place (place.js `retours`). The boss stays where it is while any raider is
     left. The raid lives in memory, as before (a reload starts it afresh beside the first raider found). Each
     species is drawn as tall as the troll at 2× its fight size (`GEANT`: 4×4 screen px per art px), the factor computed
@@ -234,7 +244,11 @@ the clock. The art is original: it imitates no existing game.
     stand on the hero's open side (`rangs`: the creature's side unless the other one has room for more): the first
     places of `PLACES` (a mage's: 80 px in front, 170 px behind, 170 px further in front, then spares; other classes
     nearer or further as their fight creature, `proche`) on walkable ground whose
-    `pret` boxes overlap none taken; the apprentices keep to the other side and off their zone, as in a raid. Each
+    `pret` boxes overlap none taken; the apprentices keep to the other side and off their zone. Once the hero stands
+    there, each apprentice whose subagent has a minion leaves the file and walks to it (`det` in `apprentis`): it
+    stands past the minion on the same row, at its own look's class distance (`proche`, as a fight creature), facing
+    it, and plays `work`; when the minion flees or the hero walks off it walks back into the file (on walkable ground
+    only, else it stays in the file). Each
     successful subagent tool call (the same `subCoups` deltas, which no longer hit a slain boss) is a blow on the next
     minion in turn (`touche` and a flash, 900 ms); 4 fell it (the felled puff, 1.2 s) and a fresh one stands in its
     place. A minion whose subagent ends flees like the boss (turns, walks 150 px off, fades, 1.2 s), and a newer
@@ -270,9 +284,10 @@ the clock. The art is original: it imitates no existing game.
     from its first hero over 1.2 s and fades; its HP stays for the next raid that day, which starts afresh beside its
     own first raider (not before the flight ends).
     The raid wins over thinking, scouting, combat, the dummy and meditation (their anti-zapping state keeps running
-    underneath); a test result, the seal, the pigeon and "Ouch!" still show. In a raid every apprentice slot is on the
-    side away from the boss (70, 115, 160, 205 px, zigzagging 6 px in front and 30 px behind), and no apprentice's
-    feet stand within the boss's half width plus 25 px of its x, wherever the search pulls or mirrors it. No raid
+    underneath); a test result, the seal, the pigeon and "Ouch!" still show. An apprentice still in its file in a raid
+    (no free point) keeps to the side away from the boss (70, 115, 160, 205 px, zigzagging 6 px in front and 30 px
+    behind), its feet never within the boss's half width plus 25 px of its x, wherever the search pulls or mirrors
+    it. No raid
     in the demo, or for shells.
     **Reset:** "Yes" on the boss plaque's confirmation (fronton.js, `remiseBoss` in kit.js) writes today's record as a
     fresh one, `{day, hp: BOSS_HP, max: BOSS_HP, slain: false}`, and when today's boss had been slain undoes that
