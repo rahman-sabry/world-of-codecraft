@@ -28,7 +28,7 @@
 
 import { div, image, svg } from "gpui-kit";
 import { home, readTextFile, shared, setShared } from "herdr";
-import { hash, UI, C, heroOf, walkAnim, BOSS, TROPHEES, bossDuJour, veille, especeBoss, palier, PALIERS } from "./kit.js";
+import { hash, UI, C, heroOf, walkAnim, BOSS, TROPHEES, bossDuJour, veille, espece, palier, PALIERS } from "./kit.js";
 import { walkable, lieux } from "./lieux.js";
 import { CREATURES } from "./creatures-data.js";
 import { HEROES } from "./heros-data.js";
@@ -139,7 +139,7 @@ export function antre(day) {
 /** Room on both sides of boss feet q (the day's species), so a party can stand round it: beside it at a warrior's
  *  gap (ring 0) and a mage's one ring out (ring 1), each walkable. */
 function cotes(day, q) {
-  const { demi } = geantDe(especeBoss(day));
+  const { demi } = geantDe(espece(day));
   return [demi + ECART.guerrier, demi + ECART.mage + ANNEAU].every((dx) => walkable([q[0] - dx, q[1] - 16]) && walkable([q[0] + dx, q[1] - 16]));
 }
 
@@ -147,7 +147,7 @@ function cotes(day, q) {
  *  room on both sides (cotes), else the first walkable one, else the lair's centre. */
 const JALONS = new Map(); // day:map:i -> its waypoint (each is drawn from hashes and walkable() tests: compute once)
 function jalon(day, Z, i) {
-  const id = `${day}:${lieux().id}:${i}`;
+  const id = `${day}:${espece(day)}:${lieux().id}:${i}`; // the species too: a reset brings another (cotes)
   if (!JALONS.has(id)) {
     if (JALONS.size > 64) JALONS.clear();
     JALONS.set(id, choisirJalon(day, Z, i));
@@ -506,7 +506,7 @@ export class Activites {
     const A = this.arene, a = this.list?.find((x) => x.address === addr);
     const n = [...this.membres()].reduce((k, q) => k + Math.sign(q[0] - A.x), 0);
     const got = this.choisir(a ? clsOf(a) : "mage", n > 0 ? A.side : n < 0 ? -A.side : 1, s)
-      ?? [null, lieux().POSTES.filter((p) => this.libre(p) && Math.abs(p[0] - A.x) >= geantDe(especeBoss(A.day)).large && Math.hypot(p[0] - A.x, p[1] - A.y) < 400)
+      ?? [null, lieux().POSTES.filter((p) => this.libre(p) && Math.abs(p[0] - A.x) >= geantDe(espece(A.day)).large && Math.hypot(p[0] - A.x, p[1] - A.y) < 400)
         .sort((p, o) => Math.hypot(p[0] - A.x, p[1] - A.y) - Math.hypot(o[0] - A.x, o[1] - A.y))[0]];
     if (!got[1]) return null;
     A.places.set(addr, { s: got[0], q: got[1] });
@@ -522,14 +522,14 @@ export class Activites {
   /** Free feet for a party member at q: walkable, inside the 400 px strip, off the boss's body (clair) and ESPACE from
    *  every other member. */
   libre(q) {
-    const A = this.arene, { demi, corps } = geantDe(especeBoss(A.day));
+    const A = this.arene, { demi, corps } = geantDe(espece(A.day));
     return walkable(q) && q[1] > 60 && q[1] < lieux().WORLD.h - 15 && clair(A, q, demi, corps) && [...this.membres()].every((o) => apart(o, q));
   }
 
   /** The first free ring slot for a party member of class cls at its own class gap (its slot s first when given), by
    *  fighting range (RANG), on side c0 first at equal rank, nearer the viewer first: [slot, feet] or null. */
   choisir(cls, c0, s) {
-    const A = this.arene, { demi } = geantDe(especeBoss(A.day)), d = ECART[cls] ?? ECART.mage;
+    const A = this.arene, { demi } = geantDe(espece(A.day)), d = ECART[cls] ?? ECART.mage;
     const slots = [...(s ? [s] : []), ...RANG[rangDe(cls)].flatMap(([r, th]) => [c0, -c0].flatMap((c) => (th ? [[r, th, c], [r, -th, c]] : [[r, 0, c]])))];
     for (const x of slots) {
       const q = anneau(A, demi, ...x, d);
@@ -813,7 +813,7 @@ export class Activites {
     const addr = u.a.address;
     if (this.raid(addr) ? u.leg || u.portail : this.ailleurs(u)) return null;
     if (this.raid(addr)) {
-      const A = this.arene, sp = especeBoss(A.day), p = this.ici(t);
+      const A = this.arene, sp = espece(A.day), p = this.ici(t);
       return A.fin ? null : { x: p.x, y: p.y - (CREATURES[sp].pret.h * geantDe(sp).k) / 2 + 4, fy: p.y };
     }
     const o = this.sbires.get(addr);
@@ -972,7 +972,7 @@ export class Activites {
     if (sb) side = sb.side;
     const A = this.raid(addr) ? this.arene : null;
     if (A) side = A.x < m.x ? -1 : 1; // the boss's side: the apprentices keep to the other
-    const raid = A ? { x: A.x, large: geantDe(especeBoss(A.day)).large } : sb;
+    const raid = A ? { x: A.x, large: geantDe(espece(A.day)).large } : sb;
     const at = (p) => { const taken = []; return drawn.map((x) => { const q = spot(p, slots.get(x.id), side, taken, raid); taken.push(q); return q; }); };
     const ends = at([m.x, m.y]), starts = m.legs.length ? at(m.legs[0].a) : ends;
     const sfx = night ? "-n" : "";
@@ -1116,7 +1116,7 @@ export class Activites {
    *  { z, el } or null. */
   geant(night, t = Date.now()) {
     if (!this.ecrit) return null;
-    const r = this.boss(), b = bossDuJour(), sp = especeBoss(r.day), D = CREATURES[sp];
+    const r = this.boss(), b = bossDuJour(), sp = espece(r.day), D = CREATURES[sp];
     if (!D) return null;
     const { k: K } = geantDe(sp);
     const addr = "boss", p = this.ici(t), leg = p.leg;
@@ -1221,7 +1221,7 @@ export class Activites {
 }
 
 /** The species of today's boss's minions. */
-const sbire = () => { const sp = especeBoss(bossDuJour().day); return SBIRE[sp] ?? sp; };
+const sbire = () => { const sp = espece(bossDuJour().day); return SBIRE[sp] ?? sp; };
 
 /** Where hero u standing at (u.x, u.y) has its minions (species sp) stand: the first PLACES (dx by its class, proche) on walkable ground whose `pret`
  *  boxes at BETE overlap none of those taken, on its creature's side (side0) unless the other side has room for more;

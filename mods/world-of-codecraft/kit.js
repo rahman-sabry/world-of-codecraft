@@ -179,7 +179,7 @@ export const hhmm = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.
 /** Raised from 300 (calibrated on a median 390 / mean 496 successful subagent tool calls per weekday) once raids
  *  gathered every hero on one boss. */
 export const BOSS_HP = 1000;
-export const BOSS = "wocc.boss"; // { day, hp, max, slain, slainAt, by (the slayer's terminal address), heros ({ name, race, cls } of its hero then), avant (wocc.trophees before the kill) }
+export const BOSS = "wocc.boss"; // { day, hp, max, slain, slainAt, by (the slayer's terminal address), heros ({ name, race, cls } of its hero then), avant (wocc.trophees before the kill), espece (set by a reset; else the date's, especeBoss) }
 export const TROPHEES = "wocc.trophees"; // { total (bosses slain), streak (consecutive days with a kill), lastDay }
 /** The raid boss's species, rotating by date, and each one's names. */
 export const ESPECES = ["troll", "golem", "spectre", "gobelin"];
@@ -205,7 +205,7 @@ export function bossDuJour(d = new Date()) {
   if (b?.day !== day) return { day, hp: BOSS_HP, max: BOSS_HP, slain: false };
   return !b.slain && b.max < BOSS_HP ? { ...b, hp: BOSS_HP - (b.max - b.hp), max: BOSS_HP } : b;
 }
-/** The reset (the top bar's boss plaque): today's boss back to full HP, not slain; a kill today is undone in the
+/** The reset (the top bar's boss plaque): today's boss back to full HP, not slain, of another species; a kill today is undone in the
  *  trophies, to the record stored with it (avant), else derived: total - 1, and the streak - 1 ending yesterday when it
  *  was 2+, else none (a streak of 1 began today: whatever came before it was already broken). */
 export function remiseBoss(d = new Date()) {
@@ -214,10 +214,18 @@ export function remiseBoss(d = new Date()) {
     const T = shared(TROPHEES) ?? {}, s = (T.streak ?? 1) - 1;
     setShared(TROPHEES, b.avant ?? { total: Math.max(0, (T.total ?? 1) - 1), streak: Math.max(0, s), lastDay: s > 0 ? veille(day) : null });
   }
-  setShared(BOSS, { day, hp: BOSS_HP, max: BOSS_HP, slain: false });
+  // another species than the one it was, picked at random (espece reads it)
+  const autres = ESPECES.filter((x) => x !== espece(day));
+  setShared(BOSS, { day, hp: BOSS_HP, max: BOSS_HP, slain: false, espece: autres[Math.floor(Math.random() * autres.length)] });
 }
-/** The day's boss species (a hash of the date). */
+/** The day's default boss species (a hash of the date). */
 export const especeBoss = (day) => ESPECES[hash(`${day}:espece`) % ESPECES.length];
+/** The day's boss species, what every consumer reads: the one a reset stored in today's record (espece), else the
+ *  date's (especeBoss). */
+export function espece(day) {
+  const b = shared(BOSS);
+  return (b?.day === day && b.espece) || especeBoss(day);
+}
 /** The streak a day's boss puts at stake: the one alive when the day began (a kill that day already counts in it). */
 export function serieEnJeu(day) {
   const T = shared(TROPHEES) ?? {};
@@ -227,7 +235,7 @@ export function serieEnJeu(day) {
 export const palier = (day) => { const s = serieEnJeu(day); return s >= 7 ? 2 : s >= 3 ? 1 : 0; };
 /** The day's boss name, "Gruntak the Mossback" / "Gruntak le Moussu", with its tier (a hash of the date). */
 export function nomBoss(day, p = palier(day)) {
-  const sp = especeBoss(day), noms = NOMS[sp], ep = t("epithets")[sp];
+  const sp = espece(day), noms = NOMS[sp], ep = t("epithets")[sp];
   return t("bossName", noms[hash(day) % noms.length], ep[hash(`${day}:epithete`) % ep.length], p);
 }
 /** The terminal whose subagent slew today's boss: its hero wears the crown until midnight (null = none). */

@@ -13,7 +13,7 @@ import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { spaces, agents, run, props, layout, nextCommand, window as appWindow } from "herdr";
 import { freshStat } from "./commande.js";
-import { nomCarte, ART, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left, selectedAddress, bossDuJour, remiseBoss, nomBoss, trophees, minuit, especeBoss, palier, serieEnJeu, PALIERS } from "./kit.js";
+import { nomCarte, ART, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left, selectedAddress, bossDuJour, remiseBoss, nomBoss, trophees, minuit, espece, palier, serieEnJeu, PALIERS } from "./kit.js";
 import { CREATURES } from "./creatures-data.js";
 import { P, DECO, TEXTE, bar, pic, txt, button, mark, banner } from "./ui.js";
 import { DEMO_SPACES } from "./demo.js";
@@ -90,7 +90,7 @@ export default class Fronton {
       : b.by ? heroTitle(heroOf(b.by, agents().find((a) => a.address === b.by)?.program ?? { key: "claude" })) : null;
     const tip = (b.slain ? t("bossSlainTip", nom, by, reset) : t("bossTip", nom, b.hp, b.max, reset))
       + (p ? `\n${t("tierTip", p, serieEnJeu(b.day))}` : "") + `\n${t("resetTip")}` + (more ? `\n\n${more}` : "");
-    const sp = especeBoss(b.day), pose = b.slain ? "touche" : "pret", D = CREATURES[sp][pose], k = Math.min(32 / D.w, 28 / D.h);
+    const sp = espece(b.day), pose = b.slain ? "touche" : "pret", D = CREATURES[sp][pose], k = Math.min(32 / D.w, 28 / D.h);
     const bete = image(`${ART}/creatures/${sp}/${pose}.png`).w(Math.round(D.w * k)).h(Math.round(D.h * k)).flex_none();
     return this.plaque("res-boss", bete, b.slain ? t("slain") : t("hp", b.hp, b.max), p ? `${t("tiers")[p]} · ${nomBoss(b.day, 0)}` : nom, tip, false,
       b.slain ? P.goldHi : PALIERS[p] ?? P.cream)

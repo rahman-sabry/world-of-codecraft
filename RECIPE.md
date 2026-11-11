@@ -186,7 +186,8 @@ the clock. The art is original: it imitates no existing game.
     apprentice blinks out (and a new one blinks in). The activity file is read while the hero works, once when it is first seen, and
     while it has subagents (and an event in the last 30 min), so they stay after the main turn ends.
   - **Raid (daily boss):** one boss a day, from local midnight to the next, its species (troll, golem, spectre or
-    goblin; `especeBoss` in kit.js) and name (a name and an epithet of that species, "Gruntak the Mossback" / "Gruntak le
+    goblin; `especeBoss` in kit.js, unless a reset picked another: `espece`, which every consumer reads, the sprite and
+    its size `geantDe`, the ring, the lair's room checks, the plaque, the name, the minions) and name (a name and an epithet of that species, "Gruntak the Mossback" / "Gruntak le
     Moussu"; `nomBoss`) by a hash of the date, with `BOSS_HP` = 1000 HP whatever its tier (it was 300, calibrated on
     the person's subagents' median 390 / mean 496 successful tool calls per weekday; raised when every raider came to
     fight one boss). A stored record of today from a lower `BOSS_HP` that still stands reads lifted, the damage done
@@ -347,17 +348,20 @@ the clock. The art is original: it imitates no existing game.
     it. No raid
     in the demo, or for shells.
     **Reset:** "Yes" on the boss plaque's confirmation (fronton.js, `remiseBoss` in kit.js) writes today's record as a
-    fresh one, `{day, hp: BOSS_HP, max: BOSS_HP, slain: false}`, and when today's boss had been slain undoes that
+    fresh one, `{day, hp: BOSS_HP, max: BOSS_HP, slain: false, espece}`, `espece` another species than the one it was
+    (the stored one, else the date's), picked at random among the three others, so the plaque, its name and the boss
+    in its lair (the same lair: the date's) change with it, and when today's boss had been slain undoes that
     kill's trophy: `wocc.trophees` goes back to the copy stored in the record at the kill (`avant`); a record from
     before that field derives it: `total` - 1, and the streak - 1 ending yesterday when it was 2 or more (the kill
     extended a streak alive yesterday), else streak 0 with no `lastDay` (a streak of 1 means whatever came before was
     already broken, which reads the same). `wocc.boss.vus` stays, so past calls are not counted again. The shown
-    village sees today's HP rise in its next poll (`remise`): the boss stands again on its wander's spot, alive, its
+    village sees today's HP rise in its next poll (`remise`): the boss (of its new species) stands again on its wander's spot, alive, its
     minions gone; heroes still raiding take slots afresh round it and walk there, heroes home with running subagents
     rejoin by teleport. The crown and the victory standards go with the kill.
     - **Store keys** (one writer: the shown, live village, as for the chronicle; the demo and a hidden copy write
-      nothing): `wocc.boss` = `{day, hp, max, slain, slainAt, by, heros, avant}` (`by` the slayer's
-      terminal address, `heros` its `{name, race, cls}` then, `avant` the trophies before the kill) (the day's boss; another day's or none reads as a
+      nothing): `wocc.boss` = `{day, hp, max, slain, slainAt, by, heros, avant, espece}` (`by` the slayer's
+      terminal address, `heros` its `{name, race, cls}` then, `avant` the trophies before the kill, `espece` the species a
+      reset picked, else none: the date's) (the day's boss; another day's or none reads as a
       fresh boss at full HP, `bossDuJour` in kit.js), `wocc.trophees` = `{total, streak, lastDay}`, and
       `wocc.boss.vus` = `{address: subCoups already counted}`. Each poll the writer compares each read file's
       `subCoups` with its stored count: the difference is damage (a lower count means the file started over: all of
@@ -482,8 +486,8 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   Valbrume's chain (bake_world, bake_lands, bake_wide) is frozen: new maps use `bake_map.py`.
 - **Maps from a layout (`tools/bake_map.py`):** a new map is baked in one pass from a layout file,
   `maps/<id>.json` (`layouts/` holds the Herdr screen layout), with the same compositor, lighting, shadows and ground
-  textures (`compose3.compose_sol`, `extras.ground_tex`), one look per run (about 20 s for a 2000×1200 canvas, 35 s
-  for the port's 4000×1200):
+  textures (`compose3.compose_sol`, `extras.ground_tex`), one look per run (about 20 s for a 2000×1200 canvas, 65 s
+  for the port's 6000×1200):
 
       sh tools/village-art/build_assets.sh && THEME=hiver sh tools/village-art/build_assets.sh   # sprites per look
       P=tools/village-art/.venv/bin/python
