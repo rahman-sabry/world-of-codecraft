@@ -2,7 +2,7 @@
 // Left, the RTS-style command panel: minimap (click to move the camera) and the selected unit.
 // Right, the village: the static world (ground, buildings, props, shadows, night lights) is baked
 // by tools/bake_world.py into a few big images, day and night, exactly as the approved mocks (one folder per
-// map, kit.js monde()); only the units, their markers, front cut-outs (depth), glows, smoke and snow are live.
+// look of a map, kit.js monde(); where things are: lieux.js); only the units, their markers, front cut-outs (depth), glows, smoke and snow are live.
 //
 // Every agent is a hero of its class: working = `work` loop at its class building; idle = `idle`,
 // strolling from spot to spot (FLANE) with a pause at each; blocked = `idle` + flashing `!` + red ring +
@@ -14,20 +14,18 @@
 import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, spaces, run, setAgentOrder, props, layout, shared, setShared } from "herdr";
-import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss, champion, bannieres, bossDuJour, carte, monde } from "./kit.js";
-import { WORLD, TILES, FRONTS } from "./monde-data.js";
+import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss, champion, bannieres, bossDuJour, look, monde } from "./kit.js";
 import { HEROES } from "./heros-data.js";
-import { SPOTS, FLANE, ROAD, BUILDINGS, MARCHE, market, SMOKE, GLOWS, BANNIERES, VICTOIRE } from "./lieux.js";
+import { lieux, market } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
 import { Activites, TRAIL } from "./activite.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
 import { commandPanel, MINI_INSET, watchStat } from "./commande.js";
-import { EXT } from "./terre-data.js";
 
 const ART = "mods/world-of-codecraft/art";
-const MONDE = `${ART}/monde`; // rings and quest marks (the world's own images: monde(), the shown map's)
+const MONDE = `${ART}/monde`; // rings and quest marks, only in the summer folder (the world's own images: monde(), the shown look's)
 const PANEL = 262; // command panel width (lines up with the quest board)
 const RANK = { blocked: 0, done: 1, working: 2, idle: 3, garde: 4 };
 const LOG_KEY = "wocc.chronicle";
@@ -85,10 +83,10 @@ const CLS_FR = Object.fromEntries(Object.entries(CLS_EN).map(([f, e]) => [e, f])
 // ------------------------------------------------------------------ the road
 
 const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
-const ROAD_S = ROAD.reduce((acc, p, i) => (acc.push(i ? acc[i - 1] + dist(ROAD[i - 1], p) : 0), acc), []);
 
 /** The closest point of the road to p: { p, s (arc length), i (segment) }. */
 function onRoad(p) {
+  const { ROAD, ROAD_S } = lieux();
   let best = null;
   for (let i = 0; i < ROAD.length - 1; i++) {
     const a = ROAD[i], b = ROAD[i + 1];
@@ -104,7 +102,7 @@ function onRoad(p) {
 /** Points from a to b: straight when close, else onto the road, along it, and off it. */
 function route(a, b) {
   if (dist(a, b) < 170) return [a, b];
-  const ra = onRoad(a), rb = onRoad(b);
+  const ra = onRoad(a), rb = onRoad(b), { ROAD } = lieux();
   const pts = [a, ra.p];
   if (ra.s < rb.s) for (let i = ra.i + 1; i <= rb.i; i++) pts.push(ROAD[i]);
   else for (let i = ra.i; i > rb.i; i--) pts.push(ROAD[i]);
@@ -112,18 +110,15 @@ function route(a, b) {
   return pts.filter((p, i) => i === 0 || dist(p, pts[i - 1]) > 2);
 }
 
-// Every known walkable point (stroll spots, work spots, the road inside the world's ends): where a working hero
-// is nudged to when another holds its point, and where it moves on to.
-const POSTES = [...FLANE, ...Object.values(SPOTS).flat(), ...ROAD.filter(([x]) => x > WORLD.x && x < WORLD.x + WORLD.w)];
-
-/** p, or the nearest walkable point no other hero holds or heads for when one does. */
+/** p, or the nearest walkable point (lieux POSTES) no other hero holds or heads for when one does. */
 function libre(p, taken) {
   if (!taken.has(p.join())) return p;
-  return POSTES.filter((s) => !taken.has(s.join())).sort((a, b) => dist(a, p) - dist(b, p))[0] ?? p;
+  return lieux().POSTES.filter((s) => !taken.has(s.join())).sort((a, b) => dist(a, p) - dist(b, p))[0] ?? p;
 }
 
 /** The chronicle tag for a feet point: the nearest building (or the market) within 200 px, else the village. */
 function quartier(x, y) {
+  const { BUILDINGS, MARCHE } = lieux();
   const d = ([bx, by, bw, bh]) => Math.hypot(Math.max(bx - x, 0, x - bx - bw), Math.max(by - y, 0, y - by - bh));
   const [near] = [...Object.values(BUILDINGS).map((b) => [d(b.box), b.nom]), [d(MARCHE), market()]].sort((p, q) => p[0] - q[0]);
   return near[0] < 200 ? near[1] : tr("villageTag");
@@ -155,8 +150,7 @@ export default class Place {
       const a = agents().find((x) => x.address === addr), m = this.mob.get(addr), p = m && this.pos(m, Date.now());
       this.say(`[${p ? quartier(p.x, p.y) : tr("villageTag")}] ${tr("bossSlain", nomBoss(day), heroTitle(heroOf(addr, a?.program)))}`, "done", addr);
     };
-    this.amb = new Ambiance(route); // village life: walkers, animals, treasury, fair (only when animated)
-    this.live = true; // the « Animations » toggle (shared wocc.anim): off = still images, no walk, no scenes
+    this.amb = new Ambiance(route); // village life: walkers, animals, treasury, fair
     try { this.log = JSON.parse(localStorage.getItem(LOG_KEY) ?? "[]"); } catch { this.log = []; }
     cx.timer.every(60_000, (cx) => { this.now = new Date(); cx.notify(); });
   }
@@ -209,12 +203,13 @@ export default class Place {
     return { x: m.x, y: m.y, leg: null };
   }
 
-  /** An idle hero's stroll spot: it stands PAUSE after arriving, then heads for another (none when still). */
+  /** An idle hero's stroll spot: it stands PAUSE after arriving, then heads for another. */
   flane(addr, t) {
+    const { FLANE } = lieux();
     let w = this.flanes.get(addr);
     if (!w) { w = { n: 0, i: hash(addr) % FLANE.length, at: null }; this.flanes.set(addr, w); }
     const m = this.mob.get(addr);
-    if (!this.live || !m || m.goal.join() !== FLANE[w.i].join() || (m.legs.length && t < m.legs[m.legs.length - 1].t1)) return w;
+    if (!m || m.goal.join() !== FLANE[w.i].join() || (m.legs.length && t < m.legs[m.legs.length - 1].t1)) return w;
     if (w.at === null) w.at = t;
     else if (t - w.at >= PAUSE(addr, w.n)) {
       const busy = new Set([...this.flanes.values()].map((o) => o.i));
@@ -233,7 +228,7 @@ export default class Place {
     const addr = u.a.address;
     let p = this.postes.get(addr);
     if (!p || p.goal !== m.goal.join()) { p = { n: p?.n ?? 0, goal: m.goal.join(), at: null }; this.postes.set(addr, p); }
-    if (!this.live || u.a.status !== "working" || this.act.melee(addr) || (m.legs.length && t < m.legs[m.legs.length - 1].t1)) return null;
+    if (u.a.status !== "working" || this.act.melee(addr) || (m.legs.length && t < m.legs[m.legs.length - 1].t1)) return null;
     if (p.at === null) p.at = t;
     const due = p.at + STAY(addr, p.n);
     if (t < due) { this.wake = Math.min(this.wake ?? Infinity, due); return null; }
@@ -246,6 +241,7 @@ export default class Place {
 
   /** Every unit with its goal spot, current position and leg; starts walks when a goal changes. */
   units(list, t) {
+    const { FLANE, SPOTS, POSTES } = lieux();
     const taken = new Set();
     const goals = new Map();
     this.wake = null; // when a standing idle hero moves on (the ambient timer redraws then)
@@ -295,7 +291,6 @@ export default class Place {
       const goal = goals.get(addr);
       let m = this.mob.get(addr);
       if (!m) { m = { x: goal[0], y: goal[1], goal, group: u.group, legs: [] }; this.mob.set(addr, m); }
-      else if (m.goal.join() !== goal.join() && !this.live) { m.x = goal[0]; m.y = goal[1]; m.goal = goal; m.legs = []; }
       else if (m.goal.join() !== goal.join()) {
         const here = this.pos(m, t);
         const speed = HEROES[`${RACE_EN[u.h.race]}-${CLS_EN[u.h.cls]}`]?.speed ?? 42;
@@ -349,8 +344,8 @@ export default class Place {
     }
     // rings under the feet
     if (selected) el = el.child(image(`${MONDE}/ring-selected.png`).absolute().left(-30).top(-17).w(60).h(33));
-    if (st === "blocked" && !u.leg) el = el.child(image(`${MONDE}/ring-blocked.png`).absolute().left(-30).top(-17).w(60).h(33).when(this.live, (e) => e.loop("opacity", { from: 0.2, to: 1, period: 460 })));
-    if (st === "done" && !u.leg) el = el.child(image(`${MONDE}/ring-done.png`).absolute().left(-30).top(-17).w(60).h(33).when(this.live, (e) => e.loop("opacity", { from: 0.45, to: 1, period: 1100 })));
+    if (st === "blocked" && !u.leg) el = el.child(image(`${MONDE}/ring-blocked.png`).absolute().left(-30).top(-17).w(60).h(33).loop("opacity", { from: 0.2, to: 1, period: 460 }));
+    if (st === "done" && !u.leg) el = el.child(image(`${MONDE}/ring-done.png`).absolute().left(-30).top(-17).w(60).h(33).loop("opacity", { from: 0.45, to: 1, period: 1100 }));
 
     // the sprite: every frame of the anim stacked (preloaded), only the current one shown
     let body;
@@ -366,7 +361,7 @@ export default class Place {
       u.vu = { src: `${ART}/heros/${u.key}/stand${suffix}.png`, w, h: hh, ax, ay };
       body = div().absolute().left(-ax).top(-ay).w(w).h(hh)
         .child(image(`${ART}/heros/${u.key}/stand${suffix}.png`).absolute().left(0).top(0).w(w).h(hh)
-          .when(this.live, (e) => e.loop("top", u.leg ? { from: 0, to: -2, period: 380 } : { from: 0, to: -1, period: 2600 + (hash(a.address) % 900) })));
+          .loop("top", u.leg ? { from: 0, to: -2, period: 380 } : { from: 0, to: -1, period: 2600 + (hash(a.address) % 900) }));
     }
     el = el.child(body);
 
@@ -383,15 +378,15 @@ export default class Place {
     const head = -ay;
     if (st === "blocked" && !u.leg) {
       el = el.child(image(`${MONDE}/m-blocked.png`).absolute().left(-12).top(head - 42).w(24).h(38)
-        .when(this.live, (e) => e.loop("top", { from: head - 42, to: head - 50, period: 500 })).when(this.live, (e) => e.loop("opacity", { from: 0.35, to: 1, period: 520 })));
+        .loop("top", { from: head - 42, to: head - 50, period: 500 }).loop("opacity", { from: 0.35, to: 1, period: 520 }));
       el = el.child(div().absolute().left(18).top(head - 4).h(22).px(6).rounded(3).bg(C.parch).border_2().border_color(C.woodDark)
         .flex().items_center().whitespace_nowrap().font_family(UI).text_size(15).text_color(C.wax)
-        .when(this.live, (e) => e.frames(tr("help"), 900)).when(!this.live, (e) => e.child(tr("help")[0])));
+        .frames(tr("help"), 900));
     }
     if (st === "done" && !u.leg) {
-      el = el.child(image(`${MONDE}/m-done.png`).absolute().left(-14).top(head - 42).w(28).h(38).when(this.live, (e) => e.loop("top", { from: head - 40, to: head - 48, period: 900 })));
-      el = el.child(div().absolute().left(-22).top(head + 10).size(3).bg(C.goldLight).when(this.live, (e) => e.loop("top", { from: head + 30, to: head - 6, period: 1000 })).when(this.live, (e) => e.loop("opacity", { from: 1, to: 0, period: 1000 })));
-      el = el.child(div().absolute().left(20).top(head + 20).size(3).bg("#fff2c0").when(this.live, (e) => e.loop("top", { from: head + 40, to: head + 2, period: 1300 })).when(this.live, (e) => e.loop("opacity", { from: 1, to: 0, period: 1300 })));
+      el = el.child(image(`${MONDE}/m-done.png`).absolute().left(-14).top(head - 42).w(28).h(38).loop("top", { from: head - 40, to: head - 48, period: 900 }));
+      el = el.child(div().absolute().left(-22).top(head + 10).size(3).bg(C.goldLight).loop("top", { from: head + 30, to: head - 6, period: 1000 }).loop("opacity", { from: 1, to: 0, period: 1000 }));
+      el = el.child(div().absolute().left(20).top(head + 20).size(3).bg("#fff2c0").loop("top", { from: head + 40, to: head + 2, period: 1300 }).loop("opacity", { from: 1, to: 0, period: 1300 }));
     }
     if (!u.leg && !a.guard) el = el.children(this.act.layers(u, head, night, t));
     // the champion (its subagent slew today's boss) wears a crown until midnight, above its head, its HP bar and its
@@ -442,7 +437,7 @@ export default class Place {
   /** Who came or left since the last live render: a hero, a warrior or an apprentice that comes blinks in (nes), one
    *  that leaves leaves a ghost at its last frame and feet point (fantomes), each for BLINK ms. An apprentice blinks
    *  in only when its hero's activity file was already read (not the first read after a reload). on = false
-   *  (animations off, hidden, demo): nothing blinks, and the next render is a first one again (no blink for those
+   *  (hidden, demo): nothing blinks, and the next render is a first one again (no blink for those
    *  present then). */
   passages(units, apps, on, t) {
     if (!on) { this.vus = null; this.nes.clear(); this.fantomes.clear(); this.invocations.clear(); return; }
@@ -508,14 +503,13 @@ export default class Place {
 
   smoke() {
     const out = [];
-    if (!this.live) return out;
-    SMOKE.forEach(([sx, sy], n) => {
+    lieux().SMOKE.forEach(([sx, sy], n) => {
       for (let k = 0; k < 3; k++) {
         const x0 = sx - 4, y0 = sy - 8, p = 2800 + k * 520 + n * 130;
         out.push(div().absolute().left(x0).top(y0).size(7 + k * 2).rounded_full().bg(k === 1 ? "#b9b4bfbb" : "#d8d4dcbb")
-          .when(this.live, (e) => e.loop("top", { from: y0, to: y0 - 44 - k * 10, period: p, easing: "linear" }))
-          .when(this.live, (e) => e.loop("left", { from: x0, to: x0 + 10 + k * 6, period: p, easing: "linear" }))
-          .when(this.live, (e) => e.loop("opacity", { from: 0.85, to: 0, period: p, easing: "linear" })));
+          .loop("top", { from: y0, to: y0 - 44 - k * 10, period: p, easing: "linear" })
+          .loop("left", { from: x0, to: x0 + 10 + k * 6, period: p, easing: "linear" })
+          .loop("opacity", { from: 0.85, to: 0, period: p, easing: "linear" }));
       }
     });
     return out;
@@ -526,7 +520,7 @@ export default class Place {
    *  climb back, as a `top` loop (there and back) would. A twin wheel 1 px lower right, dark and turning in step (same
    *  period, same render), edges each flake so it shows over the snow too. */
   neige(vw, vh) {
-    if (!this.live || carte().id !== "hiver") return [];
+    if (!look().neige) return [];
     const out = [];
     for (let y = -60, r = 0; y < vh; y += 330, r++) {
       for (let x = -40 + (r % 2) * 45, k = 0; x < vw; x += 90, k++) {
@@ -541,15 +535,15 @@ export default class Place {
 
   glows(nightK) {
     if (nightK <= 0) return [];
-    return GLOWS.map((g) => {
+    return lieux().GLOWS.map((g) => {
       const s = g.size;
       return div().absolute().left(g.at[0] - s / 2).top(g.at[1] - s / 2).size(s).rounded_full().bg(`${g.color}22`)
-        .opacity(nightK).when(this.live, (e) => e.loop("opacity", { from: 0.35 * nightK, to: nightK, period: g.period }));
+        .opacity(nightK).loop("opacity", { from: 0.35 * nightK, to: nightK, period: g.period });
     });
   }
 
   hitboxes() {
-    return Object.entries(BUILDINGS).map(([k, b]) => {
+    return Object.entries(lieux().BUILDINGS).map(([k, b]) => {
       const r = RECRUIT[k];
       let el = div().id(`bat-${k}`).absolute().left(b.box[0]).top(b.box[1]).w(b.box[2]).h(b.box[3])
         .tooltip(r ? tr("recruitTip", b.nom, r.what) : b.nom);
@@ -571,6 +565,7 @@ export default class Place {
    *  animated. World elements at depth = the pole's foot, sorted with the units like any standing thing. */
   etendards(nightK) {
     if (props()?.demo) return [];
+    const { BANNIERES, VICTOIRE } = lieux();
     const out = BANNIERES.slice(0, bannieres()).map(([x, y], i) => this.etendard(x, y, ETOFFES[i], 2600 + i * 700, nightK));
     // a victory day: red standards all over the world until midnight (VICTOIRE), the champion's portrait over the cup
     const boss = bossDuJour();
@@ -589,7 +584,7 @@ export default class Place {
         .child(div().absolute().left(-19).top(-76).w(39).h(60)
           .child(image(art(`banniere-${etoffe}-coupe`)).absolute().left(0).top(0).w(39).h(60))
           .when(!!heros, (e) => e.child(image(art(`heros/${heros.race}-${heros.cls}-p22`)).absolute().left(7).top(13).size(24)))
-          .when(this.live, (e) => e.loop("left", { from: -19, to: -18, period }))) };
+          .loop("left", { from: -19, to: -18, period })) };
   }
 
   // ---------------------------------------------------------------- the panel
@@ -612,6 +607,7 @@ export default class Place {
   }
 
   minimap(units, vw) {
+    const { WORLD } = lieux();
     const mw = PANEL - MINI_INSET, k = mw / WORLD.w, mh = Math.round(WORLD.h * k);
     const col = { blocked: C.quest, done: C.gold, working: "#7dff6a", idle: "#cfc8da", garde: "#9aa4b1" };
     const view = (vw / WORLD.w) * mw;
@@ -626,7 +622,7 @@ export default class Place {
       .child(image(`${monde()}/minicarte.png`).absolute().left(0).top(0).w(mw).h(mh))
       .children(units.map((u) => {
         let d = div().absolute().left((u.x - WORLD.x) * k - 2).top(u.y * k - 3).size(4).bg(col[u.a.status] ?? "#ffffff").border_1().border_color("#000000");
-        if (u.a.status === "blocked") d = d.when(this.live, (e) => e.loop("opacity", { from: 0.2, to: 1, period: 420 }));
+        if (u.a.status === "blocked") d = d.loop("opacity", { from: 0.2, to: 1, period: 420 });
         return d;
       }))
       .child(div().absolute().left(vx).top(0).w(view).h(mh).border_1().border_color("#ffffff"));
@@ -634,6 +630,7 @@ export default class Place {
 
   /** Immersive layout: the world y at the top of the view, kept inside the painted bands. */
   camV() {
+    const { WORLD, EXT } = lieux();
     const h = this.h ?? WORLD.h, top = -EXT.nord, bottom = WORLD.h + EXT.sud;
     if (h >= bottom - top) return (top + bottom - h) / 2;
     const c = Number.isFinite(this.camY) ? this.camY : WORLD.h / 2 - 40 - h / 2; // a NaN (bad world data) must not stick
@@ -642,6 +639,7 @@ export default class Place {
 
   /** The world x at the left of the view (the world spans WORLD.x to WORLD.x + WORLD.w), kept inside it. */
   cam(vw, c = this.camX) {
+    const { WORLD } = lieux();
     const max = Math.max(WORLD.x, WORLD.x + WORLD.w - vw);
     return Math.max(WORLD.x, Math.min(max, Number.isFinite(c) ? c : WORLD.x + WORLD.w / 2 - vw / 2));
   }
@@ -690,14 +688,16 @@ export default class Place {
 
   render(cx) {
     const t = Date.now();
+    const L = lieux(), { WORLD, TILES, FRONTS, EXT } = L;
+    // another map: its heroes, strolls and work spots start afresh on its spots
+    if (this.carteId && this.carteId !== L.id) { this.mob.clear(); this.flanes.clear(); this.postes.clear(); }
+    this.carteId = L.id;
     const at = new Date(this.now);
     if (typeof props()?.heure === "number") at.setHours(props().heure, 0); // demo: another time of day
     const sk = sky(at);
     const nightK = sk.phase === "nuit" ? 1 : sk.phase === "jour" ? 0 : 0.55; // night layer over the day one
     const nightHeroes = sk.phase === "nuit";
 
-    this.live = shared("wocc.anim") !== false;
-    if (!this.live) for (const m of this.mob.values()) m.legs = [];
     let list = agents().map((a) => ({ ...a }));
     if (props()?.demo) list = this.demo(); // screenshots: only the demo heroes, none of the person's agents
     else if (this.hidden()) { // the other village keeps the chronicle; start afresh when shown again
@@ -707,7 +707,7 @@ export default class Place {
     const order = [...list].sort((a, b) => RANK[a.status] - RANK[b.status] || b.seq - a.seq);
     if (!props()?.demo) setAgentOrder(order.map((a) => a.address));
     const gs = guards().slice(0, 4).map((p) => ({ address: p.terminal, pane: p.pane, guard: true, status: "garde", program: p.program, tab_name: p.title, focused: p.focused }));
-    this.act.watch(cx, order, this.hidden(), !this.live, !props()?.demo);
+    this.act.watch(cx, order, this.hidden(), !props()?.demo);
     const units = this.units([...order, ...gs], t);
 
     // the selected unit = the focused shell when it is a guard, else the focused agent
@@ -731,21 +731,21 @@ export default class Place {
     this.anims = [];
     for (const u of units) {
       const an = this.anim(u);
-      const animate = this.live && !hidden && visible(u) && an.frames && (!ONLY_SELECTED || u === sel);
+      const animate = !hidden && visible(u) && an.frames && (!ONLY_SELECTED || u === sel);
       u.animate = animate;
       if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997 });
     }
     // apprentices (one half-size hero per running subagent) by their heroes, on the side away from the creature;
     // their frames and their walks (in single file on the hero's path) run on the same frame timer
-    const apps = this.live ? units.flatMap((u) => {
+    const apps = units.flatMap((u) => {
       const m = this.mob.get(u.a.address);
-      return u.a.guard ? [] : this.act.apprentis(u, m, (tr, at) => this.pos(tr, at), m.x > 2700 ? -1 : 1, nightHeroes, t, !hidden && visible(u));
-    }) : [];
+      return u.a.guard ? [] : this.act.apprentis(u, m, (tr, at) => this.pos(tr, at), m.x > L.BASCULE ? -1 : 1, nightHeroes, t, !hidden && visible(u));
+    });
     for (const ap of apps) if (ap.anim.fps || ap.anim.trail.legs.length) this.anims.push({ addr: ap.addr, ...ap.anim });
 
     // depth: units by feet y (+3, like the compositor), front cut-outs above the units behind them
     const els = units.map((u) => this.unit(u, u === sel, nightHeroes, t, u.animate));
-    this.passages(units, apps, this.live && !hidden && !props()?.demo, t);
+    this.passages(units, apps, !hidden && !props()?.demo, t);
     // the frame timer also runs while someone blinks in or out or is summoned, or a raid boss is hit, falls or flees, and
     // redraws at each stage and its end
     this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0 || this.act.fenetres(t) !== ""));
@@ -753,8 +753,8 @@ export default class Place {
     const things = units.map((u, i) => ({ z: u.y + 3, el: this.blink(u.a.address, els[i], t) }));
     for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); things.push(...this.act.sbiresDe(u, nightHeroes)); }
     const working = list.filter((a) => a.status === "working").length;
-    this.amb.watch(cx, this.live && !hidden, { phase: sk.phase, wake: this.wake });
-    const life = this.live ? this.amb.things(nightHeroes, sk.phase, working, units) : [];
+    this.amb.watch(cx, !hidden, { phase: sk.phase, wake: this.wake });
+    const life = this.amb.things(nightHeroes, sk.phase, working, units);
     things.push(...life);
     things.push(...apps.map((ap) => ({ ...ap, el: this.blink(ap.key, ap.el, t) })));
     const traces = this.traces(units, apps, t);
@@ -775,9 +775,10 @@ export default class Place {
     const worldTop = imm ? -this.camV() : Math.round(((this.h ?? WORLD.h) - WORLD.h) / 2);
     const glide = this.drag ? { duration: 16, easing: "linear" } : { duration: 650, easing: "ease-in-out" };
     const M = monde();
+    const tw = (k) => TILES.find((tl) => tl.k === k).w; // a band tile is as wide as the world tile under it
     const band = (name, y) => [
-      ...EXT.tiles.map((tl) => image(`${M}/${name}-${tl.k}-jour.png`).absolute().left(tl.x).top(y).w(1000).h(EXT[name])),
-      ...(nightK > 0 ? EXT.tiles.map((tl) => image(`${M}/${name}-${tl.k}-nuit.png`).absolute().left(tl.x).top(y).w(1000).h(EXT[name]).opacity(nightK)) : []),
+      ...EXT.tiles.map((tl) => image(`${M}/${name}-${tl.k}-jour.png`).absolute().left(tl.x).top(y).w(tw(tl.k)).h(EXT[name])),
+      ...(nightK > 0 ? EXT.tiles.map((tl) => image(`${M}/${name}-${tl.k}-nuit.png`).absolute().left(tl.x).top(y).w(tw(tl.k)).h(EXT[name]).opacity(nightK)) : []),
     ];
 
     // the camera glides (650 ms) except while the view is dragged, where it follows the pointer
@@ -792,14 +793,14 @@ export default class Place {
       .children(things.map((th) => th.el))
       .children(this.smoke());
 
-    const panel = imm ? null : commandPanel(PANEL, this.minimap(units, vw), sel, { on: this.live, toggle: () => setShared("wocc.anim", !this.live) });
+    const panel = imm ? null : commandPanel(PANEL, this.minimap(units, vw), sel);
 
     return h_flex().id("place").size_full().bg(C.slate)
       .on_size_change((s, cx) => {
         if (Math.abs(s.width - this.w) > 10 || s.height !== this.h) { this.w = s.width; this.h = s.height; cx.notify(); }
       })
       .when(!imm, (el) => el.child(panel))
-      .child(div().id("vue").flex_1().h_full().relative().overflow_hidden().bg(carte().id === "hiver" ? "#c9d3df" : "#3f6b2c")
+      .child(div().id("vue").flex_1().h_full().relative().overflow_hidden().bg(look().fond)
         .on_scroll_wheel((e, cx) => {
           if (imm) { this.camX = this.cam(vw) - e.delta.x; this.camY = this.camV() - e.delta.y; }
           else this.camX = this.cam(vw) - (Math.abs(e.delta.x) > Math.abs(e.delta.y) ? e.delta.x : e.delta.y);

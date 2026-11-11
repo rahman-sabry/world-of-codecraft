@@ -42,8 +42,9 @@ the clock. The art is original: it imitates no existing game.
   - the tab title and folder;
   - iron buttons: split right, split down, zoom and close.
 - **Village** (bottom, 400 px). On the left, a command panel:
-  - "Map of Valbrume": a minimap with unit dots and the camera frame, and under it the map switch
-    (‹ map name ›): "Valbrume" or "Valbrume in winter" (« Valbrume sous la neige »);
+  - "Map of Valbrume": a minimap with unit dots and the camera frame, and under it two switch rows: the map
+    (‹ map name ›: "Valbrume", the only map so far, so its arrows are left out) and its look (‹ look name ›:
+    "Summer" / "Winter", « Été » / « Hiver »);
   - "Selected unit": the focused agent as a full-length portrait card with name, class
     and race, program, state and quest, plus Go and Next buttons.
 
@@ -57,7 +58,7 @@ the clock. The art is original: it imitates no existing game.
     the river at the village road's end, a lake with a jetty and a rowboat;
   - in the top-left corner, a chronicle of the last 4 events on dark tags.
 
-  Two maps share that layout: Valbrume (summer) and Valbrume in winter. Winter has snow on the ground and on
+  That layout is the map Valbrume; it has two looks: summer and winter. Winter has snow on the ground and on
   every roof and top, a frozen river and lake, bare oaks, snow-dusted pines, bushes as snowy mounds, slush on the
   road, light snow falling, and no leaping fish. Everything else (heroes, raids, boss, cats, walkers, banners,
   crown, bridge, window glow at night) is the same.
@@ -72,7 +73,7 @@ the clock. The art is original: it imitates no existing game.
   - any other agent: Rogue, at the market
   - plain shells: Warriors; they stroll the whole world like idle heroes (FLANE spots, 15 to 40 s at each),
     never onto a spot another hero holds or heads for; no chronicle line, the camera does not follow the
-    stroll, and with animations off they stand still
+    stroll
 - **Race and name** come from a hash of the terminal address. The races are Elf, Orc,
   Human, Undead and Dwarf.
 - **States:**
@@ -83,11 +84,10 @@ the clock. The art is original: it imitates no existing game.
     is heading for. It waits for a calm moment: not during a raid, meditation or tests, not while a creature is hurt
     but not yet felled (the move comes after the puff), and not while a hit, a test result, a seal or the
     pigeon shows. No chronicle line; the camera follows a selected hero's walk. Blocked and done heroes stay
-    put; with animations off nobody moves. Only the demo heroes work at their class building (`SPOTS`).
+    put. Only the demo heroes work at their class building (`SPOTS`).
   - **idle**: it strolls (`idle` while standing): it walks to a spot in the village or the western
     farmland or, over the footbridge, the east lands (lake shore, by the jetty, along the lane: `FLANE` in
-    lieux.js), stands 15 to 40 s (staggered per hero), then picks another. With animations off it stands still
-    on one spot.
+    lieux.js), stands 15 to 40 s (staggered per hero), then picks another.
   - **blocked**: `idle` with a red ring, a flashing `!` and a speech bubble.
   - **done**: `idle` with a gold ring, a `?` and sparkles.
 - **Movement:** when its spot changes, a hero walks there. Close spots are reached in
@@ -98,9 +98,8 @@ the clock. The art is original: it imitates no existing game.
   in place). One that leaves (agent gone, shell closed, subagent finished or expired) leaves a ghost at its last
   frame and feet point that flickers out over 500 ms; the ghost is not a unit (no click, selection, camera,
   chronicle, minimap dot, agent order or panel bridge). Nothing blinks on a village's first render (a reload, a
-  layout switch, a village block shown again, animations turned back on), nor for apprentices that appear with
-  their hero's first activity read; an apprentice changing slot or pose doesn't blink. With animations off or in
-  the demo, units appear and disappear at once. `Place.passages` compares each render's units and apprentices
+  layout switch, a village block shown again), nor for apprentices that appear with
+  their hero's first activity read; an apprentice changing slot or pose doesn't blink. In the demo, units appear and disappear at once. `Place.passages` compares each render's units and apprentices
   (keys: address, `hero:subagent id`) with the last live one's.
 - **Summon and send-off (apprentices only):** an apprentice that comes is summoned over 1.4 s: its hero plays its
   `work` frames for 1 s (not while it walks: its walk wins), a gold ring (`halo.svg`) opens on the ground at the
@@ -108,7 +107,7 @@ the clock. The art is original: it imitates no existing game.
   rise from it and fade, staggered by 80 ms; the apprentice stays hidden 350 ms, then blinks in (with its glow)
   while the ring fades under it. One that leaves gets 4 sparkles rising from its ghost during the 500 ms blink
   out; no cast, no ring. Heroes and warriors keep the plain blink. Same suppression as the blink (first render,
-  animations off, hidden, demo).
+  hidden, demo).
 - **Selection:** the selected unit is the focused agent, or the focused pane's shell when it is a warrior on
   guard (`selectedAddress` in kit.js; Herdr's focused agent never goes empty). It gets a green ring and a
   health bar, and the camera glides to it (and follows it while it walks to work, not while it strolls).
@@ -195,7 +194,7 @@ the clock. The art is original: it imitates no existing game.
     from creatures-data heights and rounded to a half so an art px stays whole screen px (`geantDe` in activite.js):
     troll 2× (184 px), golem 3.5× (175), spectre 3.5× (189), goblin 3.5× (196); its feet are its widest pose's half
     width + 50 px from the hero's (troll 170, golem 197, spectre 183, goblin 194; the apprentices keep its half width
-    + 25 px clear) on the creature's side (right; left past x 2700) and 16 px nearer the viewer, `pret` / `attaque` alternating,
+    + 25 px clear) on the creature's side (right; left past x 2700, the map's `BASCULE`) and 16 px nearer the viewer, `pret` / `attaque` alternating,
     depth-sorted by its feet, with the day's HP in a bar over its head. A poll that deals damage makes it flinch
     (`touche` and an impact flash, 900 ms). At 0 HP it falls: the felled puff at its size and a gold burst (a gold ring
     opening and 10 sparkles rising, 1.2 s), every running raid's troll with it; the chronicle says "[Mage Tower]
@@ -213,7 +212,7 @@ the clock. The art is original: it imitates no existing game.
     place. A minion whose subagent ends flees like the boss (turns, walks 150 px off, fades, 1.2 s), and a newer
     subagent waiting past the 3 takes the free place; when all end, all flee. The hero plays `work` and stays where it
     stands, its scene waits. No HP, no trophies, no streak, no chronicle line, nothing stored; at midnight they go and
-    the new day's raid starts. None with animations off, in the demo, or for shells.
+    the new day's raid starts. None in the demo, or for shells.
     **Champion's crown:** the hero whose subagent dealt the last blow wears a small gold crown (art/couronne.svg,
     13 × 9) over its head until midnight: in the village (a child of its unit, so it walks and sorts with it; above its
     HP bar when selected, above its `!` / `?` mark; never on apprentices) and on the Selected Unit card (2×, on the
@@ -229,22 +228,22 @@ the clock. The art is original: it imitates no existing game.
     lieux.js: the poles' feet, left of the steps, right of them, then further left): one once a boss is slain, a
     second at a current streak of 3, a third at 7 (`bannieres()` in kit.js). World elements at depth = the pole's
     foot, sorted with the units. Dimmed at night (opacity 1 - 0.55 ×
-    the night weight: 0.45 at night), a 1 px native sway while animated, still with animations off, none in the demo.
+    the night weight: 0.45 at night), a 1 px native sway, none in the demo.
     **Victory-day standards:** on a day the boss is slain (`bossDuJour().slain`), 12 more red standards (the same
     pole and banner, `etendard` in place.js; the slaying champion's framed portrait over the cup, the cup itself on
     records without a `heros`) stand around the whole world until midnight, `VICTOIRE` in lieux.js: the
     west farmland, by the windmill, along the road by the barn and by the mage tower, the market square, by the temple,
     by the barracks, both ends of the footbridge, the lake shore west of the jetty, its east shore and the east lane.
     Each on open ground 25+ px off the road and 40+ px from every stroll and work spot (no unit stands in a pole), out
-    of the water and the building boxes, hiding no door, checked composited on both maps' bakes; same layout for
-    both maps. Depth, night dimming, sway, animations off and demo as the town hall's, which stay as they are.
+    of the water and the building boxes, hiding no door, checked composited on both looks' bakes; same layout for
+    both looks. Depth, night dimming, sway and demo as the town hall's, which stay as they are.
     When a hero's subagents all end with HP left, its troll flees:
     it turns its back, walks 150 px away from the hero over 1.2 s and fades; its HP stays for the next raid that day.
     The raid wins over thinking, scouting, combat, the dummy and meditation (their anti-zapping state keeps running
     underneath); a test result, the seal, the pigeon and "Ouch!" still show. In a raid every apprentice slot is on the
     side away from the boss (70, 115, 160, 205 px, zigzagging 6 px in front and 30 px behind), and no apprentice's
     feet stand within the boss's half width plus 25 px of its x, wherever the search pulls or mirrors it. No raid
-    with animations off, in the demo, or for shells.
+    in the demo, or for shells.
     - **Store keys** (one writer: the shown, live village, as for the chronicle; the demo and a hidden copy write
       nothing): `wocc.boss` = `{day, hp, max, slain, slainAt, by, heros}` (`by` the slayer's
       terminal address, `heros` its `{name, race, cls}` then) (the day's boss; another day's or none reads as a
@@ -253,7 +252,7 @@ the clock. The art is original: it imitates no existing game.
       `subCoups` with its stored count: the difference is damage (a lower count means the file started over: all of
       it is new); a terminal seen for the first time with no stored count is only stored; terminals no longer among
       the agents are dropped. So a reload or a switch of village neither recounts nor loses calls.
-    - **Limits:** damage is applied only by a shown village with animations on, from its activity poll (a hero's file
+    - **Limits:** damage is applied only by a shown village, from its activity poll (a hero's file
       is read while it works, once when first seen, and while it has subagents). Calls made meanwhile are caught up
       from the stored counts the next time that hero's file is read, so they may land after midnight on the next
       day's boss. Calls made before a terminal's first sight are not counted.
@@ -274,17 +273,24 @@ the clock. The art is original: it imitates no existing game.
     or leaves. Never by working, blocked or done heroes. Night sprites at night; depth by feet y
     with the heroes, behind front cut-outs like the walkers. The 1 s ambient timer starts each
     leg; no chronicle line, no click.
-- **« Animations » toggle** under the minimap (store key `wocc.anim`, default on). Off:
-  heroes stand on still frames, no walking, no scenes, enemies, apprentices, village life, smoke or snow, and
-  no activity polling (about 10 % of a core instead of 27 % on an M2 Pro).
-- **Map switch** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande` block):
-  ‹ and › cycle the maps (kit.js `CARTES`), store key `wocc.map` (`"valbrume"`, the default, or `"hiver"`),
-  so every copy re-renders at once and the choice survives restarts; the camera stays where it is. The world's
-  images (tiles, bands, front cut-outs, minimap) come from the shown map's folder (`monde()`: `art/monde/` or
-  `art/monde-hiver/`, same file names); only that map's images are referenced. Rings and quest marks stay in
-  `art/monde/`. `monde-data.js` and `terre-data.js` serve both maps: same layout, same data.
-- **Winter only:** no leaping fish (the river is frozen), and light snow over the view, above the world and under
-  the chronicle, while animated. A `.loop` swings there and back, so a flake on a `top` loop would climb back up;
+- **Always animated:** there is no animation switch (the old « Animations » toggle and its store key `wocc.anim` are
+  gone; a stored `wocc.anim` is ignored). Only a hidden village block and the demo hold things still.
+- **Maps and looks** are two axes. A map is a layout: its data module (`carte-valbrume.js`, the only map so far) and
+  its bake. A look is one bake of that layout into its own folder of art/, with its own flags. Kit.js `CARTES` lists
+  the maps; each record lists its looks: `{ id, nom (i18n looks), dossier, neige (snow falls), poissons (fish leap),
+  fond (the view's background under the world) }`. Valbrume's looks: `ete` (`art/monde/`, fish, `#3f6b2c`) and
+  `hiver` (`art/monde-hiver/`, snow, `#c9d3df`).
+- **Map and look switches** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande`
+  block), two rows of the same style: ‹ map name › cycles the maps (store key `wocc.map`, default `"valbrume"`) and
+  ‹ look name › the shown map's looks (`wocc.look`, default its first); a row with a single choice shows only the
+  name, the arrows' places left empty. Every copy re-renders at once and the choice survives restarts; the camera
+  stays where it is. A stored `wocc.map` of `"hiver"` (from before looks) reads as Valbrume in winter until a look is
+  picked; a pick writes both keys. Switching maps keeps the look id when the new map has it, and starts the
+  heroes, walkers and cats afresh on its spots. The world's images (tiles, bands, front cut-outs, minimap) come
+  from the shown look's folder (`monde()`; same file names in each); only that look's images are referenced. Rings
+  and quest marks stay in `art/monde/` (the winter folder has none).
+- **Winter (look flags):** no leaping fish (`poissons: false`: the river is frozen), and light snow (`neige: true`)
+  over the view, above the world and under the chronicle. A `.loop` swings there and back, so a flake on a `top` loop would climb back up;
   instead each flake stream is a wheel (`art/neige-{0,1,2}.svg`, 7 flakes of 3-4 px on its rim, 480 px, over a dark twin wheel 1 px lower right turning in step, so the flakes show over snow) turned by
   the native `svg.spin` (17-26 s a turn, staggered per wheel) inside a 100×390 px `overflow_hidden` window that
   shows only its right-hand sector, where the rim goes down: flakes drift in and fall along a shallow arc without
@@ -321,10 +327,10 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   the bridge's front rail in four pieces (its mask is `b-bridge-rail`, the rail alone) and the objects just in
   front of the walk.
   About 40 seconds (sprite loads are cached); `CACHE=x.npz` reuses the composite.
-- **Themes (the winter map):** `tools/village-art/theme.py` reads `THEME` (unset: summer; `hiver`: winter). Each
+- **Themes (the winter look):** `tools/village-art/theme.py` reads `THEME` (unset: summer; `hiver`: winter). Each
   theme renders its sprites into its own folder (`assets/`, `assets-hiver/`) and bakes into its own folder of the
   mod (`art/monde/`, `art/monde-hiver/`); the summer path is unchanged (its sprites and bakes come out
-  pixel-identical). Bake each map with the same chain:
+  pixel-identical). Bake each look with the same chain:
 
       sh tools/village-art/build_assets.sh                # summer sprites first: winter cuts to their boxes
       P=tools/village-art/.venv/bin/python
@@ -377,7 +383,19 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   - `kit.js`: palette, fonts, hero identity, hours and the optional quota reader;
   - `ui.js`: frames built from 4 corners and cropped edge strips, since Herdr has no
     9-slice;
-  - `lieux.js`: unit spots, the road and building hit boxes;
+  - `carte-valbrume.js`: the map of Valbrume, hand-edited: its looks; its buildings, each at its bake point (the
+    object's (u, v) in `tools/village-art/compose2.py` scene(), world coordinates) with its hit box, work spots
+    (`SPOTS` per class building; the rogues' are the market's, placed at the red stall's point), chimneys, glows
+    and trophy standards as offsets from it, so another layout places buildings and gets these with them; the
+    stroll spots, the road, the water, the victory standards, `BASCULE` (x past which a fighting hero's creature
+    stands on its left: 2700, the old 3000 px world's edge minus 300, kept as it was) and the village life's
+    places (walkers' stops, hens, cats, stag, fish, treasury, fair, sparrows). It references the bake's own data,
+    `monde-data.js` (`WORLD`, `TILES`, `FRONTS`) and `terre-data.js` (`EXT`), which the bakes write and serve every
+    look of the map;
+  - `lieux.js`: the shown map's layout (`lieux()`), resolved once per map id and cached: the building-relative
+    values made absolute (`SPOTS`, `BUILDINGS`, `MARCHE`, `BANNIERES`, `SMOKE`, `GLOWS`), the road's arc lengths
+    (`ROAD_S`) and every known walkable point (`POSTES`); `walkable()`. Every reader goes through it, so a map
+    switch needs no reload;
   - `heros-data.js` and `monde-data.js`: animation frame tables and world tiles,
     generated;
   - `activite.js`: the activity scenes; `ambiance.js`: village life;
@@ -402,7 +420,7 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
 - **Art** (`art/`):
   - heroes: 30 race×class sprites with `idle`, `rest`, `work` and 4-way walk frames,
     plus night-graded copies;
-  - the baked world: day and night tiles, front cut-outs for depth, the minimap, per map (`monde/`,
+  - the baked world: day and night tiles, front cut-outs for depth, the minimap, per look (`monde/`,
     `monde-hiver/`); the snow wheels `neige-*.svg`;
   - UI chrome: PNGs at 2×;
   - SVG icons.
@@ -454,4 +472,4 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
 - The « Immersion » / « Atelier » button swaps the village and the terminal without changing
   layout, and the mode survives a restart. The terminal text size follows Herdr's settings.
 - With the Claude Code hook installed, a working Claude hero scouts while reading and
-  fights a creature while editing; the « Animations » toggle stops every animation.
+  fights a creature while editing.

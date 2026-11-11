@@ -1,57 +1,46 @@
-// Where things are in the baked world (art/monde: the village is x 0-3000 of a world from -1000 to 4000, 400
-// logical px high; 1 art px = 1 logical px).
-// Hand-edited: unit spots per building (feet points), where idle heroes stroll, the road heroes walk on,
-// building hit boxes (tooltip, double-click to recruit), chimneys and live glows.
+// Where things are on the shown map (kit.js carte(): its data module, carte-valbrume.js), resolved once per map:
+// building-relative spots, boxes, chimneys, glows and standards made absolute, and the road's arc lengths. Every
+// reader goes through lieux(), so switching maps needs no reload.
 
 import { t } from "./i18n.js";
+import { carte, CLASSES } from "./kit.js";
 
-/** Feet points where the demo heroes of each class stand while working / blocked / done (first free wins); with
- *  FLANE and ROAD, the walkable points a working hero moves between. */
-export const SPOTS = {
-  tour: [[690, 372], [640, 342], [745, 352], [470, 338], [600, 390]], // mage tower (mage)
-  atelier: [[1010, 300], [935, 290], [1060, 272], [820, 296], [1090, 312]], // forge-workshop (artificer)
-  caserne: [[2600, 338], [2470, 345], [2700, 318], [2380, 352], [2530, 368], [2660, 366], [2750, 345], [2430, 380]], // barracks (warrior, shells on guard)
-  temple: [[2190, 372], [2235, 338], [2110, 388], [2290, 362], [2160, 330]], // temple (priest)
-  grange: [[420, 345], [290, 300], [520, 312], [350, 378], [470, 380]], // barn and archery spot (ranger)
-  etal1: [[2020, 395], [1735, 320], [1040, 318], [960, 316], [1190, 392]], // market stalls (rogue)
-};
+const ETAL = "etal1"; // the rogues' class building: the market
+const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+const plus = (at) => ([dx, dy]) => [at[0] + dx, at[1] + dy];
+const boite = ({ at, box: [dx, dy, w, h] }) => [at[0] + dx, at[1] + dy, w, h];
 
-/** Where idle heroes stroll (feet points on open ground, in front of every object of the new lands): the
- *  village (road, square, in front of the buildings), the farmland west (fields, the windmill's door) and,
- *  over the footbridge, the east lands (by the jetty, the lake's south and east shores, along the lane). */
-export const FLANE = [
-  [330, 335], [640, 350], [900, 340], [1200, 380], [1520, 335], [1598, 352], [1680, 342], [1900, 352], [2150, 375],
-  [2450, 360], [2700, 305], [-180, 345], [-260, 325], [-460, 365], [-505, 322], [-640, 330], [-800, 345], [-920, 346],
-  [3400, 250], [3545, 292], [3700, 316], [3835, 228], [3920, 322],
-];
+/** A map's layout, absolute. Its own fields (FLANE, ROAD, RIVER, LAKE, DECK, VICTOIRE, BASCULE, the village life's...)
+ *  as they are, plus:
+ *  - SPOTS: feet points per class building (kit.js CLASSES bat), from its building's (the market's for etal1) spots;
+ *  - BUILDINGS: hit boxes [x, y, w, h] and names (in the current language) by building;
+ *  - MARCHE: the market's box; BANNIERES: the town hall's standards; SMOKE: chimney tops; GLOWS: live glows;
+ *  - ROAD_S: the road's arc length at each point; POSTES: every known walkable point (stroll spots, work spots, the
+ *    road inside the world's ends), where a working hero is nudged to when another holds its point. */
+function resoudre(c) {
+  const B = Object.entries(c.batiments);
+  const SPOTS = Object.fromEntries(Object.values(CLASSES).map(({ bat }) => {
+    const b = bat === ETAL ? c.marche : c.batiments[bat];
+    return [bat, b.spots.map(plus(b.at))];
+  }));
+  const BUILDINGS = Object.fromEntries(B.map(([k, b]) => [k, { get nom() { return t("building")[k]; }, box: boite(b) }]));
+  const ROAD_S = c.ROAD.reduce((acc, p, i) => (acc.push(i ? acc[i - 1] + dist(c.ROAD[i - 1], p) : 0), acc), []);
+  const POSTES = [...c.FLANE, ...Object.values(SPOTS).flat(), ...c.ROAD.filter(([x]) => x > c.WORLD.x && x < c.WORLD.x + c.WORLD.w)];
+  return { ...c, SPOTS, BUILDINGS, MARCHE: boite(c.marche),
+    BANNIERES: B.flatMap(([, b]) => (b.bannieres ?? []).map(plus(b.at))),
+    SMOKE: B.flatMap(([, b]) => (b.fumees ?? []).map(plus(b.at))),
+    GLOWS: B.flatMap(([, b]) => (b.lueurs ?? []).map((g) => ({ ...g, at: plus(b.at)(g.at) }))),
+    ROAD_S, POSTES };
+}
 
-/** The dirt road along the front of the village (screen feet points), walked between spots; west, it follows
- *  the baked road through the farmland (kept a little north at -620 to pass behind no bush); east, the baked
- *  path over the footbridge (its ramps at 3054 and 3168, the deck 7 px up: feet on the planks, behind the
- *  front rail's cut-outs) to the lane by the lake (tools/bake_wide.py, CROSSING and LANE). */
-export const ROAD = [
-  [-1000, 350], [-840, 340], [-620, 354], [-400, 338], [-180, 352], [0, 330], [200, 320], [420, 372], [640, 345], [900, 330], [1060, 360], [1350, 380], [1500, 372],
-  [1610, 392], [1720, 360], [1900, 350], [2150, 372], [2330, 340], [2560, 330], [2700, 300],
-  [2840, 288], [2950, 256], [3054, 201], [3063, 199], [3159, 247], [3168, 259], [3250, 284], [3340, 282], [3426, 252], [3600, 322], [3800, 310], [4000, 335],
-];
-
-/** Building hit boxes [x, y, w, h] and names (in the current language). */
-export const BUILDINGS = {
-  grange: { get nom() { return t("building").grange; }, box: [70, 75, 220, 200] },
-  tour: { get nom() { return t("building").tour; }, box: [505, 15, 110, 350] },
-  atelier: { get nom() { return t("building").atelier; }, box: [750, 70, 230, 200] },
-  hotel: { get nom() { return t("building").hotel; }, box: [1115, 20, 330, 320] },
-  taverne: { get nom() { return t("building").taverne; }, box: [1475, 40, 230, 250] },
-  temple: { get nom() { return t("building").temple; }, box: [1890, 10, 270, 350] },
-  caserne: { get nom() { return t("building").caserne; }, box: [2330, 100, 240, 220] },
-};
-// The water, measured on the baked world (tools/bake_wide.py): the river's centre line and half width, the lake's
-// ellipse [cx, cy, rx, ry], and the footbridge's deck (walkable over the river).
-const RIVER = [[3420, 20], [3300, 110], [3130, 190], [3070, 260], [3020, 330], [2860, 380], [2740, 410]];
-const RIVER_R = 36;
-const LAKE = [3570, 165, 245, 130];
-const DECK = [[3054, 201], [3168, 259]];
-const SPOT_R = 60, ROAD_R = 30;
+const RESOLUS = new Map(); // map id -> its resolved layout
+/** The shown map's layout (resolved on first use, then cached). */
+export function lieux() {
+  const c = carte();
+  let L = RESOLUS.get(c.id);
+  if (!L) { L = resoudre(c); RESOLUS.set(c.id, L); }
+  return L;
+}
 
 /** Distance from p to the polyline pts. */
 function toLine([x, y], pts) {
@@ -69,6 +58,7 @@ function toLine([x, y], pts) {
  *  never the water. */
 export function walkable(p) {
   const [x, y] = p;
+  const { DECK, RIVER, RIVER_R, LAKE, ROAD, ROAD_R, BUILDINGS, FLANE, SPOTS, SPOT_R } = lieux();
   if (toLine(p, DECK) < 14) return true;
   if (toLine(p, RIVER) < RIVER_R || ((x - LAKE[0]) / LAKE[2]) ** 2 + ((y - LAKE[1]) / LAKE[3]) ** 2 < 1) return false;
   if (toLine(p, ROAD) < ROAD_R) return true;
@@ -76,35 +66,5 @@ export function walkable(p) {
   return [...FLANE, ...Object.values(SPOTS).flat()].some(([sx, sy]) => Math.hypot(sx - x, sy - y) < SPOT_R);
 }
 
-/** The town hall's trophy standards (bannieres in kit.js), in the order they are earned: the feet of their poles in
- *  front of its door (left of the steps, right of them, then further left), clear of the lanterns and the road. */
-export const BANNIERES = [[1172, 336], [1262, 344], [1140, 350]];
-
-/** The victory-day standards (place.js etendards: one red cup standard each, on a day the boss is slain): the feet of
- *  their poles around the whole world, both maps, on open ground 25+ px off the road, 40+ px from every stroll and
- *  work spot, out of the water and the building boxes, no door hidden (checked on the bake). */
-export const VICTOIRE = [
-  [-820, 305], // west farmland, in front of the west field's fence
-  [-440, 300], // by the windmill, between it and the east field
-  [360, 300], // along the road, by the barn's hay
-  [660, 300], // along the road, right of the mage tower
-  [1462, 300], // the market square, between the town hall and the tavern
-  [2190, 300], // by the temple, right of its steps
-  [2600, 280], // by the barracks, right of its tower
-  [3020, 190], // the footbridge's west end, north of the ramp
-  [3222, 247], // the footbridge's east end, between the river and the road
-  [3348, 246], // the lake shore, west of the jetty
-  [3790, 278], // the lake's east shore, above the lane
-  [3890, 372], // the east lane, south side among the bushes
-];
-
-/** The market's name in the current language, and its box [x, y, w, h] (the red and blue stalls). */
+/** The market's name in the current language. */
 export const market = () => t("market");
-export const MARCHE = [1647, 309, 317, 91];
-
-/** Chimney tops (smoke) and live glows [x, y, size, color, period] (night only). */
-export const SMOKE = [[827, 95], [1590, 47], [1639, 100]];
-export const GLOWS = [
-  { at: [815, 236], size: 60, color: "#ff8a2b", period: 650 }, // forge hearth
-  { at: [558, 160], size: 70, color: "#a86bff", period: 2200 }, // tower windows
-];

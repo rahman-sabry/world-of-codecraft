@@ -6,22 +6,37 @@ import { div, image, svg, PathBuilder, Background } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { home, readTextFile, panes, focused, agents, shared, setShared } from "herdr";
 import { t, tbl } from "./i18n.js";
+import { VALBRUME } from "./carte-valbrume.js";
 
 export const ART = "mods/world-of-codecraft/art";
 export const TITLE = "Cinzel"; // Roman capitals, headings only (fonts/, OFL)
 export const UI = "Alegreya Sans"; // sturdy humanist text, everything else (fonts/, OFL)
 export const VILLAGE = "Valbrume";
 
-// The maps: the same Valbrume (same layout, same monde-data.js and terre-data.js), each baked into its own folder of
-// art/ (tools/bake_*.py, THEME=hiver for the winter one). The shown one is the store key wocc.map, kept across restarts.
-const CARTES = [{ id: "valbrume", dossier: "monde" }, { id: "hiver", dossier: "monde-hiver" }];
-/** The shown map: { id, dossier }. */
+// The maps (layouts: their data modules, carte-*.js, read through lieux.js), each with one or more looks baked into
+// their own folders of art/ (tools/bake_*.py, THEME=hiver for the winter one). The shown map is the store key wocc.map,
+// its look wocc.look, kept across restarts.
+export const CARTES = [VALBRUME];
+/** The shown map (its data module's record). */
 export const carte = () => CARTES.find((c) => c.id === shared("wocc.map")) ?? CARTES[0];
-/** The folder of the shown map's world images (tiles, bands, front cut-outs, minimap). */
-export const monde = () => `${ART}/${carte().dossier}`;
-/** Shows the next map (d = 1) or the previous one (d = -1). */
+/** The shown look of the shown map: { id, nom, dossier, neige, poissons, fond }. Before looks, wocc.map "hiver" was
+ *  Valbrume in winter: it still reads so until a look is picked. */
+export function look() {
+  const { looks } = carte(), id = shared("wocc.look") ?? (shared("wocc.map") === "hiver" ? "hiver" : null);
+  return looks.find((l) => l.id === id) ?? looks[0];
+}
+/** The folder of the shown look's world images (tiles, bands, front cut-outs, minimap). */
+export const monde = () => `${ART}/${look().dossier}`;
+/** Shows the next map (d = 1) or the previous one (d = -1), in the same look when it has one of that id. */
 export function changeCarte(d) {
+  setShared("wocc.look", look().id);
   setShared("wocc.map", CARTES[(CARTES.indexOf(carte()) + d + CARTES.length) % CARTES.length].id);
+}
+/** Shows the shown map's next look (d = 1) or the previous one (d = -1). */
+export function changeLook(d) {
+  const c = carte(), L = c.looks, next = L[(L.indexOf(look()) + d + L.length) % L.length].id;
+  setShared("wocc.map", c.id);
+  setShared("wocc.look", next);
 }
 
 export const C = {

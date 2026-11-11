@@ -28,7 +28,7 @@
 import { div, image, svg } from "gpui-kit";
 import { home, readTextFile, shared, setShared } from "herdr";
 import { hash, UI, C, heroOf, walkAnim, BOSS, TROPHEES, bossDuJour, veille, especeBoss, palier, PALIERS } from "./kit.js";
-import { walkable } from "./lieux.js";
+import { walkable, lieux } from "./lieux.js";
 import { CREATURES } from "./creatures-data.js";
 import { HEROES } from "./heros-data.js";
 import { t as tr } from "./i18n.js";
@@ -143,19 +143,19 @@ export class Activites {
 
   /** The scene a unit plays now (decided in the poll, read in render); none during a raid. */
   scene(addr) {
-    if (this.off || this.melee(addr)) return null;
+    if (this.melee(addr)) return null;
     return this.scenes.get(addr)?.scene ?? null;
   }
 
   /** True while a hero fights: a raid, or minions standing or fleeing (it plays `work` and stays where it is). */
   melee(addr) {
-    return Boolean(this.raid(addr)) || (!this.off && this.sbires.has(addr));
+    return Boolean(this.raid(addr)) || this.sbires.has(addr);
   }
 
   /** A hero's raid, while it has running subagents and through the boss's fall or flight (null = none). */
   raid(addr) {
     const r = this.raids.get(addr);
-    if (!r || this.off) return null;
+    if (!r) return null;
     if (r.fin && Date.now() - r.fin >= CHUTE) { this.raids.delete(addr); return null; }
     return r;
   }
@@ -265,7 +265,6 @@ export class Activites {
    *  one is, and its signature changes at each stage and when one ends (a redraw drops it). */
   fenetres(t) {
     let s = "";
-    if (this.off) return s;
     for (const [k, r] of this.raids) {
       const fin = r.fin && t - r.fin < CHUTE;
       if (t - r.at < COUP || fin) s += `${k}:${r.at}:${r.fin}:${fin ? etape(t - r.fin) : ""};`;
@@ -291,13 +290,11 @@ export class Activites {
   }
 
   /** Polls the activity files while some agent works or has subagents; notifies only when something visible changes.
-   *  ecrit: this copy deals the raid damage (not the demo); it polls only while shown and animated. */
-  watch(cx, list, hidden, off = false, ecrit = false) {
+   *  ecrit: this copy deals the raid damage (not the demo); it polls only while shown. */
+  watch(cx, list, hidden, ecrit = false) {
     this.list = list;
-    this.off = off;
     this.ecrit = ecrit;
-    if (off) { this.raids.clear(); this.sbires.clear(); }
-    const need = !hidden && !off && list.some((a) => this.reads(a) || this.scenes.has(a.address));
+    const need = !hidden && list.some((a) => this.reads(a) || this.scenes.has(a.address));
     if (need && !this.timer) this.timer = cx.timer.every(POLL, (cx) => this.poll(cx));
     else if (!need && this.timer) { this.timer.cancel(); this.timer = null; }
   }
@@ -540,7 +537,7 @@ export class Activites {
   /** The creature a fighting unit faces, as its own depth-sorted world element: { z, el } or null. */
   creature(u, night) {
     const addr = u.a.address;
-    if (u.leg || this.off) return null;
+    if (u.leg) return null;
     const r = this.raid(addr);
     if (r) return this.geant(u, r, night);
     const s = this.file(addr) ?? u.a.demoAct;
@@ -549,7 +546,7 @@ export class Activites {
     const dummy = sc === "test" || recent(s.essai?.t, RESULT);
     if (sc !== "combat" && !dummy) return null;
     // on the hero's right and a little nearer the viewer, facing it (left side near the world's right end)
-    const side = u.x > 2700 ? -1 : 1;
+    const side = u.x > lieux().BASCULE ? -1 : 1;
     const off = dummy ? 44 : boss(s) ? 115 : 70; // creatures are drawn larger (BETE); the troll is wide: keep it off the hero
     const x = Math.round(u.x + side * off), y = Math.round(u.y + 16);
     const kids = dummy ? this.dummy(u, s, night ? "-n" : "", side) : this.fight(u, s, night ? "-n" : "", side);
@@ -621,7 +618,7 @@ export class Activites {
     if (!D) return null;
     const { k: K, loin } = geantDe(sp);
     const addr = u.a.address;
-    const side = u.x > 2700 ? -1 : 1;
+    const side = u.x > lieux().BASCULE ? -1 : 1;
     const x = Math.round(u.x + side * loin), y = Math.round(u.y + 16);
     const g = side > 0 ? "" : "-g", sfx = night ? "-n" : "";
     const now = Date.now();
@@ -672,9 +669,9 @@ export class Activites {
    *  Depth-sorted world elements [{ z, el }]. */
   sbiresDe(u, night) {
     const addr = u.a.address, o = this.sbires.get(addr);
-    if (!o || u.leg || this.off) return [];
+    if (!o || u.leg) return [];
     const sp = sbire(), D = CREATURES[sp];
-    const { side, pts } = rangs(u.x, u.y, sp, u.x > 2700 ? -1 : 1);
+    const { side, pts } = rangs(u.x, u.y, sp, u.x > lieux().BASCULE ? -1 : 1);
     const g = side > 0 ? "" : "-g", sfx = night ? "-n" : "";
     const now = Date.now();
     const sprite = (pose, extra, gg = g) => {

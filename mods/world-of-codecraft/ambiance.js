@@ -1,8 +1,8 @@
-// Village life (Lot 3), independent of the agents, drawn only while the « Animations » toggle is on:
+// Village life (Lot 3), independent of the agents, where the shown map puts it (lieux.js):
 //   walkers on the road (peasant woman and farmer by day, a merchant when 2+ heroes work, a guard with a
 //   lantern at night), pausing between stops; hens pecking by the barn (asleep at night), a cat at the
 //   tavern door, three roaming cats (sitting at their stops, or beside an idle hero now and then), a stag at
-//   the forest edge at dawn and dusk, sparrows circling over the fields, fish leaping in the river (not in winter: it is frozen); the treasury in front of the town hall (coins = account A's weekly quota left)
+//   the forest edge at dawn and dusk, sparrows circling over the fields, fish leaping in the river (not in a look without fish, as winter: it is frozen); the treasury in front of the town hall (coins = account A's weekly quota left)
 //   and fair pennants over the square the day before the weekly reset.
 // Walks are native linear `left`/`top` transitions, one leg at a time: a 1 s data timer only starts the
 // next leg (and flips the sprite) when one ends, so the cost is one redraw every few seconds.
@@ -10,9 +10,9 @@
 // almost instant switch instead of a slow crossfade.
 
 import { div, image, svg } from "gpui-kit";
-import { readQuotas, left as timeLeft, hash, carte } from "./kit.js";
+import { readQuotas, left as timeLeft, hash, look } from "./kit.js";
 import { CREATURES } from "./creatures-data.js";
-import { FRONTS } from "./monde-data.js";
+import { lieux } from "./lieux.js";
 import { t as tr } from "./i18n.js";
 
 const CRE = "mods/world-of-codecraft/art/creatures";
@@ -20,29 +20,20 @@ const ART = "mods/world-of-codecraft/art";
 const TICK = 1000;
 
 const day = (ph) => ph === "jour" || ph === "aube" || ph === "crepuscule";
+// The walkers; each one's stops are the map's (lieux MARCHEURS), none there = no such walker.
 const WALKERS = [
-  { id: "paysanne", when: (ph) => day(ph), speed: 20, route: [[1010, 368], [1215, 340], [1360, 382], [1500, 374], [1735, 366]] },
-  { id: "fermier", when: (ph) => day(ph), speed: 16, route: [[80, 332], [210, 322], [330, 348], [430, 374], [560, 356]] },
-  { id: "marchand", when: (ph, working) => day(ph) && working >= 2, speed: 14, route: [[1760, 360], [1900, 352], [2040, 372], [2160, 374]] },
-  { id: "garde", when: (ph) => !day(ph) || ph === "crepuscule", speed: 15, lantern: true, route: [[1215, 340], [1400, 384], [1610, 394], [1735, 366]] },
+  { id: "paysanne", when: (ph) => day(ph), speed: 20 },
+  { id: "fermier", when: (ph) => day(ph), speed: 16 },
+  { id: "marchand", when: (ph, working) => day(ph) && working >= 2, speed: 14 },
+  { id: "garde", when: (ph) => !day(ph) || ph === "crepuscule", speed: 15, lantern: true },
 ];
-const HENS = [[195, 270, 2600], [229, 278, 3100], [166, 282, 3700]];
-const CAT = [1626, 290];
-// Roaming cats: their stops (open ground: windmill fields, barn, tavern, market, jetty and lake shore) and speed
-// (px/s). They walk along the road like the heroes, sit a while, and now and then go and sit beside a hero.
-const CATS = [
-  { stops: [[-505, 322], [-460, 365], [-180, 345], [290, 300], [330, 335]], speed: 24 },
-  { stops: [[290, 300], [1520, 335], [1598, 352], [1680, 342], [1735, 320]], speed: 28 },
-  { stops: [[1680, 342], [1900, 352], [3400, 250], [3545, 292], [3700, 316]], speed: 22 },
-];
+const arrets = (w) => lieux().MARCHEURS[w.id];
+// Roaming cats (lieux CATS: their stops on open ground, and speed in px/s) walk along the road like the heroes, sit a
+// while, and now and then go and sit beside a hero.
 const SIT = (k, n) => 20000 + (hash(`chat${k}:${n}`) % 40000); // how long a cat sits at a stop
 const FRIEND = 800; // a cat goes to a hero only this close (px)
 const SIDE = 22; // and sits this far to the side of its feet
 const calm = (u) => (u.a.status === "idle" || u.a.status === "garde") && !u.leg;
-const STAG = [2790, 252];
-const FISH = [[2858, 372, 4200], [2912, 350, 5300]];
-const TREASURY = [1262, 352];
-const FAIR = [[1508, 300], [1700, 300]];
 
 /** A near-instant swap between two frames: `b` shows half the period. */
 /** Where a walker really is now (its element glides natively towards the leg's end). */
@@ -53,7 +44,7 @@ const at = (leg, now) => {
 
 /** The front cut-outs a sprite box is behind (drawn again above it): the same test as for heroes. */
 export function behind(b) {
-  return FRONTS.filter((fr) => b.fy + 3 < fr.z && b.x < fr.x + fr.w && b.x + b.w > fr.x && b.y < fr.y + fr.h && b.fy > fr.y);
+  return lieux().FRONTS.filter((fr) => b.fy + 3 < fr.z && b.x < fr.x + fr.w && b.x + b.w > fr.x && b.y < fr.y + fr.h && b.fy > fr.y);
 }
 
 const swap = (el, period) => el.loop("opacity", { from: -6, to: 7, period, easing: "linear" });
@@ -66,15 +57,25 @@ export class Ambiance {
     this.route = route;
     this.walk = new Map(); // id -> { i, dir, leg: { a, b, t0, t1 }, face }
     this.heroes = []; // the units of the last render (for the cats)
-    const now = Date.now();
-    // k -> { n, leg, path (points still to walk), goal, face, hero (address it sits by), by (that hero's feet) }
-    this.cats = CATS.map((c, k) => {
-      const p = c.stops[Math.floor(c.stops.length / 2)];
-      return { n: 0, leg: { a: p, b: p, t0: now, t1: now + 5000 + (hash(`chat${k}`) % 25000) }, path: [], goal: p, face: k % 2 ? "-g" : "", hero: null };
-    });
+    this.carte(); // the cats
     this.timer = null;
     this.quota = null; // { left (0..100), resets (ms) }
     this.qAt = 0;
+  }
+
+  /** The shown map's walkers and cats, started afresh when the map changes (each its own stops). */
+  carte() {
+    const L = lieux();
+    if (this.carteId === L.id) return L;
+    this.carteId = L.id;
+    this.walk.clear();
+    const now = Date.now();
+    // k -> { n, leg, path (points still to walk), goal, face, hero (address it sits by), by (that hero's feet) }
+    this.cats = L.CATS.map((c, k) => {
+      const p = c.stops[Math.floor(c.stops.length / 2)];
+      return { n: 0, leg: { a: p, b: p, t0: now, t1: now + 5000 + (hash(`chat${k}`) % 25000) }, path: [], goal: p, face: k % 2 ? "-g" : "", hero: null };
+    });
+    return L;
   }
 
   /** Runs the 1 s timer while the village is animated and shown; ctx.wake: when an idle hero moves on (redraw then). */
@@ -97,6 +98,7 @@ export class Ambiance {
   }
 
   tick(cx) {
+    this.carte();
     const now = Date.now();
     let changed = false;
     for (const w of WALKERS) {
@@ -135,9 +137,10 @@ export class Ambiance {
       return;
     }
     m.paused = false;
-    if (m.i + m.dir < 0 || m.i + m.dir >= w.route.length) m.dir = -m.dir;
+    const stops = arrets(w);
+    if (m.i + m.dir < 0 || m.i + m.dir >= stops.length) m.dir = -m.dir;
     m.i += m.dir;
-    const b = w.route[m.i];
+    const b = stops[m.i];
     const d = Math.hypot(b[0] - here[0], b[1] - here[1]);
     m.face = b[0] < here[0] ? "" : "-g"; // sprites face left; -g faces right
     m.leg = { a: here, b, t0: now, t1: now + (d / w.speed) * 1000 };
@@ -157,7 +160,7 @@ export class Ambiance {
     const here = m.leg.b;
     const step = (b) => {
       if (Math.abs(b[0] - here[0]) > 1) m.face = b[0] < here[0] ? "" : "-g"; // sprites face left; -g faces right
-      m.leg = { a: here, b, t0: now, t1: now + (Math.hypot(b[0] - here[0], b[1] - here[1]) / CATS[k].speed) * 1000 };
+      m.leg = { a: here, b, t0: now, t1: now + (Math.hypot(b[0] - here[0], b[1] - here[1]) / lieux().CATS[k].speed) * 1000 };
     };
     if (m.path.length) { step(m.path.shift()); return true; }
     if (!sitting) { // arrived: sit (facing its hero)
@@ -176,7 +179,7 @@ export class Ambiance {
       if (u) { m.hero = u.a.address; m.by = [u.x, u.y]; goal = [u.x + (here[0] < u.x ? -SIDE : SIDE), u.y]; }
     }
     if (!goal) {
-      const free = CATS[k].stops.filter((s) => s !== m.goal && !others.some((o) => o.goal === s)
+      const free = lieux().CATS[k].stops.filter((s) => s !== m.goal && !others.some((o) => o.goal === s)
         && !this.heroes.some((u) => Math.hypot(u.x - s[0], u.y - s[1]) < 30));
       if (!free.length) { m.leg = { a: here, b: here, t0: now, t1: now + SIT(k, m.n) }; return false; }
       goal = free[hash(`chat${k}:${m.n}`) % free.length];
@@ -190,6 +193,7 @@ export class Ambiance {
 
   /** Depth-sorted world elements: [{ z, el }]; heroes: this render's units (the cats keep them company). */
   things(night, phase, working, heroes) {
+    const { HENS, CAT, STAG, FISH, TREASURY, FAIR, MOINEAUX } = this.carte();
     this.heroes = heroes;
     const out = [];
     const n = night ? "-n" : "";
@@ -201,11 +205,12 @@ export class Ambiance {
 
     // walkers
     for (const w of WALKERS) {
-      if (!w.when(phase, working) || !CREATURES[w.id]) { this.walk.delete(w.id); continue; }
+      const stops = arrets(w);
+      if (!stops || !w.when(phase, working) || !CREATURES[w.id]) { this.walk.delete(w.id); continue; }
       let m = this.walk.get(w.id);
       if (!m) {
-        const i = Math.floor(w.route.length / 2);
-        m = { i, dir: 1, face: "", paused: true, leg: { a: w.route[i], b: w.route[i], t0: now, t1: now + 1500 } };
+        const i = Math.floor(stops.length / 2);
+        m = { i, dir: 1, face: "", paused: true, leg: { a: stops[i], b: stops[i], t0: now, t1: now + 1500 } };
         this.walk.set(w.id, m);
       }
       const moving = m.leg.a !== m.leg.b && now < m.leg.t1;
@@ -239,7 +244,7 @@ export class Ambiance {
       }
       // sparrows circling over the fields
       for (let k = 0; k < 3; k++) {
-        const per = 6000 + k * 1300, cx0 = 180 + k * 40, cy0 = 150 + k * 18;
+        const per = 6000 + k * 1300, cx0 = MOINEAUX[0] + k * 40, cy0 = MOINEAUX[1] + k * 18;
         out.push({ z: 0, el: div().absolute().left(cx0).top(cy0).w(0).h(0)
           .loop("left", { from: cx0 - 70, to: cx0 + 90, period: per })
           .loop("top", { from: cy0 - 16, to: cy0 + 14, period: per / 2.2 })
@@ -267,7 +272,7 @@ export class Ambiance {
         .child(unswap(img("cerf", "broute"), 9000)).child(swap(img("cerf", "alerte"), 9000)) });
     }
     // fish leaping: shown only near the top of the arc; a ring where it left the water
-    for (const [fx, fy, per] of carte().id === "hiver" ? [] : FISH) {
+    for (const [fx, fy, per] of look().poissons ? FISH : []) {
       out.push({ z: fy, el: div().absolute().left(fx).top(fy).w(0).h(0)
         .child(div().absolute().left(-9).top(-3).w(18).h(6).rounded_full().border_1().border_color("#e6f6ffcc")
           .loop("opacity", { from: 1, to: -5, period: per, easing: "linear" }))

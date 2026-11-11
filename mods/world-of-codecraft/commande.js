@@ -1,12 +1,12 @@
 // The command panel (left part of the bottom strip), drawn for place.js: a carved oak frame,
-// "Map of Valbrume" (the minimap from place.js, in a small iron frame, and the map switch under it), the « Animations »
-// toggle, and "Selected unit": the focused hero full-length in a gold portrait frame, name, class,
+// "Map of Valbrume" (the minimap from place.js, in a small iron frame, and the map and look switches under it), and
+// "Selected unit": the focused hero full-length in a gold portrait frame, name, class,
 // state gem, quest, and the Go / Next buttons. The isometric world itself stays in place.js.
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { run, home, readTextFile } from "herdr";
-import { CLASSES, RACE_FR, QUEST, heroDesc, selectedAddress, reroll, champion, ART, carte, changeCarte, monde } from "./kit.js";
+import { CLASSES, RACE_FR, QUEST, heroDesc, selectedAddress, reroll, champion, ART, CARTES, carte, changeCarte, look, changeLook, monde } from "./kit.js";
 import { gradient } from "./kit.js";
 import { t } from "./i18n.js";
 import { P, frame, frameT, bar, pic, txt, title, button, gem, mark, portraitCard, well } from "./ui.js";
@@ -86,31 +86,26 @@ function card(sel) {
         .child(button("suivant", [txt(t("next"), 15, P.cream, 800), pic("ic-suivant", 12, 10)], () => run("agent.next", {}), { tip: t("nextTip") }))));
 }
 
-/** The whole panel, `width` wide; `minimap` is place.js's minimap element. */
-/** The « Animations » toggle: on = animated heroes, walks, activity scenes and enemies; off = still images. */
-function toggle(anim) {
-  return button("animations", [gem(anim.on ? "working" : "idle", true), txt(t("animations"), 15, P.cream, 800), txt(anim.on ? t("yes") : t("no"), 15, anim.on ? P.working : P.muted, 800)],
-    anim.toggle, { h: 24, tip: anim.on ? t("animOnTip") : t("animOffTip") }).w_full();
-}
-
-/** The map switch: ‹ the shown map's name ›, cycling through the maps (wocc.map) for every copy. */
-function choixCarte() {
-  const fleche = (id, c, d, tip) => button(id, txt(c, 16, P.cream, 800), () => changeCarte(d), { w: 28, h: 22, tip });
+/** A switch row: ‹ name ›, the arrows calling change(-1 / 1); with a single choice the arrows' places stay empty. */
+function choix(id, nom, n, change, prevTip, nextTip) {
+  const fleche = (k, c, d, tip) => (n > 1 ? button(`${id}-${k}`, txt(c, 16, P.cream, 800), () => change(d), { w: 28, h: 22, tip }) : div().flex_none().w(28).h(22));
   return h_flex().flex_none().mt(-4).gap(4).items_center()
-    .child(fleche("carte-prec", "‹", -1, t("mapPrevTip")))
-    .child(div().flex_1().min_w(0).flex().justify_center().child(txt(t("maps")[carte().id], 15, P.cream, 800).truncate()))
-    .child(fleche("carte-suiv", "›", 1, t("mapNextTip")));
+    .child(fleche("prec", "‹", -1, prevTip))
+    .child(div().flex_1().min_w(0).flex().justify_center().child(txt(nom, 15, P.cream, 800).truncate()))
+    .child(fleche("suiv", "›", 1, nextTip));
 }
 
-export function commandPanel(width, minimap, sel, anim = null) {
+/** The whole panel, `width` wide; `minimap` is place.js's minimap element. Under it the map switch (wocc.map) and the
+ *  shown map's look switch (wocc.look), for every copy. */
+export function commandPanel(width, minimap, sel) {
   const T = frameT("cadre");
   return div().id("commande").relative().flex_none().w(width).h_full().bg(P.leather)
       .child(gradient("#2b1e16", "#100b0a", 165))
     .child(v_flex().absolute().left(T).right(T).top(T).bottom(T).gap(6)
       .child(heading(t("map")))
       .child(div().relative().flex_none().self_start().p(5).bg("#0c0a0e").child(minimap).children(frame("fin")))
-      .child(choixCarte())
-      .when(Boolean(anim), (el) => el.child(toggle(anim)))
+      .child(choix("carte", t("maps")[carte().nom], CARTES.length, changeCarte, t("mapPrevTip"), t("mapNextTip")))
+      .child(choix("look", t("looks")[look().nom], carte().looks.length, changeLook, t("lookPrevTip"), t("lookNextTip")))
       .child(heading(t("selected")))
       .child(card(sel)))
     .children(frame("cadre"));
@@ -122,7 +117,7 @@ import { image } from "gpui-kit";
 import { agents, shared, setShared, props } from "herdr";
 import { heroOf, guards, C as KC } from "./kit.js";
 import { DEMO_SELECTED } from "./demo.js";
-import { WORLD } from "./monde-data.js";
+import { lieux } from "./lieux.js";
 
 const DOT = { blocked: KC.quest, done: KC.gold, working: "#7dff6a", idle: "#cfc8da", garde: "#9aa4b1" };
 
@@ -133,7 +128,7 @@ export class Commande {
   init(_p, cx) { this.w = 262; watchStat(cx); }
 
   minimap() {
-    const v = shared("wocc.view") ?? { cam: 0, vw: 1200, dots: [] };
+    const v = shared("wocc.view") ?? { cam: 0, vw: 1200, dots: [] }, { WORLD } = lieux();
     const mw = this.w - MINI_INSET, k = mw / WORLD.w, mh = Math.round(WORLD.h * k);
     return div().id("minicarte").relative().w(mw).h(mh).flex_none().cursor_pointer()
       .tooltip(t("mapTip"))
@@ -158,9 +153,8 @@ export class Commande {
   }
 
   render() {
-    const on = shared("wocc.anim") !== false;
     return div().id("commande-bloc").size_full()
       .on_size_change((s, cx) => { if (Math.abs(s.width - this.w) > 2) { this.w = s.width; cx.notify(); } })
-      .child(commandPanel(this.w, this.minimap(), this.selected(), { on, toggle: () => setShared("wocc.anim", !on) }));
+      .child(commandPanel(this.w, this.minimap(), this.selected()));
   }
 }
