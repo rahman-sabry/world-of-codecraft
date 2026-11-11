@@ -67,13 +67,10 @@ the clock. The art is original: it imitates no existing game.
 
 ## How it behaves
 
-- **Class comes from the program:**
-  - Claude Code: Mage, at the Mage Tower
-  - Codex: Artificer, at the Forge Workshop
-  - Gemini: Priest, at the Temple of Dawn
-  - OpenCode, pi, amp, cursor: Ranger, at the barn and fields
-  - any other agent: Rogue, at the market
-  - plain shells: Warriors; they stroll the whole world like idle heroes (FLANE spots, 15 to 40 s at each),
+- **Class comes from a hash of the terminal address** (`classOf`, other bits than the race's), whatever the agent's
+  program: any of the six, each working at its building (Mage at the Mage Tower, Artificer at the Forge Workshop,
+  Warrior at the barracks, Priest at the Temple of Dawn, Ranger at the barn and fields, Rogue at the market).
+  - plain shells: always Warriors (the guards); they stroll the whole world like idle heroes (FLANE spots, 15 to 40 s at each),
     never onto a spot another hero holds or heads for; no chronicle line, the camera does not follow the
     stroll
 - **Race and name** come from a hash of the terminal address. The races are Elf, Orc,
@@ -194,51 +191,68 @@ the clock. The art is original: it imitates no existing game.
     kept (234/300 reads 934/1000; `bossDuJour`), and the village's next poll writes it back; a slain one stays as it
     is. Every successful subagent tool call is 1 damage, whichever hero's subagent made it, so more subagents in
     parallel hit faster.
-    **One boss, one gathering:** while a hero (not a shell, not a demo hero) has running subagents (the apprentices'
-    rule: ids with an event in the last 30 min), whatever its status, and the day's boss still stands, it is in the
-    raid and fights the boss instead of its scene. There is one boss in the world (`Activites.arene`): it comes beside
-    the first hero to raid (the first in the agent order when several start in one poll), placed as below from where
-    that hero stands or is heading (`poser`, from place.js `units`), and stays on that spot until the raid ends. That
-    first hero plays `work` where it stands and never moves on (a strolling idle hero stops where it is, as when it
-    turns working; it strolls again after the raid). Every other hero that starts raiding while the boss is up walks
-    to a slot on a ring round the boss (`place` in activite.js, kept while it raids and never moved: no reshuffling).
-    A slot is an angle round the boss on the ground (0 = beside it, + = nearer the viewer) and a ring, and the hero
-    stands at its own class gap (`ECART`) past the boss's half width along that angle, the ground flattened to 0.32 of
-    the width to fit the strip (`anneau`, centred on the first hero's line, 16 px behind the boss's feet): the inner
-    slots (`INNER`: beside the boss on the far side, then ±25° on the first hero's side, then ±25° on the far side)
-    go to melee first (warrior, rogue); the others (`OUTER`: ±45°, ±65°, then rings 75 and 150 px further out at 0°
-    and ±30°) to the artificer, priest, mage and ranger first, the inner slots last. So a late warrior still takes
-    a free inner slot. Each slot on walkable ground inside the 400 px strip, off the boss's body (its `pret` half
-    width + 10 px, `corps`) and `ESPACE` (an ellipse 48 px across, 28 px deep) from the first hero and every other
-    raider (else the nearest free walkable point within 400 px off its footprint). The walk is an ordinary walk (road legs,
-    the frame timer, the camera following a selected hero); the hero then plays `work` there, facing the boss: hero
-    work frames face right and Herdr cannot flip an image, so a raider whose boss stands on its left (the boss's x
-    below its own) plays the mirrored set `work-g` instead (activite.js `face`, read by place.js `anim`; the first
-    hero too, past `BASCULE`). Its apprentices leave its file and fight on their own (`coin`): each takes the free
-    point nearest its hero among angles 0 to ±60° in 15° steps on the ring and the two further out (not beside the
-    boss on the first ring: the raiders' inner slots), at its own look's class gap, as free as a raider's place and
-    `ESPACE` from the other apprentices (kept while both raid; one a new raider's place comes too near moves). It
-    walks there (with its hero's walk, else straight, 40 px/s), plays `work` facing the boss (`work-g` on its left)
-    whatever its subagent does, and walks back into the file when the raid ends; with no free point it stays in the
-    file. A hero whose subagents all end leaves the raid: the first one stays where it is, another walks
-    back to the goal it left for its place (place.js `retours`). The boss stays where it is while any raider is
-    left. The raid lives in memory, as before (a reload starts it afresh beside the first raider found). Each
-    species is drawn as tall as the troll at 2× its fight size (`GEANT`: 4×4 screen px per art px), the factor computed
-    from creatures-data heights and rounded to a half so an art px stays whole screen px (`geantDe` in activite.js):
-    troll 2× (184 px), golem 3.5× (175), spectre 3.5× (189), goblin 3.5× (196); its feet are its widest pose's half
-    width + the first raider's class gap from that hero's (`ECART` in activite.js, keyed by class: warrior 10, rogue
-    15, artificer 30, priest 45, mage 50, ranger 65 px; for a mage: troll 170, golem 197, spectre 183, goblin 194; the
-    apprentices keep its half width + 25 px clear), on the creature's side (right; left past x 2700, the map's `BASCULE`) and 16 px nearer the viewer, `pret` / `attaque` alternating,
-    depth-sorted by its feet, with the day's HP in a bar over its head; drawn once (`geant`), not per hero. A poll that
-    deals damage from any raider makes it flinch (`touche` and an impact flash, 900 ms). At 0 HP it falls once where it
-    stands: the felled puff at its size and a gold burst (a gold ring opening and 10 sparkles rising, 1.2 s), the
-    raiders holding their places meanwhile; then the gathering disperses: each raider walks back to the goal it left
-    for its place (the first one is already there); the chronicle says "[Mage Tower]
-    Gruntak the Mossback is slain by Aldric, Human mage!"; the trophies count it (`total`, and `streak`: consecutive
-    days with a kill, alive while the last kill is today or yesterday); and no raid starts again until midnight.
+    **The boss in its lair:** the day's boss lives in the world all day (`Activites.arene`, made on first use each
+    day, `boss` in activite.js), in one of two outskirts picked by a hash of the date (`antre`): the map's `ANTRE`
+    (`{ ouest, est: { x: [x0, x1], y: [y0, y1] } }`; Valbrume: the farmland west of the windmill, x -680 to -330, y
+    326 to 364, and the lane east of the lake, x 3560 to 3700, y 302 to 334, 300 px from the world's ends so a party
+    fits on both sides), else the world's outer 800 px at that end (150 px in) between 78% and 92% of its height. It
+    never comes into the village. Idle, it wanders its lair (`errance`, pure: from the day and the time only, so every
+    village and every reload draws it at the same spot): each 50 s from one waypoint to the next at 12 px/s, then
+    standing there; a waypoint is the first of 24 points hashed from the day and its index that is walkable with room
+    on both its sides (`cotes`: beside it at a warrior's gap and a mage's one ring out), else the first walkable one.
+    It walks with `pret` turned the way it goes and a 5 px native bob, its feet gliding natively along the leg; the
+    ambient timer redraws at each leg's start and end (`reveil`, Place's `wake`). Standing, it shows `pret` facing the
+    village. A red dot (6 px) marks it on both minimaps (`bossDot` in commande.js; place.js passes it in `wocc.view`), muted
+    once it has fallen; none in the demo, where no boss is drawn.
+    **The raid:** while a hero (not a demo hero) has running subagents (the apprentices' rule: ids with an event in the
+    last 30 min), whatever its status, and the day's boss still stands, it is in the raid and fights the boss instead
+    of its scene (`mene`). The first raider holds the boss where it is (its wander pauses). Every raider, the first
+    included, teleports with its apprentices to its ring slot round the boss (place.js `sauter`, the portal below) and
+    remembers the goal it left (`retours`). While a raider is left, the boss stomps every 30 to 60 s (`pietine`): 60 to
+    120 px (the ring's flattening applied to its depth) to a walkable point of its lair with room on both sides, at 40
+    px/s; the whole party takes its slots afresh round the new spot (`replace`) and walks there, a few steps, no
+    teleport. A hero whose subagents all end leaves the raid and teleports back to the goal it left. When none is left
+    the boss walks back onto its wander path, to where its wander will be when it gets there, then wanders on. There
+    is no flight. The raid lives in memory: a reload holds the boss afresh where it wanders.
+    **The ring:** the party (raiders and apprentices alike) stands on slots round the boss (`choisir`): a slot is an
+    angle on the ground (0 = beside it, + = nearer the viewer), a ring (75 px further out each) and a side (1 = the
+    village's), and a member stands at its own class gap (`ECART`) past the boss's half width along that angle, the
+    ground flattened to 0.32 of the width to fit the strip (`anneau`, on a line 16 px behind the boss's feet). By
+    fighting range (`RANG`): the front line, ring 0 (0°, ±35°, ±60°), goes to melee looks (warrior, rogue) first; the
+    artificer, priest and mage take ring 1 behind them (0°, ±20°, ±40°), the ranger ring 2; each falls back on the
+    other rings when its own is full. Each slot on walkable ground inside the 400 px strip, off the boss's body (its
+    `pret` half width + 10 px in front of its line, its whole half width behind it, where it would hide them; `clair`)
+    and `ESPACE` (an ellipse 48 px across, 28 px deep) from every other member; a raider tries the side with fewer
+    members first (`prend`; else the nearest free walkable point within 400 px), an apprentice its hero's side but
+    anywhere round the boss (`coin`). Members already placed never move when someone joins; a stomp re-runs the
+    assignment in range order (melee first), each keeping its slot when still free. The hero plays `work` there,
+    facing the boss: hero work frames face right and Herdr cannot flip an image, so a member whose boss stands on its
+    left plays the mirrored set `work-g` (activite.js `face`, read by place.js `anim`). An apprentice walks to its spot
+    from its hero's file (with its hero's walk, else straight, 40 px/s), plays `work` facing the boss whatever its
+    subagent does, and walks back into the file when the raid ends; with no free slot it stays in the file.
+    **The teleport** (place.js `sauter`, activite.js `portail`, `porte`; 1.4 s): a portal opens where the hero stands
+    (from 100 ms), it and its apprentices (gathered on its file slots by it) fade into it from 400 ms (300 ms), a
+    second portal opens at its goal from 400 ms, they show there from 700 ms and fade in, the first portal closes from
+    700 ms and the second from 1000 ms. A portal is a standing swirl, art/portail-0..2.svg (22 × 34 px at 3×, a violet
+    rim round a deep blue swirl of three arms turning a third of a turn per frame, one frame per 100 ms tick), over
+    its glow on the ground, art/portail-sol.svg (30 × 8 at 3×); tools/portail.py draws them (gen.py's `Px`). The
+    stages and the swirl's frame are in the frame timer's signature while a teleport runs, so it stops after.
+    **Its drawing:** each species is drawn as tall as the troll at 2× its fight size (`GEANT`: 4×4 screen px per art
+    px), the factor computed from creatures-data heights and rounded to a half so an art px stays whole screen px
+    (`geantDe` in activite.js): troll 2× (184 px), golem 3.5× (175), spectre 3.5× (189), goblin 3.5× (196). Class gaps
+    (`ECART`, keyed by class): warrior 10, rogue 15, artificer 30, priest 45, mage 50, ranger 65 px; file apprentices
+    keep its half width + 25 px clear. In a raid `pret` / `attaque` alternate, turned to the side with more raiders;
+    depth-sorted by its feet, with the day's HP in a bar over its head; drawn once (`geant`). A poll that deals damage
+    from any raider makes it flinch (`touche` and an impact flash, 900 ms). At 0 HP it falls where it is (the record
+    keeps the spot, `lieu`): the felled puff at its size and a gold burst (a gold ring opening and 10 sparkles rising,
+    1.2 s), the raiders holding their places meanwhile; then its body (`touche`, dimmed) lies there until midnight, no
+    HP bar, no wander, and the party disperses: each raider teleports back to the goal it left; the chronicle says
+    "[Mage Tower] Gruntak the Mossback is slain by Aldric, Human mage!"; the trophies count it (`total`, and `streak`:
+    consecutive days with a kill, alive while the last kill is today or yesterday); and no raid starts again until
+    midnight.
     **Minions (after the kill):** until midnight a hero with running subagents fights the boss's minions instead
     (`suit` / `sbiresDe` in activite.js), once the boss's fall is over, where it stands again after the dispersal
-    (they show once its walk back ends): one per running subagent (oldest first,
+    (they show once its teleport home ends): one per running subagent (oldest first,
     up to 3), of the day's species (golem, spectre, goblin; a troll day brings goblins, three trolls are too wide),
     drawn at a fight creature's size (`BETE` 1.5x), `pret` / `attaque` alternating, each with its 4 blow pips. They
     stand on the hero's open side (`rangs`: the creature's side unless the other one has room for more): the first
@@ -251,11 +265,11 @@ the clock. The art is original: it imitates no existing game.
     only, else it stays in the file). Each
     successful subagent tool call (the same `subCoups` deltas, which no longer hit a slain boss) is a blow on the next
     minion in turn (`touche` and a flash, 900 ms); 4 fell it (the felled puff, 1.2 s) and a fresh one stands in its
-    place. A minion whose subagent ends flees like the boss (turns, walks 150 px off, fades, 1.2 s), and a newer
+    place. A minion whose subagent ends flees (turns, walks 150 px off, fades, 1.2 s), and a newer
     subagent waiting past the 3 takes the free place; when all end, all flee. The hero plays `work` and stays where it
     stands, its scene waits; it faces its minions as a raider faces the boss (`work-g` when `rangs` puts them on its
     left), and so do its apprentices playing `work`. No HP, no trophies, no streak, no chronicle line, nothing stored; at midnight they go and
-    the new day's raid starts. None in the demo, or for shells.
+    the new day's boss comes. None in the demo, or for shells.
     **Champion's crown:** the hero whose subagent dealt the last blow wears a small gold crown (art/couronne.svg,
     13 × 9) over its head until midnight: in the village (a child of its unit, so it walks and sorts with it; above its
     HP bar when selected, above its `!` / `?` mark; never on apprentices) and on the Selected Unit card (2×, on the
@@ -280,9 +294,8 @@ the clock. The art is original: it imitates no existing game.
     Each on open ground 25+ px off the road and 40+ px from every stroll and work spot (no unit stands in a pole), out
     of the water and the building boxes, hiding no door, checked composited on both looks' bakes; same layout for
     both looks. Depth, night dimming, sway and demo as the town hall's, which stay as they are.
-    When the last raider's subagents end with HP left, the boss flees, once: it turns its back, walks 150 px away
-    from its first hero over 1.2 s and fades; its HP stays for the next raid that day, which starts afresh beside its
-    own first raider (not before the flight ends).
+    When the last raider's subagents end with HP left, its HP stays for the next raid that day, round wherever it
+    wanders then.
     The raid wins over thinking, scouting, combat, the dummy and meditation (their anti-zapping state keeps running
     underneath); a test result, the seal, the pigeon and "Ouch!" still show. An apprentice still in its file in a raid
     (no free point) keeps to the side away from the boss (70, 115, 160, 205 px, zigzagging 6 px in front and 30 px
@@ -295,11 +308,12 @@ the clock. The art is original: it imitates no existing game.
     before that field derives it: `total` - 1, and the streak - 1 ending yesterday when it was 2 or more (the kill
     extended a streak alive yesterday), else streak 0 with no `lastDay` (a streak of 1 means whatever came before was
     already broken, which reads the same). `wocc.boss.vus` stays, so past calls are not counted again. The shown
-    village sees today's HP rise in its next poll and drops its raid and minions (`remise`); raiders then start a
-    fresh raid. The crown and the victory standards go with the kill.
+    village sees today's HP rise in its next poll (`remise`): the boss stands again on its wander's spot, alive, its
+    minions gone; heroes still raiding take slots afresh round it and walk there, heroes home with running subagents
+    rejoin by teleport. The crown and the victory standards go with the kill.
     - **Store keys** (one writer: the shown, live village, as for the chronicle; the demo and a hidden copy write
-      nothing): `wocc.boss` = `{day, hp, max, slain, slainAt, by, heros, avant}` (`by` the slayer's
-      terminal address, `heros` its `{name, race, cls}` then, `avant` the trophies before the kill) (the day's boss; another day's or none reads as a
+      nothing): `wocc.boss` = `{day, hp, max, slain, slainAt, by, heros, avant, lieu}` (`by` the slayer's
+      terminal address, `heros` its `{name, race, cls}` then, `avant` the trophies before the kill, `lieu` where it fell) (the day's boss; another day's or none reads as a
       fresh boss at full HP, `bossDuJour` in kit.js), `wocc.trophees` = `{total, streak, lastDay}`, and
       `wocc.boss.vus` = `{address: subCoups already counted}`. Each poll the writer compares each read file's
       `subCoups` with its stored count: the difference is damage (a lower count means the file started over: all of
@@ -562,8 +576,9 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   - commands: `agent.focus`, `agent.next`, `pane.focus`, `space.select`, `tab.select`,
     `tab.new`, `space.new`, `pane.split`, `pane.zoom` and `pane.close`.
 - **Timers:** one shared 100 ms timer runs only while a visible unit animates or walks, or someone blinks in or out
-  or is summoned, or a raid boss or a minion is hit, falls or flees (its signature changes at each stage of the fall and the
-  flight, and drops each window's end: `Activites.fenetres`),
+  or is summoned or teleports, or the raid boss is hit, falls, stomps or walks back, or a minion is hit, falls or flees
+  (its signature changes at each stage of the fall and the flight, and drops each window's end: `Activites.fenetres`);
+  the idle boss's wander legs ride the 1 s ambient timer (`reveil`),
   and stops when its village block (`place` or `place-immersion`) is hidden. The clock ticks every 30 s; the sky and quotas
   update every 60 s.
 - **Files read and programs run:** the activity files in `~/.local/state/world-of-codecraft/`

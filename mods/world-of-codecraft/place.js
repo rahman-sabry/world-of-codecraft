@@ -19,10 +19,10 @@ import { HEROES } from "./heros-data.js";
 import { lieux, market } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
-import { Activites, TRAIL } from "./activite.js";
+import { Activites, TRAIL, VOYAGE, PORTAIL, portail } from "./activite.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
-import { commandPanel, MINI_INSET, watchStat } from "./commande.js";
+import { commandPanel, MINI_INSET, watchStat, bossDot } from "./commande.js";
 
 const ART = "mods/world-of-codecraft/art";
 const MONDE = `${ART}/monde`; // rings and quest marks, only in the summer folder (the world's own images: monde(), the shown look's)
@@ -45,6 +45,9 @@ const CAST = 1000;
 const OUVRE = 100; // the ring opens and the sparkles rise from here
 const FONDU = 700; // and fade from here
 const ADIEU = [100, 300]; // a leaving apprentice's sparkles: rise, then fade, within its BLINK ghost window
+// A hero's teleport (Place.sauter, activite.js portail): its first portal closes from VOYAGE[1], the far one from FERME; the swirl
+// turns a frame per TICK. Each stage is a frame-timer redraw that changes the native transitions' targets.
+const FERME = 1000;
 const ETOFFES = [0, 3, 2]; // the trophy banners' cloth (ui.js banner colours: red, violet, green), each with the cup
 /** How many of these thresholds (ms) dt has passed. */
 const etape = (dt, seuils) => seuils.filter((s) => dt >= s).length;
@@ -55,6 +58,19 @@ function anneau(k, v) {
   return image(`${ART}/halo.svg`).id(`anneau-${k}`).absolute().left(-w / 2).top(-h / 2).w(w).h(h).opacity(v === 1 ? 0.9 : 0)
     .transition("left", tr).transition("top", tr).transition("width", tr).transition("height", tr)
     .transition("opacity", { duration: 400, easing: "linear" });
+}
+
+/** A portal at a feet point (k its id): its glow on the ground and the gate (portail-0..2.svg, frame f shown) over it,
+ *  open (66 x 102 px, the glow 90 x 26) or closed (a speck, faded), the native transitions carrying each change. */
+function porte(k, [x, y], open, f) {
+  const tr = { duration: 300, easing: "ease-out" };
+  const sized = (el, w, h, top) => el.absolute().left(-w / 2).top(top).w(w).h(h)
+    .transition("left", tr).transition("top", tr).transition("width", tr).transition("height", tr);
+  const gw = open ? 66 : 6, gh = open ? 102 : 10, sw = open ? 90 : 10, sh = open ? 26 : 4;
+  return { z: y + 2.5, el: div().id(`portail-${k}`).absolute().left(Math.round(x)).top(Math.round(y)).w(0).h(0)
+    .opacity(open ? 1 : 0).transition("opacity", { duration: 250, easing: "linear" })
+    .child(sized(image(`${ART}/portail-sol.svg`).id(`portail-${k}-sol`), sw, sh, -sh / 2))
+    .children([0, 1, 2].map((i) => sized(image(`${ART}/portail-${i}.svg`).id(`portail-${k}-${i}`), gw, gh, -gh + 6).opacity(i === f ? 1 : 0))) };
 }
 
 /** n sparkles (etincelle.svg) over a feet point, spread over 2r px and staggered by `pas` ms: hidden at stage 0, shown
@@ -145,6 +161,7 @@ export default class Place {
     this.nes = new Map(); // key -> when it came (blinking in)
     this.fantomes = new Map(); // key -> its last frame and feet point, and when it left (blinking out)
     this.invocations = new Map(); // apprentice key -> its summon: { t0, x, y (its feet point), hero }
+    this.sauts = new Set(); // addresses whose next goal change is a teleport (sauter), not a walk
     this.act = new Activites(); // what each hero does while working (Claude Code hook)
     // the raid boss slain by this village's damage: a chronicle line (only the shown village deals damage)
     this.act.abattu = (addr, day) => {
@@ -284,22 +301,19 @@ export default class Place {
       taken.add(g.join());
       goals.set(u.a.address, g);
     }
-    // the raid: its boss comes beside its first hero (where that one stands or heads), every other raider walks to its
-    // place by the boss, and one that leaves the raid (or once the boss has fallen) walks back to the goal it left
-    const A = this.act.boss();
-    if (A && A.x === null) { // its first hero gone already: the next raider
-      A.lead = goals.has(A.lead) ? A.lead : [...this.act.raids.keys()].find((k) => goals.has(k)) ?? A.lead;
-      if (goals.has(A.lead)) this.act.poser(goals.get(A.lead));
-    }
+    // the raid: every raider teleports with its apprentices to its place by the day's boss (sauter) and walks after it
+    // when it stomps; one that leaves the raid (or once the boss has fallen) teleports back to the goal it left
+    const moved = (addr, g) => this.mob.has(addr) && this.mob.get(addr).goal.join() !== g.join();
     for (const u of want) {
       const addr = u.a.address, q = this.act.place(addr);
       if (q) {
-        if (!this.retours.has(addr)) this.retours.set(addr, goals.get(addr));
+        if (!this.retours.has(addr)) { this.retours.set(addr, goals.get(addr)); if (moved(addr, q)) this.sauter(addr); }
         taken.add(q.join());
         goals.set(addr, q);
       } else if (this.retours.has(addr)) {
         if (u.group === "poste") { const g = libre(this.retours.get(addr), taken); taken.add(g.join()); goals.set(addr, g); }
         this.retours.delete(addr);
+        if (moved(addr, goals.get(addr))) this.sauter(addr);
       }
     }
     const out = [];
@@ -311,9 +325,10 @@ export default class Place {
       let m = this.mob.get(addr);
       if (!m) { m = { x: goal[0], y: goal[1], goal, group: u.group, legs: [] }; this.mob.set(addr, m); }
       else if (m.goal.join() !== goal.join()) {
-        const here = this.pos(m, t);
+        const pt = portail(m, t), here = pt ? { x: pt.at[0], y: pt.at[1] } : this.pos(m, t);
+        m.portail = this.sauts.delete(addr) ? { t0: t, a: [here.x, here.y], b: goal } : null; // asked to teleport (sauter)
         const speed = HEROES[`${RACE_EN[u.h.race]}-${CLS_EN[u.h.cls]}`]?.speed ?? 42;
-        const pts = route([here.x, here.y], goal);
+        const pts = m.portail ? [] : route([here.x, here.y], goal);
         m.legs = [];
         let t0 = t;
         for (let i = 1; i < pts.length; i++) {
@@ -325,14 +340,22 @@ export default class Place {
       }
       m.group = u.group; // also when it keeps its spot (a stroller turning working where it stands)
       if (m.legs.length && t >= m.legs[m.legs.length - 1].t1 + TRAIL) m.legs = []; // kept while its apprentices still walk them
-      const p = this.pos(m, t);
-      out.push({ a: u.a, h: u.h, x: p.x, y: p.y, leg: p.leg, key: `${RACE_EN[u.h.race]}-${CLS_EN[u.h.cls]}` });
+      if (m.portail && !portail(m, t)) m.portail = null;
+      const pt = portail(m, t), p = pt ? { x: pt.at[0], y: pt.at[1], leg: null } : this.pos(m, t);
+      out.push({ a: u.a, h: u.h, x: p.x, y: p.y, leg: p.leg, voile: pt ? pt.voile : 1, portail: Boolean(pt), key: `${RACE_EN[u.h.race]}-${CLS_EN[u.h.cls]}` });
     }
     for (const k of [...this.mob.keys()]) if (!alive.has(k)) this.mob.delete(k);
     for (const k of [...this.flanes.keys()]) if (!want.some((u) => u.group === "flane" && u.a.address === k)) this.flanes.delete(k);
     for (const k of [...this.postes.keys()]) if (!alive.has(k)) this.postes.delete(k);
     for (const k of [...this.retours.keys()]) if (!alive.has(k)) this.retours.delete(k);
+    for (const k of [...this.sauts]) if (!alive.has(k)) this.sauts.delete(k);
     return out;
+  }
+
+  /** Asks for hero addr's next move (its next goal change in units) to be a teleport, with its apprentices: a portal
+   *  opens where it stands, they fade into it and out of one at the goal (portail in activite.js; porte, traces). */
+  sauter(addr) {
+    this.sauts.add(addr);
   }
 
   /** The anim a unit plays now, and its sprite info (falls back to the standing sprite). */
@@ -361,7 +384,8 @@ export default class Place {
     // so adding it on the render that sets the first leg's target made that leg jump
     {
       const dur = u.leg ? Math.max(16, u.leg.t1 - t) : 16;
-      el = el.transition("left", { duration: dur, easing: "linear" }).transition("top", { duration: dur, easing: "linear" });
+      el = el.transition("left", { duration: dur, easing: "linear" }).transition("top", { duration: dur, easing: "linear" })
+        .opacity(u.voile ?? 1).transition("opacity", { duration: VOYAGE[1] - VOYAGE[0], easing: "linear" }); // a teleport's fade
     }
     // rings under the feet
     if (selected) el = el.child(image(`${MONDE}/ring-selected.png`).absolute().left(-30).top(-17).w(60).h(33));
@@ -450,6 +474,7 @@ export default class Place {
     for (const [k, t0] of this.nes) s += `${k}:${t - t0 < BLINK};`;
     for (const [k, g] of this.fantomes) s += `${k}:${t - g.t0 < BLINK}:${etape(t - g.t0, ADIEU)};`;
     for (const [k, v] of this.invocations) s += `${k}:${etape(t - v.t0, [OUVRE, LEAD, FONDU, CAST, SUMMON])};`;
+    for (const [k, m] of this.mob) if (m.portail) s += `${k}:${etape(t - m.portail.t0, [100, ...VOYAGE, FERME, PORTAIL])}:${Math.floor((t - m.portail.t0) / TICK) % 3};`;
     return s + this.act.fenetres(t); // a raid blow, fall or flight: each stage and its end
   }
 
@@ -503,6 +528,12 @@ export default class Place {
           .child(image(g.src).absolute().left(-g.ax).top(-g.ay).w(g.w).h(g.h)) });
       if (g.hero) out.push({ z: g.y + 3.5, el: div().id(`adieu-${k}`).absolute().left(Math.round(g.x)).top(Math.round(g.y)).w(0).h(0)
         .children(etincelles(`adieu-${k}`, 4, etape(t - g.t0, ADIEU), { r: 18, pas: 25, monte: 40, duree: 300, fondu: 120 })) });
+    }
+    for (const u of units) {
+      const pt = portail(this.mob.get(u.a.address), t);
+      if (!pt) continue;
+      const dt = t - pt.P.t0, f = Math.floor(dt / TICK) % 3;
+      out.push(porte(`${u.a.address}-a`, pt.P.a, etape(dt, [100, VOYAGE[1]]) === 1, f), porte(`${u.a.address}-b`, pt.P.b, etape(dt, [VOYAGE[0], FERME]) === 1, f));
     }
     for (const [k, v] of this.invocations) {
       const e = etape(t - v.t0, [OUVRE, FONDU]);
@@ -621,7 +652,7 @@ export default class Place {
       if (typeof g.y === "number") this.camY = g.y;
       this.manual = true;
     }
-    const view = { cam: Math.round(this.cam(vw)), vw: Math.round(vw), dots: units.map((u) => [Math.round(u.x / 8) * 8, Math.round(u.y / 8) * 8, u.a.status]) };
+    const view = { cam: Math.round(this.cam(vw)), vw: Math.round(vw), dots: units.map((u) => [Math.round(u.x / 8) * 8, Math.round(u.y / 8) * 8, u.a.status]), boss: this.bossDot() };
     const key = JSON.stringify(view);
     const now = Date.now();
     if (key !== this.viewKey && now - (this.viewAt ?? 0) > 300) { this.viewKey = key; this.viewAt = now; setShared("wocc.view", view); }
@@ -646,7 +677,15 @@ export default class Place {
         if (u.a.status === "blocked") d = d.loop("opacity", { from: 0.2, to: 1, period: 420 });
         return d;
       }))
+      .children(bossDot(this.bossDot(), WORLD, k))
       .child(div().absolute().left(vx).top(0).w(view).h(mh).border_1().border_color("#ffffff"));
+  }
+
+  /** The day's boss on the minimap: [x, y (8 px steps), fallen (1) or alive (0)], or null (the demo). */
+  bossDot() {
+    if (props()?.demo) return null;
+    const p = this.act.ici(Date.now());
+    return [Math.round(p.x / 8) * 8, Math.round(p.y / 8) * 8, this.act.boss().fin ? 1 : 0];
   }
 
   /** Immersive layout: the world y at the top of the view, kept inside the painted bands. */
@@ -769,12 +808,14 @@ export default class Place {
     this.passages(units, apps, !hidden && !props()?.demo, t);
     // the frame timer also runs while someone blinks in or out or is summoned, or a raid boss is hit, falls or flees, and
     // redraws at each stage and its end
-    this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0 || this.act.fenetres(t) !== ""));
+    this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0 || [...this.mob.values()].some((m) => m.portail) || this.act.fenetres(t) !== ""));
     this.sig = this.frameSig(t);
     const things = units.map((u, i) => ({ z: u.y + 3, el: this.blink(u.a.address, els[i], t) }));
     for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); things.push(...this.act.sbiresDe(u, nightHeroes)); }
-    const geant = this.act.geant(nightHeroes); // the raid boss, one for every raider
+    const geant = this.act.geant(nightHeroes, t); // the day's boss, one for every raider
     if (geant) things.push(geant);
+    const rv = this.act.reveil(t); // the wandering boss's next leg: the ambient timer redraws then
+    if (rv) this.wake = Math.min(this.wake ?? Infinity, rv);
     const working = list.filter((a) => a.status === "working").length;
     this.amb.watch(cx, !hidden, { phase: sk.phase, wake: this.wake });
     const life = this.amb.things(nightHeroes, sk.phase, working, units);

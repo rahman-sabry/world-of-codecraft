@@ -68,26 +68,37 @@ const WORKS = new Set(["code", "commande", "test"]); // a subagent's acts shown 
 const READS = new Set(["eclaire", "web"]); // and with the scroll over the head
 const GEANT = 2; // the troll raid boss drawn this much larger (art 2x: 4x4 screen px per art px); the others match its height
 const COUP = 900; // a raid blow (damage dealt in a poll) shows this long
-const CHUTE = 1200; // the raid boss's fall (the felled puff and the gold burst), or its flight, lasts this long
+const CHUTE = 1200; // the raid boss's fall (the felled puff and the gold burst), or a minion's flight, lasts this long
 const ETAPES = [100, 700]; // the fall's and the flight's stages: open / walk off from here, fade from here
 const etape = (dt) => ETAPES.filter((s) => dt >= s).length;
-const FUIR = 150; // px the raid boss walks away from the hero when it flees
+const FUIR = 150; // px a fleeing minion walks away from its hero
+const ERRE = 12; // px/s the day's boss wanders its lair at (errance)
+const PAS = 50000; // ms per wander waypoint: it walks to the next, then stands there
+const PIETINE = 40; // px/s its stomps in a raid and its walk back onto its wander path
+const STOMP = [30000, 60000]; // ms between two stomps while a raid holds it
+const SAUT = [60, 120]; // px a stomp takes it
+export const VOYAGE = [400, 700]; // a hero's teleport's stages (portail): fade into the portal, show at the far end
+export const PORTAIL = 1400; // and its end, both portals closed
 const SBIRES = 3; // minions at most per hero
 // A minion's feet from its hero's (side 1 = right), in order of preference: in front, behind, further in front, spares
 const PLACES = [[80, 18], [170, -26], [170, 56], [255, 14], [260, -44], [100, -60]];
 const SBIRE = { troll: "gobelin" }; // the troll is too wide for three: its minions are goblins
-// The raid ring: a later raider's slot round the boss, [ring (ANNEAU px further out each), θ (degrees round the boss on
-// the ground: 0 = beside it, + = nearer the viewer), c (1 = the first hero's side, -1 = the other)], at the raider's own
-// class gap (ECART) past the boss's half width along θ (anneau). The first hero stands at [0, 0, 1]. Melee classes
-// (MELEE) try the inner slots first, the others the diagonals and the outer rings first, the inner slots last.
-const INNER = [[0, 0, -1], [0, 25, 1], [0, -25, 1], [0, 25, -1], [0, -25, -1]];
-const OUTER = [[0, 45, -1], [0, 45, 1], [0, -45, -1], [0, -45, 1], [0, 65, -1], [0, 65, 1], [0, -65, -1], [0, -65, 1],
-  [1, 0, -1], [1, 0, 1], [1, 30, -1], [1, 30, 1], [1, -30, -1], [1, -30, 1],
-  [2, 0, -1], [2, 0, 1], [2, 30, -1], [2, 30, 1], [2, -30, -1], [2, -30, 1]];
+// The raid ring: a party member's slot round the boss (raiders and apprentices alike), [ring (ANNEAU px further out
+// each), θ (degrees round the boss on the ground: 0 = beside it, + = nearer the viewer), c (1 = the village's side, -1
+// the other)], at the member's own class gap (ECART) past the boss's half width along θ (anneau). By fighting range
+// (RANG, [ring, |θ|] in order, each tried on the preferred side first, then nearer the viewer first): the front line
+// (ring 0) to melee looks, the artificer, priest and mage on ring 1 behind them, the ranger on ring 2; each ring
+// falls back on the others when full.
 const MELEE = new Set(["guerrier", "voleur"]);
+const R0 = [[0, 0], [0, 35], [0, 60]], R1 = [[1, 0], [1, 20], [1, 40]], R2 = [[2, 0], [2, 20], [2, 40]];
+const RANG = {
+  melee: [...R0, ...R1, ...R2],
+  milieu: [...R1, [0, 60], ...R2, [0, 35], [0, 0]],
+  loin: [...R2, ...R1, [0, 60], [0, 35], [0, 0]],
+};
+const rangDe = (cls) => (MELEE.has(cls) ? "melee" : cls === "rodeur" ? "loin" : "milieu");
 const ANNEAU = 75;
 const APLAT = 0.32; // the ring's depth for its width: flatter than the iso ground (0.5) to fit the strip
-const COINS = [0, 15, -15, 30, -30, 45, -45, 60, -60]; // an apprentice's angles in a raid, on rings 0-2 (coin)
 const ESPACE = [48, 28]; // two feet points (raiders, apprentices) at least this ellipse apart (px across, px deep)
 const apart = (p, q) => ((p[0] - q[0]) / ESPACE[0]) ** 2 + ((p[1] - q[1]) / ESPACE[1]) ** 2 >= 1;
 const VUS = "wocc.boss.vus"; // { address: the subCoups already counted as damage }, so a reload neither loses nor recounts
@@ -107,6 +118,55 @@ export function geantDe(sp, ecart = ECART.mage) {
   const demi = Math.max(...Object.values(D).flatMap((p) => [p.ax, p.w - p.ax])) * k;
   return { k, demi, loin: Math.round(demi + ecart), large: demi + 25, corps: Math.max(D.pret.ax, D.pret.w - D.pret.ax) * k + 10 };
 }
+
+/** Today's boss's lair: the outskirt a hash of the day picks (cote: "ouest" or "est"), from the map's ANTRE
+ *  ({ ouest, est: { x: [x0, x1], y: [y0, y1] } }), else the world's outer 800 px at that end (150 px in) between 78%
+ *  and 92% of its height. { cote, x, y }. */
+export function antre(day) {
+  const { ANTRE, WORLD } = lieux(), cote = hash(`${day}:antre`) % 2 ? "est" : "ouest";
+  const z = ANTRE?.[cote] ?? { x: cote === "ouest" ? [WORLD.x + 150, WORLD.x + 800] : [WORLD.x + WORLD.w - 800, WORLD.x + WORLD.w - 150] };
+  return { cote, x: z.x, y: z.y ?? [Math.round(WORLD.h * 0.78), Math.round(WORLD.h * 0.92)] };
+}
+
+/** Room on both sides of boss feet q (the day's species), so a party can stand round it: beside it at a warrior's
+ *  gap (ring 0) and a mage's one ring out (ring 1), each walkable. */
+function cotes(day, q) {
+  const { demi } = geantDe(especeBoss(day));
+  return [demi + ECART.guerrier, demi + ECART.mage + ANNEAU].every((dx) => walkable([q[0] - dx, q[1] - 16]) && walkable([q[0] + dx, q[1] - 16]));
+}
+
+/** Waypoint i of the day's wander in lair Z: the first of 24 points hashed from the day and i that is walkable with
+ *  room on both sides (cotes), else the first walkable one, else the lair's centre. */
+const JALONS = new Map(); // day:map:i -> its waypoint (each is drawn from hashes and walkable() tests: compute once)
+function jalon(day, Z, i) {
+  const id = `${day}:${lieux().id}:${i}`;
+  if (!JALONS.has(id)) {
+    if (JALONS.size > 64) JALONS.clear();
+    JALONS.set(id, choisirJalon(day, Z, i));
+  }
+  return JALONS.get(id);
+}
+function choisirJalon(day, Z, i) {
+  const pts = Array.from({ length: 24 }, (_, k) => {
+    const h = hash(`${day}:jalon:${i}:${k}`);
+    return [Z.x[0] + (h % (Z.x[1] - Z.x[0] + 1)), Z.y[0] + ((h >>> 12) % (Z.y[1] - Z.y[0] + 1))];
+  }).filter((q) => walkable(q));
+  return pts.find((q) => cotes(day, q)) ?? pts[0] ?? [Math.round((Z.x[0] + Z.x[1]) / 2), Math.round((Z.y[0] + Z.y[1]) / 2)];
+}
+
+/** Where today's boss wanders at t: each PAS ms from waypoint floor(t / PAS) to the next at ERRE px/s, then standing
+ *  there. Pure, from the day and the time only: every village and every reload draws it at the same spot.
+ *  { x, y, leg ({ a, b, t0, t1 } while it walks, else null), fin (its leg's end, or the next one's start) }. */
+export function errance(day, t) {
+  const Z = antre(day), i = Math.floor(t / PAS), a = jalon(day, Z, i), b = jalon(day, Z, i + 1);
+  const t0 = i * PAS, t1 = t0 + Math.min(PAS - 1000, (Math.hypot(b[0] - a[0], b[1] - a[1]) / ERRE) * 1000);
+  if (t >= t1) return { x: b[0], y: b[1], leg: null, fin: t0 + PAS };
+  const k = (t - t0) / (t1 - t0);
+  return { x: a[0] + (b[0] - a[0]) * k, y: a[1] + (b[1] - a[1]) * k, leg: { a, b, t0, t1 }, fin: t1 };
+}
+
+/** The wait before a raided boss's next stomp (STOMP). */
+const attente = () => STOMP[0] + Math.random() * (STOMP[1] - STOMP[0]);
 
 /** Off raid boss A's body for feet at q: corps px off its x in front of its first hero's line, its whole half width
  *  (demi) behind it, where the boss would hide them. */
@@ -177,8 +237,10 @@ export class Activites {
     this.slots = new Map(); // address -> Map(subagent id -> apprentice slot)
     this.ou = new Map(); // address:subagent id -> { tr, det, walk, from }: an apprentice off its file or walking back to it
     this.raids = new Map(); // address -> { ids (running subagents) }: the heroes in the raid
-    // the one raid boss: { lead (the hero it came beside), x, y (its feet; null until Place sets them, poser), side (1 =
-    // right of its lead), loin (from its lead's feet, geantDe), at (last blow), fin (its end, 0 = none), issue ("mort" | "fuite"), places (address -> [x, y]), apps (address:subagent id -> an apprentice's spot, coin) }
+    // the day's boss (boss()): { day, carte, x, y (its feet while a raid holds it or it lies fallen), side (-1 when the
+    // village is east of its lair, 1 west: the ring's c = 1 side, anneau), pas (its stomp or walk back { a, b, t0, t1 },
+    // null = none), next (its next stomp), at (last blow), fin (its fall, 0 = alive), places (address -> { s (its ring
+    // slot), q (its feet) }), apps (address:subagent id -> an apprentice's spot, coin) }
     this.arene = null;
     this.sbires = new Map(); // address -> { rr (next to be hit), list: [{ id (its subagent), k (its place), coups, at (last blow), fin (its flight, 0 = none) }], felled: [{ k, at }] }
     this.abattu = null; // (address, day) when this village's damage slays the boss: the chronicle line (Place)
@@ -201,104 +263,192 @@ export class Activites {
    *  frames face right): a raider the boss's, a hero with minions theirs (rangs); 1 when it does not fight. */
   face(u) {
     const addr = u.a.address, A = this.raid(addr) && this.arene;
-    if (A && A.x !== null) return A.x < u.x ? -1 : 1;
+    if (A) return A.x < u.x ? -1 : 1;
     if (this.sbires.has(addr)) return rangs(u, sbire(), u.x > lieux().BASCULE ? -1 : 1).side;
     return 1;
   }
 
-  /** The raid boss, standing, or through its fall or flight (null = none; its end drops the raid). */
+  /** The day's boss, made on first use each day (and on another map): in today's lair (antre), on its wander's spot
+   *  (errance), or fallen where the stored kill says (lieu, else its wander's spot then). Its fall's end drops the raid. */
   boss() {
-    const A = this.arene;
-    if (A?.fin && Date.now() - A.fin >= CHUTE) { this.arene = null; this.raids.clear(); }
-    return this.arene;
+    const now = Date.now(), b = bossDuJour(new Date(now)), carte = lieux().id ?? "";
+    let A = this.arene;
+    if (!A || A.day !== b.day || A.carte !== carte) {
+      const fin = b.slain ? b.slainAt ?? 1 : 0, e = errance(b.day, fin || now);
+      A = this.arene = { day: b.day, carte, x: Math.round(b.lieu?.[0] ?? e.x), y: Math.round(b.lieu?.[1] ?? e.y),
+        side: antre(b.day).cote === "ouest" ? -1 : 1, pas: null, next: 0, at: 0, fin, places: new Map(), apps: new Map() };
+      this.raids.clear();
+    }
+    if (A.fin && now - A.fin >= CHUTE && this.raids.size) this.raids.clear();
+    return A;
+  }
+
+  /** Where the day's boss is at t, and the leg it walks then ({ a, b, t0, t1 } or null): its stomp or its walk back
+   *  (pas) while it lasts; else where it lies or a raid holds it; else its wander (errance). */
+  ici(t) {
+    const A = this.boss(), P = A.pas;
+    if (P && t < P.t1) {
+      const k = Math.max(0, (t - P.t0) / (P.t1 - P.t0));
+      return { x: P.a[0] + (P.b[0] - P.a[0]) * k, y: P.a[1] + (P.b[1] - P.a[1]) * k, leg: P };
+    }
+    if (A.fin || this.raids.size) return { x: A.x, y: A.y, leg: null };
+    return errance(A.day, t);
+  }
+
+  /** When the wandering boss next starts or ends a leg (the ambient timer redraws then), or null (held, fallen). */
+  reveil(t) {
+    const A = this.boss();
+    if (A.fin || this.raids.size || (A.pas && t < A.pas.t1) || !this.ecrit) return null;
+    return errance(A.day, t).fin;
   }
 
   /** A hero's part in the raid while it has running subagents, and through the boss's fall (null = none). */
   raid(addr) {
-    return (this.boss() && this.raids.get(addr)) || null;
+    this.boss();
+    return this.raids.get(addr) ?? null;
   }
 
-  /** Follows the heroes' running subagents (lus: [address, its file]; not demo heroes): while today's boss stands, the
-   *  first hero with some starts the raid (the boss comes beside it), every other one joins it, one whose subagents all
-   *  end leaves it, and the boss flees once none is left; it falls when slain (mort; tue: the slayer's address when
-   *  this poll slew it, so a raid not drawn yet still shows the fall). The raiders keep their places through the fall.
-   *  A flight runs to its end before a new raid starts. True when the raid changed. */
-  mene(lus, now, mort, tue) {
-    let A = this.boss();
-    if (A?.fin) return false;
-    const vifs = lus.map(([addr, s]) => [addr, this.subagents(s).map((x) => x.id)]).filter(([, ids]) => ids.length);
-    if (!A) {
-      if (tue) { this.arene = { lead: tue, x: null, y: null, side: 1, loin: 0, at: 0, fin: now, issue: "mort", places: new Map(), apps: new Map() }; return true; }
-      if (mort || !vifs.length) return false;
-      A = this.arene = { lead: vifs[0][0], x: null, y: null, side: 1, loin: 0, at: 0, fin: 0, issue: null, places: new Map(), apps: new Map() };
+  /** Follows the heroes' running subagents (lus: [address, its file]; not demo heroes): while today's boss stands,
+   *  every hero with some is in the raid and one whose subagents all end leaves it. The first one holds the boss where
+   *  it is (its wander pauses), a stomp moves it every STOMP while one is left, and when none is, it walks back onto
+   *  its wander. It falls where it is when slain (mort); the raiders keep their places through the fall. True when the
+   *  raid changed. */
+  mene(lus, now, mort) {
+    const A = this.boss();
+    if (A.fin) return false;
+    if (mort) {
+      const p = this.ici(now);
+      return Object.assign(A, { fin: now, x: Math.round(p.x), y: Math.round(p.y), pas: null }), true;
     }
-    if (mort) return Object.assign(A, { fin: now, issue: "mort" }), true;
+    const vifs = lus.map(([addr, s]) => [addr, this.subagents(s).map((x) => x.id)]).filter(([, ids]) => ids.length);
+    const avant = this.raids.size;
     let changed = false;
     for (const addr of [...this.raids.keys()]) if (!vifs.some(([a]) => a === addr)) {
       this.raids.delete(addr); A.places.delete(addr); changed = true;
       for (const k of [...A.apps.keys()]) if (k.startsWith(`${addr}:`)) A.apps.delete(k);
     }
+    if (!avant && vifs.length) { // the raid begins: it stops where it is
+      const p = this.ici(now);
+      Object.assign(A, { x: Math.round(p.x), y: Math.round(p.y), pas: null, next: now + attente() });
+    }
     for (const [addr, ids] of vifs) {
       const r = this.raids.get(addr);
       if (!r) { this.raids.set(addr, { ids }); changed = true; } else if (r.ids.join() !== ids.join()) { r.ids = ids; changed = true; }
     }
-    if (!this.raids.size) { Object.assign(A, { fin: now, issue: "fuite" }); changed = true; }
+    if (avant && !this.raids.size) { // the raid is over: back onto its wander, where it will be when it gets there
+      const p = this.ici(now), e = errance(A.day, now), t1 = now + (Math.hypot(e.x - p.x, e.y - p.y) / PIETINE) * 1000, f = errance(A.day, t1);
+      A.pas = { a: [Math.round(p.x), Math.round(p.y)], b: [Math.round(f.x), Math.round(f.y)], t0: now, t1 };
+      changed = true;
+    }
+    if (this.raids.size && now >= A.next && !(A.pas && now < A.pas.t1)) changed = this.pietine(now) || changed;
     return changed;
   }
 
-  /** Place sets the boss's feet once, beside its first hero standing (or heading) at g: half its widest pose + that
-   *  hero's class gap (ECART; loin, kept) off on the creature's side (right; left past BASCULE), 16 px nearer the viewer. */
-  poser(g) {
-    const A = this.arene, side = g[0] > lieux().BASCULE ? -1 : 1;
-    const { loin } = geantDe(especeBoss(bossDuJour().day), ecartDe(this.list?.find((a) => a.address === A.lead)));
-    Object.assign(A, { side, loin, x: Math.round(g[0] + side * loin), y: Math.round(g[1] + 16) });
+  /** A stomp: SAUT px to a walkable point of its lair with room on both its sides (cotes; the first of 12 random
+   *  tries), at PIETINE px/s; the whole party takes its slots afresh round the new spot (replace) and walks there.
+   *  True when it moved. */
+  pietine(now) {
+    const A = this.arene, Z = antre(A.day);
+    A.next = now + attente();
+    for (let k = 0; k < 12; k++) {
+      const a = Math.random() * 2 * Math.PI, d = SAUT[0] + Math.random() * (SAUT[1] - SAUT[0]);
+      const q = [Math.round(A.x + Math.cos(a) * d), Math.round(A.y + Math.sin(a) * d * APLAT)];
+      if (q[0] < Z.x[0] || q[0] > Z.x[1] || q[1] < Z.y[0] || q[1] > Z.y[1] || !walkable(q) || !cotes(A.day, q)) continue;
+      A.pas = { a: [A.x, A.y], b: q, t0: now, t1: now + (Math.hypot(q[0] - A.x, q[1] - A.y) / PIETINE) * 1000 };
+      [A.x, A.y] = q;
+      this.replace();
+      return true;
+    }
+    return false;
   }
 
-  /** Where a hero of the raid, not its first, stands by the boss (kept while it raids, never moved; null = where it
-   *  is): the first free slot of the ring for its class (INNER / OUTER, at its class gap, anneau): walkable, inside the
-   *  400 px strip, off the boss's body (clair) and ESPACE from the first hero and the other raiders; else the nearest
-   *  free walkable point (POSTES) within 400 px, off the boss's footprint. An apprentice's spot too near it moves. */
+  /** The party takes its ring slots afresh round the boss's new spot, by fighting range: melee looks first (raiders
+   *  and apprentices), then the artificers, priests, mages and rangers; each its old slot first when still free, a
+   *  raider on the side with fewer, an apprentice its hero's side first. */
+  replace() {
+    const A = this.arene, cls = (addr) => { const a = this.list?.find((x) => x.address === addr); return a ? clsOf(a) : "mage"; };
+    const ordre = ["melee", "milieu", "loin"];
+    const qui = [...[...A.places].map(([k, P]) => ({ k, P, cls: cls(k) })), ...[...A.apps].map(([k, P]) => ({ k, P, cls: P.cls, app: true }))]
+      .sort((p, q) => ordre.indexOf(rangDe(p.cls)) - ordre.indexOf(rangDe(q.cls)) || ECART[p.cls] - ECART[q.cls]);
+    A.places.clear();
+    A.apps.clear();
+    for (const m of qui) {
+      if (!m.app) { this.prend(m.k, m.P.s); continue; }
+      const h = A.places.get(m.P.hero)?.q ?? [A.x, A.y], got = this.choisir(m.cls, h[0] > A.x ? -A.side : A.side, m.P.s);
+      if (got) A.apps.set(m.k, { ...m.P, s: got[0], q: got[1] });
+    }
+  }
+
+  /** Where a hero of the raid stands by the boss (kept while it raids and through the boss's fall; null = none, or
+   *  the fall is over). */
   place(addr) {
     const A = this.boss();
-    if (!A || A.x === null || A.lead === addr || !this.raids.has(addr)) return null;
-    if (A.places.has(addr)) return A.places.get(addr);
-    const a = this.list?.find((x) => x.address === addr);
-    const { demi, large, corps } = geantDe(especeBoss(bossDuJour().day));
-    const pris = [[A.x - A.side * A.loin, A.y - 16], ...A.places.values()];
-    const libre = (q) => walkable(q) && q[1] > 60 && q[1] < lieux().WORLD.h - 15 // in the strip's view, head to feet
-      && clair(A, q, demi, corps) && pris.every((o) => apart(o, q));
-    const slots = a && MELEE.has(clsOf(a)) ? [...INNER, ...OUTER] : [...OUTER, ...INNER];
-    const q = slots.map(([r, th, c]) => anneau(A, demi, r, th, c, ecartDe(a))).find(libre)
-      ?? lieux().POSTES.filter((p) => libre(p) && Math.abs(p[0] - A.x) >= large && Math.hypot(p[0] - A.x, p[1] - A.y) < 400)
-        .sort((p, o) => Math.hypot(p[0] - A.x, p[1] - A.y) - Math.hypot(o[0] - A.x, o[1] - A.y))[0];
-    if (q) {
-      A.places.set(addr, q);
-      for (const [k, o] of [...A.apps]) if (!apart(o, q)) A.apps.delete(k);
+    if (!this.raids.has(addr)) return null;
+    const P = A.places.get(addr);
+    if (P) return P.q;
+    return A.fin ? null : this.prend(addr, null);
+  }
+
+  /** Gives raider addr its place (prend: in its ring slot s when still free, else as choisir, on the side with fewer of
+   *  the party first; else the nearest free walkable point (POSTES) within 400 px, off the boss's footprint). Its
+   *  feet, or null. */
+  prend(addr, s) {
+    const A = this.arene, a = this.list?.find((x) => x.address === addr);
+    const n = [...this.membres()].reduce((k, q) => k + Math.sign(q[0] - A.x), 0);
+    const got = this.choisir(a ? clsOf(a) : "mage", n > 0 ? A.side : n < 0 ? -A.side : 1, s)
+      ?? [null, lieux().POSTES.filter((p) => this.libre(p) && Math.abs(p[0] - A.x) >= geantDe(especeBoss(A.day)).large && Math.hypot(p[0] - A.x, p[1] - A.y) < 400)
+        .sort((p, o) => Math.hypot(p[0] - A.x, p[1] - A.y) - Math.hypot(o[0] - A.x, o[1] - A.y))[0]];
+    if (!got[1]) return null;
+    A.places.set(addr, { s: got[0], q: got[1] });
+    return got[1];
+  }
+
+  /** Every party member's feet in the raid: the raiders' places and the apprentices' spots. */
+  *membres() {
+    for (const P of this.arene.places.values()) yield P.q;
+    for (const P of this.arene.apps.values()) yield P.q;
+  }
+
+  /** Free feet for a party member at q: walkable, inside the 400 px strip, off the boss's body (clair) and ESPACE from
+   *  every other member. */
+  libre(q) {
+    const A = this.arene, { demi, corps } = geantDe(especeBoss(A.day));
+    return walkable(q) && q[1] > 60 && q[1] < lieux().WORLD.h - 15 && clair(A, q, demi, corps) && [...this.membres()].every((o) => apart(o, q));
+  }
+
+  /** The first free ring slot for a party member of class cls at its own class gap (its slot s first when given), by
+   *  fighting range (RANG), on side c0 first at equal rank, nearer the viewer first: [slot, feet] or null. */
+  choisir(cls, c0, s) {
+    const A = this.arene, { demi } = geantDe(especeBoss(A.day)), d = ECART[cls] ?? ECART.mage;
+    const slots = [...(s ? [s] : []), ...RANG[rangDe(cls)].flatMap(([r, th]) => [c0, -c0].flatMap((c) => (th ? [[r, th, c], [r, -th, c]] : [[r, 0, c]])))];
+    for (const x of slots) {
+      const q = anneau(A, demi, ...x, d);
+      if (this.libre(q)) return [x, q];
     }
-    return q ?? null;
+    return null;
   }
 
   /** An apprentice's own spot in the raid (subagent id of hero addr, key its look; kept while both raid; null = it
-   *  keeps to its hero's file): the COINS point on rings 0-2 nearest its hero (not ring 0 beside the boss, the raiders'
-   *  inner slots), at its own class gap, free as a raider's place is and ESPACE from the other apprentices. */
+   *  keeps to its hero's file): a ring slot for its look's class, anywhere round the boss (choisir), its hero's side
+   *  first. */
   coin(addr, id, key) {
     const A = this.arene, k = `${addr}:${id}`;
-    if (A.apps.has(k)) return A.apps.get(k);
-    const lead = [A.x - A.side * A.loin, A.y - 16], h = A.lead === addr ? lead : A.places.get(addr);
+    if (A.apps.has(k)) return A.apps.get(k).q;
+    const h = A.places.get(addr)?.q;
     if (!h) return null;
-    const { demi, corps } = geantDe(especeBoss(bossDuJour().day));
-    const pris = [lead, ...A.places.values(), ...A.apps.values()], d = ecartDe({ demoHero: key });
-    const q = [0, 1, 2].flatMap((r) => COINS.flatMap((th) => (r || th ? [anneau(A, demi, r, th, 1, d), anneau(A, demi, r, th, -1, d)] : [])))
-      .filter((q) => walkable(q) && q[1] > 60 && q[1] < lieux().WORLD.h - 15 && clair(A, q, demi, corps) && pris.every((o) => apart(o, q)))
-      .sort((p, o) => Math.hypot(p[0] - h[0], p[1] - h[1]) - Math.hypot(o[0] - h[0], o[1] - h[1]))[0];
-    if (q) A.apps.set(k, q);
-    return q ?? null;
+    const got = this.choisir(CLS_FR[key.split("-")[1]], h[0] > A.x ? -A.side : A.side, null);
+    if (!got) return null;
+    A.apps.set(k, { s: got[0], q: got[1], hero: addr, cls: CLS_FR[key.split("-")[1]] });
+    return got[1];
   }
 
-  /** The reset (fronton.js, a store write): today's boss's HP rose. The raid and the minions go at once. */
+  /** The reset (fronton.js, a store write): today's boss's HP rose. It stands again on its wander's spot (held there
+   *  while raiders are left: they take places round it afresh and walk there); the minions go at once. */
   remise() {
-    this.arene = null;
-    this.raids.clear();
+    const A = this.boss(), now = Date.now(), e = errance(A.day, now);
+    Object.assign(A, { fin: 0, at: 0, pas: null, x: Math.round(e.x), y: Math.round(e.y), next: now + attente() });
+    A.places.clear();
+    A.apps.clear();
     this.sbires.clear();
   }
 
@@ -309,7 +459,7 @@ export class Activites {
   suit(addr, s, now, slain, d) {
     const sb = this.sbires.get(addr);
     if (!slain) return this.sbires.delete(addr);
-    if (this.boss()) return false; // the boss's fall first
+    if (this.boss().fin && Date.now() - this.boss().fin < CHUTE) return false; // the boss's fall first
     const ids = this.subagents(s).map((x) => x.id);
     const o = sb ?? { rr: 0, list: [], felled: [] };
     let changed = false;
@@ -371,7 +521,9 @@ export class Activites {
       boss.hp = Math.max(0, boss.hp - d);
       if (!boss.hp) {
         const h = heroOf(addr, (this.list ?? []).find((a) => a.address === addr)?.program);
-        Object.assign(boss, { slain: true, slainAt: now, by: addr, heros: { name: h.name, race: h.race, cls: h.cls }, avant }); // avant: the reset's undo
+        const p = this.ici(now);
+        Object.assign(boss, { slain: true, slainAt: now, by: addr, heros: { name: h.name, race: h.race, cls: h.cls }, avant, // avant: the reset's undo
+          lieu: [Math.round(p.x), Math.round(p.y)] }); // where it lies until midnight
         break;
       }
     }
@@ -392,7 +544,8 @@ export class Activites {
     const A = this.arene;
     if (A) {
       const fin = A.fin && t - A.fin < CHUTE;
-      if (t - A.at < COUP || A.fin) s += `boss:${A.at}:${A.fin}:${fin ? etape(t - A.fin) : "-"};`;
+      if (t - A.at < COUP || fin) s += `boss:${A.at}:${A.fin}:${fin ? etape(t - A.fin) : "-"};`;
+      if (A.pas && t < A.pas.t1) s += `boss-pas:${A.pas.t0};`; // a stomp or its walk back: redraw at its end (its bob)
     }
     // the minions': a blow, a fall's puff, a flight and its stages
     for (const [k, o] of this.sbires) {
@@ -446,9 +599,9 @@ export class Activites {
       if (this.pv?.day === avant.day && avant.hp > this.pv.hp) { this.remise(); changed = true; } // reset from the top bar
       const { coups, tue, boss, sbires } = this.degats(lus, now);
       this.pv = { day: boss.day, hp: boss.hp };
-      changed = this.mene(lus, now, boss.slain, tue && boss.by) || changed;
+      changed = this.mene(lus, now, boss.slain) || changed;
       for (const [addr, s] of lus) changed = this.suit(addr, s, now, boss.slain, sbires.get(addr) ?? 0) || changed;
-      if (coups.size && this.arene && !this.arene.fin) { this.arene.at = now; changed = true; } // the boss flinches
+      if (coups.size && this.raids.size && !this.boss().fin) { this.boss().at = now; changed = true; } // the boss flinches
       // short-lived flashes (blow on the creature, hero hit): redraw when they start or end
       for (const a of this.list ?? []) {
         const h = this.hits.get(a.address), s = this.files.get(a.address) ?? a.demoAct;
@@ -634,9 +787,9 @@ export class Activites {
     // a raid boss's footprint, or the minions' (their side, then): no apprentice stands there
     const sb = this.sbires.has(addr) && rangs({ ...u, x: m.x, y: m.y }, sbire(), side);
     if (sb) side = sb.side;
-    const A = this.raid(addr) && this.arene.x !== null ? this.arene : null;
+    const A = this.raid(addr) ? this.arene : null;
     if (A) side = A.x < m.x ? -1 : 1; // the boss's side: the apprentices keep to the other
-    const raid = A ? { x: A.x, large: geantDe(especeBoss(bossDuJour().day)).large } : sb;
+    const raid = A ? { x: A.x, large: geantDe(especeBoss(A.day)).large } : sb;
     const at = (p) => { const taken = []; return drawn.map((x) => { const q = spot(p, slots.get(x.id), side, taken, raid); taken.push(q); return q; }); };
     const ends = at([m.x, m.y]), starts = m.legs.length ? at(m.legs[0].a) : ends;
     const sfx = night ? "-n" : "";
@@ -650,11 +803,18 @@ export class Activites {
       return walkable(q) ? { q, foe: mx } : null;
     };
     const ici = (w) => { const p = pos(w.tr, t); return [p.x, p.y]; };
+    const pt = portail(m, t), fileA = pt && at(pt.P.a); // its hero's teleport: the file slots by its first portal
     return drawn.map((x, i) => {
       const k = slots.get(x.id), key = KINDS[hash(`${addr}:${x.id}`) % KINDS.length], id = `${addr}:${x.id}`;
       const d = det(x, key), E = d ? d.q : ends[i], was = this.ou.get(id);
       let tr;
-      if (m.legs.length) {
+      if (pt) {
+        // with its hero through the portals: to its file slot by the first while it opens, into it, out by the far one
+        const from = was?.tp === pt.P.t0 ? was.from : was ? ici(was) : fileA[i];
+        tr = pt.e < 2 ? { x: fileA[i][0], y: fileA[i][1], legs: [{ a: from, b: fileA[i], t0: pt.P.t0, t1: pt.P.t0 + VOYAGE[0] }] }
+          : { x: ends[i][0], y: ends[i][1], legs: [] };
+        this.ou.set(id, { tr, det: true, tp: pt.P.t0, from });
+      } else if (m.legs.length) {
         // the hero's walk: in single file from where it stood (its own spot, when it had left the file), then to E
         const walk = m.legs[0].t0, from = was?.walk === walk ? was.from : was ? ici(was) : null;
         tr = trail(m.legs, from ?? starts[i], E, SLOTS[k][2]);
@@ -662,7 +822,7 @@ export class Activites {
       } else if (d || was) {
         // the hero stands: straight to its spot, or back to its file slot
         const same = was && !was.walk && was.tr.x === E[0] && was.tr.y === E[1];
-        const a = was ? ici(was) : E, t1 = t + (Math.hypot(E[0] - a[0], E[1] - a[1]) / STEP) * 1000;
+        const a = was ? ici(was) : ends[i], t1 = t + (Math.hypot(E[0] - a[0], E[1] - a[1]) / STEP) * 1000;
         tr = same ? was.tr : { x: E[0], y: E[1], legs: t1 > t ? [{ a, b: E, t0: t, t1 }] : [] };
         if (tr.legs.length && t >= tr.legs[0].t1) tr = { x: E[0], y: E[1], legs: [] };
         if (d || tr.legs.length) this.ou.set(id, { tr, det: Boolean(d) }); else this.ou.delete(id);
@@ -682,6 +842,7 @@ export class Activites {
       const dur = p.leg ? Math.max(16, p.leg.t1 - t) : 16;
       const el = div().id(`apprenti-${addr}-${x.id}`).absolute().left(Math.round(gx)).top(Math.round(gy)).w(0).h(0)
         .transition("left", { duration: dur, easing: "linear" }).transition("top", { duration: dur, easing: "linear" })
+        .opacity(pt ? pt.voile : 1).transition("opacity", { duration: VOYAGE[1] - VOYAGE[0], easing: "linear" }) // a teleport's fade
         .child(div().absolute().left(-ax).top(-ay).w(w).h(h)
           .children(Array.from({ length: A.n }, (_, i) =>
             image(`${dir}/${String(i).padStart(2, "0")}${sfx}.png`).absolute().left(0).top(0).w(w).h(h).opacity(i === f ? 1 : 0))))
@@ -695,7 +856,7 @@ export class Activites {
   /** The creature a fighting unit faces, as its own depth-sorted world element: { z, el } or null. */
   creature(u, night) {
     const addr = u.a.address;
-    if (u.leg || this.raid(addr)) return null;
+    if (u.leg || u.portail || this.raid(addr)) return null;
     const s = this.file(addr) ?? u.a.demoAct;
     if (!s) return null;
     const sc = this.scene(addr);
@@ -766,56 +927,65 @@ export class Activites {
     return out;
   }
 
-  /** The raid boss, once, where it came (poser): the day's species at the troll's height (geantDe), facing its first
-   *  hero, today's HP in a bar over its head and, for an Elite or Legendary boss, an aura of its tier's colour at its
-   *  feet; hit COUP ms after each damage tick; when slain, the felled puff and a gold burst; when it flees, it turns its
-   *  back and walks FUIR px away, fading. { z, el } or null. */
-  geant(night) {
-    const r = this.boss(), b = bossDuJour(), sp = especeBoss(b.day), D = CREATURES[sp];
-    if (!r || r.x === null || !D) return null;
+  /** The day's boss, once, where it is (ici): the day's species at the troll's height (geantDe), its feet gliding
+   *  natively along its leg with a bob while it walks (`pret`, turned the way it goes), else turned to the side with
+   *  more raiders (the village's when none); `pret` / `attaque` alternating in a raid, today's HP in a bar over its head
+   *  and, for an Elite or Legendary boss, an aura of its tier's colour at its feet; hit COUP ms after each damage tick.
+   *  Slain: the felled puff and a gold burst CHUTE ms, and its body (`touche`, dimmed) where it fell until midnight.
+   *  None in the demo. { z, el } or null. */
+  geant(night, t = Date.now()) {
+    if (!this.ecrit) return null;
+    const r = this.boss(), b = bossDuJour(), sp = especeBoss(r.day), D = CREATURES[sp];
+    if (!D) return null;
     const { k: K } = geantDe(sp);
-    const addr = "boss", side = r.side, x = r.x, y = r.y;
-    const g = side > 0 ? "" : "-g", sfx = night ? "-n" : "";
-    const now = Date.now();
-    const e = r.fin ? etape(now - r.fin) : 0;
-    const sprite = (pose, extra, gg = g) => {
-      const p = D[pose];
-      return image(`${CRE}/${sp}/${pose}${gg}${sfx}.png`).absolute().left(-p.ax * K).top(-p.ay * K + 4).w(p.w * K).h(p.h * K).when(Boolean(extra), extra);
+    const addr = "boss", p = this.ici(t), leg = p.leg;
+    const raids = [...r.places.values()].reduce((n, P) => n + Math.sign(P.q[0] - r.x), 0);
+    const dir = leg && leg.b[0] !== leg.a[0] ? Math.sign(leg.b[0] - leg.a[0]) : this.raids.size && raids ? Math.sign(raids) : -r.side;
+    const g = dir < 0 ? "" : "-g", sfx = night ? "-n" : ""; // its art faces left; -g faces right
+    const e = r.fin ? etape(t - r.fin) : 0, chute = r.fin && t - r.fin < CHUTE;
+    const sprite = (pose, extra) => {
+      const q = D[pose];
+      return image(`${CRE}/${sp}/${pose}${g}${sfx}.png`).absolute().left(-q.ax * K).top(-q.ay * K + 4).w(q.w * K).h(q.h * K).when(Boolean(extra), extra);
     };
-    if (r.issue === "fuite") return { z: y + 3, el: fuite(`fuite-${addr}`, x, y, side, e, sprite("pret", null, side > 0 ? "-g" : "")) };
     const out = [];
-    if (r.issue === "mort") {
-      // felled: fades and rises in a puff, at the boss's size, in a gold burst
-      const p = D.touche;
-      out.push(image(`${CRE}/${sp}/touche${g}${sfx}.png`).absolute().left(side * 28 - p.ax * K).top(-p.ay * K).w(p.w * K).h(p.h * K)
-        .loop("opacity", { from: 0.9, to: 0, period: CHUTE }).loop("top", { from: -p.ay * K, to: -p.ay * K - 32, period: CHUTE }));
-      out.push(div().absolute().left(side * 28 - 24).top(-40).size(48).rounded_full().bg("#e8e2d0aa")
-        .loop("opacity", { from: 0.8, to: 0, period: CHUTE }));
-      out.push(...eclat(addr, e, Math.round((D.pret.h * K) / 2)));
+    if (r.fin) {
+      // its body where it fell, dimmed
+      out.push(sprite("touche", (el) => el.opacity(0.55)));
+      if (chute) { // felled: fades and rises in a puff, at the boss's size, in a gold burst
+        const q = D.touche;
+        out.push(image(`${CRE}/${sp}/touche${g}${sfx}.png`).absolute().left(-dir * 28 - q.ax * K).top(-q.ay * K).w(q.w * K).h(q.h * K)
+          .loop("opacity", { from: 0.9, to: 0, period: CHUTE }).loop("top", { from: -q.ay * K, to: -q.ay * K - 32, period: CHUTE }));
+        out.push(div().absolute().left(-dir * 28 - 24).top(-40).size(48).rounded_full().bg("#e8e2d0aa")
+          .loop("opacity", { from: 0.8, to: 0, period: CHUTE }));
+        out.push(...eclat(addr, e, Math.round((D.pret.h * K) / 2)));
+      }
     } else {
       // an Elite or Legendary boss stands in an aura of its tier's colour (halo.svg as a mask, a smaller one for its core)
-      const p = palier(b.day);
-      if (p) for (const f of [1.3, 0.8]) {
+      const pl = palier(r.day);
+      if (pl) for (const f of [1.3, 0.8]) {
         const w = Math.round(D.pret.w * K * f), h = Math.round(w / 2.4);
-        out.push(svg(`${ART}/halo.svg`).absolute().left(-w / 2).top(-h / 2 + 4).w(w).h(h).text_color(PALIERS[p])
+        out.push(svg(`${ART}/halo.svg`).absolute().left(-w / 2).top(-h / 2 + 4).w(w).h(h).text_color(PALIERS[pl])
           .loop("opacity", { from: 0.55, to: 1, period: 1600 }));
       }
-      if (now - r.at < COUP) {
+      if (t - r.at < COUP) {
         out.push(sprite("touche"));
         out.push(div().absolute().left(-12).top(-D.pret.h * K / 2 - 8).size(24).rounded_full().bg("#fff6d8")
           .loop("opacity", { from: 1, to: 0, period: 450 }));
-      } else {
+      } else if (leg) {
+        out.push(div().absolute().left(0).top(0).w(0).h(0).loop("top", { from: 0, to: -5, period: 420 }).child(sprite("pret")));
+      } else if (this.raids.size) {
         out.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: 1700 + (hash(addr) % 400), easing: "linear" })));
         out.push(sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: 1700 + (hash(addr) % 400), easing: "linear" })));
-      }
-    }
-    // today's HP over its head while it fights
-    if (!r.fin) {
+      } else out.push(sprite("pret"));
+      // today's HP over its head
       const W = 84;
       out.push(div().absolute().left(-W / 2).top(-D.pret.h * K - 12).w(W).h(8).bg("#1b1420").border_1().border_color("#000000")
         .child(div().h_full().w(Math.round(((W - 2) * b.hp) / b.max)).bg("#e5685a")));
     }
-    return { z: y + 3, el: div().absolute().left(x).top(y).w(0).h(0).children(out) };
+    // its feet glide to its leg's end (transition always declared, as the heroes')
+    const [x, y] = leg ? leg.b : [p.x, p.y], dur = leg ? Math.max(16, leg.t1 - t) : 16;
+    return { z: p.y + 3, el: div().id("geant").absolute().left(Math.round(x)).top(Math.round(y)).w(0).h(0)
+      .transition("left", { duration: dur, easing: "linear" }).transition("top", { duration: dur, easing: "linear" }).children(out) };
   }
 
   /** A hero's minions (after the day's kill): each at its place (rangs), drawn at BETE like a fight creature, `pret` /
@@ -824,7 +994,7 @@ export class Activites {
    *  Depth-sorted world elements [{ z, el }]. */
   sbiresDe(u, night) {
     const addr = u.a.address, o = this.sbires.get(addr);
-    if (!o || u.leg) return [];
+    if (!o || u.leg || u.portail) return []; // shown once it stands (not while it walks or teleports)
     const sp = sbire(), D = CREATURES[sp];
     const { side, pts } = rangs(u, sp, u.x > lieux().BASCULE ? -1 : 1);
     const g = side > 0 ? "" : "-g", sfx = night ? "-n" : "";
@@ -900,6 +1070,18 @@ function fuite(id, x, y, side, e, el) {
   return div().id(id).absolute().left(e ? x + side * FUIR : x).top(y).w(0).h(0).opacity(e ? 0 : 1)
     .transition("left", tr).transition("opacity", tr)
     .child(div().absolute().left(0).top(0).w(0).h(0).loop("top", { from: 0, to: -5, period: 320 }).child(el));
+}
+
+/** A hero's teleport at t (m its mob entry, m.portail = { t0, a (from), b (to) }, set by Place on a move asked for
+ *  with Place.sauter): a portal opens where it stands (100 ms on), it and its apprentices fade into it from
+ *  VOYAGE[0], and it shows at the far end from VOYAGE[1] (a portal opened there from VOYAGE[0]), fading in; done at
+ *  PORTAIL. { e (0 its portal opens, 1 it fades into it, 2 it is at the far end), at (where it shows), voile (its
+ *  opacity), P } or null when none runs. */
+export function portail(m, t) {
+  const P = m?.portail;
+  if (!P || t - P.t0 >= PORTAIL) return null;
+  const e = VOYAGE.filter((s) => t - P.t0 >= s).length;
+  return { e, at: e < 2 ? P.a : P.b, voile: e === 1 ? 0 : 1, P };
 }
 
 /** The gold burst over a slain raid boss (mid px above its feet): a gold ring opening and 10 sparkles rising, gold

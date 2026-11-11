@@ -100,15 +100,13 @@ export const CLASSES = {
   voleur: { get nom() { return t("cls").voleur; }, bat: "etal1", item: "dague" },
 };
 
-/** The class a program plays: Claude a mage or an artificer (split by terminal), Codex an artificer, shells warriors… */
+/** The class a terminal plays: shells are warriors (the guards); every agent, whatever its program, any class, from a
+ *  hash of its terminal address (other bits than the race's and the name's). */
 export function classOf(program, h = 0) {
   const k = String(program?.key ?? "").toLowerCase();
-  if (k.startsWith("claude")) return (h >>> 13) & 1 ? "artificier" : "mage";
-  if (k === "codex") return "artificier";
   if (program?.shell || k === "shell") return "guerrier";
-  if (k.includes("gemini")) return "pretre";
-  if (k.includes("opencode") || k === "pi" || k.includes("amp") || k.includes("cursor")) return "rodeur";
-  return "voleur";
+  const cls = Object.keys(CLASSES);
+  return cls[(h >>> 9) % cls.length];
 }
 
 /** Everything that makes a terminal a villager-hero, stable for its address. */
