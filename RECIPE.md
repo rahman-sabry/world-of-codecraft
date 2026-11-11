@@ -20,7 +20,7 @@ the clock. The art is original: it imitates no existing game.
     felled; tooltip: name with its tier, HP, the streak at stake, who slew it, time to the next boss, and "Click: reset
     today's boss to full HP"; a click turns the plaque in place into "Reset boss?" with Yes / No, « Relancer le boss ? »
     Oui / Non, which closes by itself after 5 s; no system dialog) and the trophies (a gold cup,
-    "3 slain", "streak 2 days"; tooltip). They show only when the bar has room beside everything else (a width
+    "3" over "raid bosses slain"; the daily streak is in its tooltip). They show only when the bar has room beside everything else (a width
     estimate): the trophies go first (their tooltip then joins the boss's), then the boss;
   - a parchment scroll in the middle with the shown district and quest;
   - on the right, an alert when a hero waits, then the sun or the moon, the canonical

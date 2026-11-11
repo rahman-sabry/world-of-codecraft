@@ -6,7 +6,7 @@
 // files exist (see readQuotas in kit.js); without them the header shows Heroes only. In the middle,
 // the district's banner and a parchment scroll with the district and quest. On the right,
 // the waiting-heroes button (click: go to the next one), then the hour plaque. After Heroes, today's raid boss (its HP,
-// slain in gold; a click asks to reset it) and the trophies (bosses slain, daily streak), the trophies only when the bar
+// slain in gold; a click asks to reset it) and the trophies (bosses slain; the daily streak in its tooltip), the trophies only when the bar
 // has room for them.
 
 import { div, image, svg } from "gpui-kit";
@@ -206,7 +206,7 @@ export default class Fronton {
         .when(Boolean(contexte), (el) => el.child(contexte))
         .when(resets.length > 0, (el) => el.child(this.plaque("res-foire", pic("ic-sablier", 22, 28), fair || "—", t("untilFair"), t("fairTip"))))
         .when(fits(1), (el) => el.child(this.boss(room ? null : troTip)))
-        .when(room, (el) => el.child(this.plaque("res-trophees", svg(`${ART}/blason-coupe.svg`).w(21).h(21).flex_none().text_color(P.goldHi), t("slainN", tro.total), t("streak", tro.streak), troTip, false, tro.total ? P.goldHi : P.cream)))
+        .when(room, (el) => el.child(this.plaque("res-trophees", svg(`${ART}/blason-coupe.svg`).w(21).h(21).flex_none().text_color(P.goldHi), String(tro.total), t("bossesSlain"), troTip, false, tro.total ? P.goldHi : P.cream)))
         .child(div().flex_1().min_w(0).flex().justify_center().when(Boolean(scroll), (el) => el.child(scroll)))
         .when(Boolean(alert), (el) => el.child(alert))
         .child(this.mode())
