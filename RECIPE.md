@@ -398,17 +398,24 @@ the clock. The art is original: it imitates no existing game.
   (`art/monde-hiver/`, snow, `#c9d3df`). The water a unit never stands in is the record's `EAU`, a list of shapes in
   map px (`{ligne, demi}` a river, `{ellipse: [cx, cy, rx, ry]}` a lake, `{polygone}` a sea or a basin); `DECK` is
   walkable over it.
-- **Port Salin (`carte-port.js`, `maps/port.json`):** a harbour town, the world x 0 to 4000 (4 tiles, a fifth less art
-  than Valbrume's 5000, and every tile has something in it). West to east: a sandy cove with nets drying, the barn
+- **Port Salin (`carte-port.js`, `maps/port.json`):** a harbour town, the world x -1000 to 5000 (6 tiles; the village
+  keeps its x 0 to 4000 and the layout's `origine` [2000, 200], so nothing in it moved when the ends were added). West
+  to east: a meadow by the shore (open grass between the forest's edge and a sand strip, a few bushes and rocks at its
+  margins, the road through it), a sandy cove with nets drying, the barn
   and its fields, the mage tower, the forge, the tavern on the harbour's west quay; the harbour basin (an iso box of
   sea whose two far sides are stone quays meeting inland, a wooden pier out from the west quay with a skiff alongside,
   a cog moored along the east quay), the market on the quay-side square with the well, the town hall at its head,
-  the Temple of Dawn, the barracks above a bay, and a headland with the lighthouse (`phare`: a building, its lamp a
-  live glow at night). The sea fills the south band and comes up into the strip along the whole coast. Heroes walk
-  the road along the cove and the village, up the west quay round the basin's head and down the east quay through the
-  square, on to the lighthouse's door; the pier is its `DECK`. Looks `ete` (`art/port-ete/`, `#1f5d8e`) and `hiver`
-  (`art/port-hiver/`, snow, `#28506e`); fish leap in both (the sea stays open water in winter). `BASCULE` 3700
-  (300 px short of the east edge, Valbrume's rule).
+  the Temple of Dawn, the barracks above a bay, a headland with the lighthouse (`phare`: a building, its lamp a
+  live glow at night), and a second meadow past it, like the first. The sea fills the south band and comes up into
+  the strip along the whole coast. Heroes walk the road from the west edge through the meadow, along the cove and the
+  village, up the west quay round the basin's head and down the east quay through the square, past the lighthouse's
+  door (in front of it: its hit box is crossed only on the road) and through the east meadow to the east edge; the
+  pier is its `DECK`. The meadows are the raid boss's lairs (`ANTRE`: west x -620 to -170, y 250 to 285; east x 4190
+  to 4640, y 324 to 354): the road (`ROAD_R` 30) and stroll spots above and below it (`FLANE`) make ring 0 and ring 1
+  walkable on both sides of every point of them for every species (99.7% of a 10 × 5 px grid at a 176 px half width),
+  so a stomp finds its 120 to 220 px. Looks `ete` (`art/port-ete/`, `#1f5d8e`) and `hiver` (`art/port-hiver/`, snow,
+  `#28506e`); fish leap in both (the sea stays open water in winter). `BASCULE` 4700 (300 px short of the east edge,
+  Valbrume's rule).
 - **Map and look switches** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande`
   block), two rows of the same style: ‹ map name › cycles the maps (store key `wocc.map`, default `"valbrume"`) and
   ‹ look name › the shown map's looks (`wocc.look`, default its first); a row with a single choice shows only the

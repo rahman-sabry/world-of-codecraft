@@ -1,11 +1,13 @@
-// The map of Port-Salin: a harbour town on a coast (art/port-ete, art/port-hiver: the world is x 0-4000, 400 logical px
-// high, with the immersive bands; 1 art px = 1 logical px), and its looks. Read through lieux.js. Hand-edited, but for
-// the bake's own data (carte-port-data.js, from maps/port.json by tools/bake_map.py), referenced here.
-// The layout, west to east: a sandy cove with nets drying, the barn and its fields, the mage tower, the forge, the
-// tavern on the harbour's west quay; the harbour basin (two quays meeting inland, a pier, two boats moored), the market
-// on the quay-side square, the town hall, the temple, the barracks; a headland with the lighthouse. The sea fills the
-// south band and comes up into the strip along the whole coast. Buildings stand at their layout point `at`, with the
-// same offsets as in Valbrume where the art is the same (box, chimneys, glows, standards).
+// The map of Port-Salin: a harbour town on a coast (art/port-ete, art/port-hiver: the world is x -1000 to 5000, 400
+// logical px high, with the immersive bands; 1 art px = 1 logical px), and its looks. Read through lieux.js.
+// Hand-edited, but for the bake's own data (carte-port-data.js, from maps/port.json by tools/bake_map.py), referenced
+// here. The layout, west to east: a meadow by the shore (the raid boss's west lair), a sandy cove with nets drying,
+// the barn and its fields, the mage tower, the forge, the tavern on the harbour's west quay; the harbour basin (two
+// quays meeting inland, a pier, two boats moored), the market on the quay-side square, the town hall, the temple, the
+// barracks; a headland with the lighthouse; a meadow by the shore (the east lair). The road runs out through both
+// meadows to the world's ends. The sea fills the south band and comes up into the strip along the whole coast.
+// Buildings stand at their layout point `at`, with the same offsets as in Valbrume where the art is the same (box,
+// chimneys, glows, standards).
 
 import { WORLD, TILES, FRONTS, EXT } from "./carte-port-data.js";
 
@@ -49,31 +51,36 @@ export const PORT = {
   marche: { at: [2305, 257], box: [-83, -86, 274, 175],
     spots: [[-50, 61], [45, 88], [-105, 33], [125, 95], [-145, 5]] },
 
-  /** Where idle heroes stroll: the cove's beach, the farmland, the village road, the quays and the pier's end, the
-   *  square, in front of the town hall and the temple, the bay and the headland. */
+  /** Where idle heroes stroll: the west meadow, the cove's beach, the farmland, the village road, the quays and the
+   *  pier's end, the square, in front of the town hall and the temple, the bay, the headland and the east meadow. */
   FLANE: [
-    [80, 272], [370, 245], [610, 318], [520, 160], [1000, 330], [1360, 330], [1600, 320], [1780, 300], [2000, 316],
-    [2128, 361], [2120, 245], [2300, 330], [2520, 360], [2880, 380], [3200, 320], [3480, 320], [3700, 322],
-    [3760, 345], [3800, 400],
+    [-820, 330], [-640, 205], [-460, 330], [-280, 205], [-130, 322], [-10, 294], [80, 272], [370, 245], [610, 318],
+    [520, 160], [1000, 330], [1360, 330], [1600, 320], [1780, 300], [2000, 316], [2128, 361], [2120, 245], [2300, 330],
+    [2520, 360], [2880, 380], [3200, 320], [3480, 320], [3700, 322], [3760, 345], [3800, 400], [4000, 372], [4180, 238],
+    [4320, 368], [4460, 236], [4600, 366], [4740, 242], [4880, 362],
   ],
-  /** The road across the world (feet points, the baked road's centre): along the cove and the village, up the west
-   *  quay to the basin's head, down the east quay through the square, along the town hall and the temple, round the
-   *  bay to the lighthouse's door. The quays are paved, the rest dirt. */
+  /** The road across the world (feet points, the baked road's centre): through the west meadow, along the cove and
+   *  the village, up the west quay to the basin's head, down the east quay through the square, along the town hall and
+   *  the temple, round the bay to the lighthouse's door, past it through the east meadow. The quays are paved, the
+   *  rest dirt. */
   ROAD: [
-    [0, 236], [150, 222], [300, 214], [450, 222], [560, 250], [640, 284], [760, 300], [880, 302], [990, 296], [1100, 292],
-    [1240, 300], [1380, 298], [1550, 300], [1690, 314], [1850, 330], [1966, 329], [2120, 252], [2308, 346], [2390, 362],
-    [2420, 370], [2560, 380], [2700, 384], [2850, 388], [3000, 388], [3120, 360], [3250, 330], [3420, 316], [3560, 295],
-    [3660, 302], [3740, 328],
+    [-1000, 256], [-860, 262], [-700, 258], [-540, 264], [-380, 258], [-230, 258], [-100, 250], [0, 236], [150, 222],
+    [300, 214], [450, 222], [560, 250], [640, 284], [760, 300], [880, 302], [990, 296], [1100, 292], [1240, 300],
+    [1380, 298], [1550, 300], [1690, 314], [1850, 330], [1966, 329], [2120, 252], [2308, 346], [2390, 362], [2420, 370],
+    [2560, 380], [2700, 384], [2850, 388], [3000, 388], [3120, 360], [3250, 330], [3420, 316], [3560, 295], [3660, 302],
+    [3740, 328], [3800, 348], [3900, 338], [4000, 330], [4060, 328], [4180, 326], [4340, 328], [4500, 324], [4660, 328],
+    [4820, 324], [5000, 328],
   ],
   /** The water (maps/port.json's sea shapes, map px): the sea, its coast round the headland, and the harbour basin
    *  (an iso box: a diamond on screen, its two far sides the quays). */
   EAU: [
-    { polygone: [[-60, 345], [40, 340], [110, 318], [190, 292], [290, 278], [400, 282], [500, 304], [580, 336], [660, 362],
-      [760, 372], [860, 378], [960, 390], [1060, 404], [1200, 406], [1290, 392], [1360, 366], [1440, 350], [1560, 347],
-      [1660, 357], [1730, 380], [1770, 440], [2120, 520], [2470, 440], [2530, 395], [2640, 390], [2760, 395], [2860, 404],
-      [2960, 410], [3060, 400], [3150, 380], [3240, 372], [3330, 368], [3420, 362], [3500, 355], [3570, 345], [3640, 345],
-      [3700, 345], [3740, 410], [3790, 460], [3840, 470], [3900, 432], [3950, 362], [4000, 350], [4060, 348], [4060, 820],
-      [-60, 820]] },
+    { polygone: [[-1060, 396], [-860, 392], [-660, 386], [-480, 382], [-320, 376], [-180, 368], [-70, 356], [0, 346],
+      [40, 340], [110, 318], [190, 292], [290, 278], [400, 282], [500, 304], [580, 336], [660, 362], [760, 372],
+      [860, 378], [960, 390], [1060, 404], [1200, 406], [1290, 392], [1360, 366], [1440, 350], [1560, 347], [1660, 357],
+      [1730, 380], [1770, 440], [2120, 520], [2470, 440], [2530, 395], [2640, 390], [2760, 395], [2860, 404],
+      [2960, 410], [3060, 400], [3150, 380], [3240, 372], [3330, 368], [3420, 362], [3500, 355], [3570, 345],
+      [3640, 345], [3700, 345], [3740, 410], [3790, 460], [3840, 470], [3900, 446], [3950, 414], [4020, 396],
+      [4140, 394], [4300, 400], [4500, 402], [4700, 398], [4900, 402], [5060, 404], [5060, 820], [-1060, 820]] },
     { polygone: [[2120, 268], [2480, 448], [2120, 628], [1760, 448]] },
   ],
   /** The pier's deck (walkable over the basin): from the west quay out to its lantern, 2 px up (the planks). */
@@ -98,11 +105,11 @@ export const PORT = {
   ],
 
   /** A fighting hero's creature stands on its right, on its left past this x: 300 px short of the world's east edge
-   *  (Valbrume's rule), so a hero on the headland fights towards the village, not out to sea. */
-  BASCULE: 3700,
-  /** The raid boss's lairs at the outskirts (map px x ranges): west, the land between the cove's beach and the fields;
-   *  east, the open ground by the barracks above the bay. */
-  ANTRE: { ouest: [150, 600], est: [3120, 3480] },
+   *  (Valbrume's rule), so a hero at the east meadow's end fights towards the village, not off the world. */
+  BASCULE: 4700,
+  /** The raid boss's lairs (activite.js antre: { x, y } ranges where a party fits on both sides of it, along the road
+   *  and the meadow's stroll spots): west, the meadow west of the cove; east, the meadow past the lighthouse. */
+  ANTRE: { ouest: { x: [-620, -170], y: [250, 285] }, est: { x: [4190, 4640], y: [324, 354] } },
 
   // village life (ambiance.js): walkers along the road and the quays, the hens by the barn and the tavern cat (as in
   // Valbrume, from their buildings), the roaming cats (beach and barn; tavern, quays and square; square, town hall and
