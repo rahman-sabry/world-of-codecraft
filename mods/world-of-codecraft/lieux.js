@@ -70,8 +70,18 @@ function dansEau([x, y], e) {
  *  known standing spot outside every building's box (hit boxes: larger than the buildings, they overlap the road);
  *  never the water. */
 export function walkable(p) {
+  // memoized per map on the exact point (callers ask the same points every frame; a long sea polygon is costly)
+  const L = lieux(), k = `${p[0]}|${p[1]}`;
+  if (MARCHE.id !== L.id || MARCHE.m.size > 8192) { MARCHE.id = L.id; MARCHE.m.clear(); }
+  let v = MARCHE.m.get(k);
+  if (v === undefined) { v = sol(p, L); MARCHE.m.set(k, v); }
+  return v;
+}
+const MARCHE = { id: null, m: new Map() }; // the shown map's walkable() answers by point
+
+function sol(p, L) {
   const [x, y] = p;
-  const { DECK, EAU, ROAD, ROAD_R, BUILDINGS, FLANE, SPOTS, SPOT_R } = lieux();
+  const { DECK, EAU, ROAD, ROAD_R, BUILDINGS, FLANE, SPOTS, SPOT_R } = L;
   if (toLine(p, DECK) < 14) return true;
   if (EAU.some((e) => dansEau(p, e))) return false;
   if (toLine(p, ROAD) < ROAD_R) return true;

@@ -1228,6 +1228,15 @@ const sbire = () => { const sp = espece(bossDuJour().day); return SBIRE[sp] ?? s
  *  cramped (fewer than SBIRES), the rest from the first free PLACES whatever the ground. { side, pts, loin, large }:
  *  loin and large mark the zone apprentices keep off, as a raid boss's (geantDe). */
 function rangs(u, sp, side0) {
+  // memoized by map, point, species, side and class gap: the same places for the same stand (asked every frame)
+  const k = `${lieux().id}|${u.x}|${u.y}|${sp}|${side0}|${ecartDe(u.a)}`;
+  if (RANGS.size > 512) RANGS.clear();
+  if (!RANGS.has(k)) RANGS.set(k, placesSbires(u, sp, side0));
+  return RANGS.get(k);
+}
+const RANGS = new Map(); // rangs' answers (keyed with the map id: another map asks other keys)
+
+function placesSbires(u, sp, side0) {
   const { x, y } = u, P = CREATURES[sp].pret, W = P.w * BETE, H = P.h * BETE;
   const at = (side, sol) => {
     const pts = [];
