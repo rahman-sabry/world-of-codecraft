@@ -19,7 +19,7 @@ import { HEROES } from "./heros-data.js";
 import { lieux, market } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
-import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart } from "./activite.js";
+import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart, etoiles } from "./activite.js";
 import { effet, FX, FX_ETAPES } from "./effets.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
@@ -404,7 +404,8 @@ export default class Place {
     let body;
     if (an.frames) {
       const dir = `${ART}/heros/${u.key}/${an.name}`;
-      const k = animate ? Math.floor(((t + (hash(a.address) % 997)) / 1000) * an.info.fps) % an.info.n : 0;
+      const fige = this.act.etourdi(a.address, t); // stunned (Activites.secousse): its frame frozen as it was then
+      const k = animate || fige !== null ? Math.floor((((fige ?? t) + (hash(a.address) % 997)) / 1000) * an.info.fps) % an.info.n : 0;
       body = div().absolute().left(-ax).top(-ay).w(w).h(hh)
         .children(Array.from({ length: an.info.n }, (_, i) =>
           image(`${dir}/${String(i).padStart(2, "0")}${suffix}.png`).absolute().left(0).top(0).w(w).h(hh).opacity(i === k ? 1 : 0)));
@@ -417,8 +418,10 @@ export default class Place {
           .loop("top", u.leg ? { from: 0, to: -2, period: 380 } : { from: 0, to: -1, period: 2600 + (hash(a.address) % 900) }));
     }
     // its sidestep in a fight outside a raid (Activites.pasDeCote), carried natively
+    const stun = this.act.etourdi(a.address, t); // stunned by the raid boss: dimmed, dizzy stars over its head
     el = el.child(div().id(`pas-${a.address}`).absolute().left(this.act.pasDeCote(a.address, a.address, t, Boolean(u.leg) || Boolean(u.portail))).top(0).w(0).h(0)
-      .transition("left", { duration: 250, easing: "ease-out" }).child(body));
+      .transition("left", { duration: 250, easing: "ease-out" }).opacity(stun !== null ? 0.6 : 1).transition("opacity", { duration: 200, easing: "linear" }).child(body));
+    if (stun !== null) el = el.children(etoiles(-ay));
 
     // hit box, tooltip, click
     el = el.child(div().id(`clic-${a.address}`).absolute().left(-ax).top(-ay).w(w).h(hh).cursor_pointer()
@@ -847,7 +850,8 @@ export default class Place {
       const an = this.anim(u);
       const animate = !hidden && visible(u) && an.frames && (!ONLY_SELECTED || u === sel);
       u.animate = animate;
-      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997 });
+      const fige = this.act.etourdi(u.a.address, t) !== null; // a stunned hero's frame stays
+      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate && !fige ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997 });
     }
     // apprentices (one half-size hero per running subagent) by their heroes, on the side away from the creature;
     // their frames and their walks (in single file on the hero's path) run on the same frame timer
@@ -856,6 +860,7 @@ export default class Place {
       return u.a.guard ? [] : this.act.apprentis(u, m, (tr, at) => this.pos(tr, at), m.x > L.BASCULE ? -1 : 1, nightHeroes, t, !hidden && visible(u));
     });
     for (const ap of apps) if (ap.anim.fps || ap.anim.trail.legs.length) this.anims.push({ addr: ap.addr, ...ap.anim });
+    this.act.etourdir(units, apps, t); // the raid boss's stunning blow lands: whom it stuns (Activites.secousse)
 
     // depth: units by feet y (+3, like the compositor), front cut-outs above the units behind them
     const els = units.map((u) => this.unit(u, u === sel, nightHeroes, t, u.animate));
@@ -876,6 +881,7 @@ export default class Place {
     things.push(...life);
     things.push(...apps.map((ap) => ({ ...ap, el: this.blink(ap.key, ap.el, t) })));
     things.push(...this.effets(units, apps, t, nightK));
+    things.push(...this.act.aoe(t, 1 - 0.3 * nightK)); // the raid boss's stunning blow (its warning, its wave)
     const traces = this.traces(units, apps, t);
     things.push(...traces);
     for (const fr of FRONTS) {

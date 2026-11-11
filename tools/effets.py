@@ -13,6 +13,14 @@
   fx-soin.svg                         priest: a golden mote, a small cross (5 x 5)
   fx-chatiment.svg                    priest alone: a golden flash of eight rays (15 x 15)
 
+The raid boss's stunning blow (activite.js aoe), rings drawn flat (the ground's depth), stretched to its reach:
+  fx-aoe-alerte.svg                   its warning: a dashed red ring on the ground (80 x 26)
+  fx-aoe-golem.svg, fx-aoe-debris.svg golem: a ring of dust (80 x 26) and a rock thrown out (5 x 4)
+  fx-aoe-troll.svg                    troll: a pale shockwave, a double ring (80 x 26)
+  fx-aoe-spectre.svg                  spectre: a violet wailing ring with wisps (80 x 26)
+  fx-aoe-gobelin.svg, fx-aoe-bombe.svg goblin: a fiery ring (80 x 26) and the bomb it throws (7 x 8)
+  fx-etoiles-0.svg, fx-etoiles-1.svg  a stunned fighter's dizzy stars, two turns of a circle of three (17 x 7)
+
   python3 tools/effets.py"""
 import math, os, sys
 
@@ -136,6 +144,56 @@ def chatiment():
     s.svg("fx-chatiment")
 
 
+def anneau(nom, couleurs, epais=0.16, trou=None, motes=None):
+    """A flat ring 80 x 26 (an ellipse), its band `epais` of the radius wide, coloured from the inside out (couleurs),
+    with gaps where trou(angle) is true and motes (angle -> colour) scattered just outside it."""
+    s = gen.Px(80, 26)
+    for y in range(26):
+        for x in range(80):
+            dx, dy = (x - 39.5) / 39.5, (y - 12.5) / 12.5
+            d, a = math.hypot(dx, dy), math.atan2(dy, dx)
+            if 1 - epais < d <= 1 and not (trou and trou(a)):
+                k = min(len(couleurs) - 1, int((d - (1 - epais)) / epais * len(couleurs)))
+                s.p(x, y, couleurs[k])
+            elif motes and 0.66 < d < 1 - epais and motes(a, d):
+                s.p(x, y, motes(a, d))
+    s.svg(nom)
+
+
+def aoe():
+    anneau("fx-aoe-alerte", ["#ff7a1a", "#e5304a", "#b0182e"], 0.1, trou=lambda a: math.cos(16 * a) < -0.3)
+    anneau("fx-aoe-golem", ["#e8dcc0c0", "#b8a27ad8", "#8a6a44e0", "#5e4a32c0"], 0.24,
+           trou=lambda a: math.cos(11 * a + 1) < -0.75, motes=lambda a, d: "#8a6a44b0" if math.cos(23 * a) > 0.92 else None)
+    anneau("fx-aoe-troll", ["#fff3c4a0", "#ffffffd0", "#e8e2d090"], 0.12)
+    anneau("fx-aoe-spectre", ["#e6c8ffc0", "#b06bffe0", "#7a3fd0d0"], 0.18,
+           trou=lambda a: math.cos(7 * a) < -0.8, motes=lambda a, d: "#c58bffc0" if math.cos(13 * a + 3 * d) > 0.95 else None)
+    anneau("fx-aoe-gobelin", ["#fff3c4", "#ffd86b", "#ff9a2e", "#e5304ad0"], 0.22,
+           trou=lambda a: math.cos(13 * a) < -0.85, motes=lambda a, d: "#ff7a1a" if math.cos(29 * a) > 0.95 else None)
+    d = gen.Px(5, 4)
+    d.r(1, 0, 3, 1, "#8a6a44"); d.r(0, 1, 5, 2, "#6e5236"); d.r(1, 3, 3, 1, "#4a3826")
+    d.svg("fx-aoe-debris")
+    b = gen.Px(7, 8)
+    for y in range(8):
+        for x in range(7):
+            if math.hypot(x - 3, y - 4.5) < 3.2:
+                b.p(x, y, "#2a2430" if math.hypot(x - 2, y - 3.5) > 1 else "#6a6070")
+    b.p(4, 1, "#8a5a2b"); b.p(5, 0, "#ffd86b"); b.p(6, 0, "#ff7a1a")
+    b.outline()
+    b.svg("fx-aoe-bombe")
+
+
+def etoiles():
+    for k in range(2):
+        s = gen.Px(17, 7)
+        for i in range(3):
+            a = 2 * math.pi * (i / 3 + k / 6)
+            x, y = round(8 + math.cos(a) * 6.5), round(3 + math.sin(a) * 2.2)
+            for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):
+                s.p(x + dx, y + dy, "#ffffff" if (dx, dy) == (0, 0) else "#ffd86b")
+        s.svg(f"fx-etoiles-{k}")
+
+
 if __name__ == "__main__":
+    aoe(); etoiles()
     taille(); dague(); etincelles(); eclair(); arcane(); fleche(); impact(); soin(); chatiment()
     print("fx-*.svg in", gen.OUT)

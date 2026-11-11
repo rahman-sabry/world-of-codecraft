@@ -218,6 +218,21 @@ the clock. The art is original: it imitates no existing game.
     teleport. A hero whose subagents all end leaves the raid and teleports back to the goal it left. When none is left
     the boss walks back onto its wander path, to where its wander will be when it gets there, then wanders on. There
     is no flight. The raid lives in memory: a reload holds the boss afresh where it wanders.
+    **Its stunning blow** (`secousse` in activite.js): while a raid holds it, every 60 to 90 s (in memory, as the
+    stomps; never over a stomp: one running pushes the blow 3 s past its end, and a stomp due during the blow or its
+    stun waits for the stun to end) it telegraphs for 1 s, holding its attack pose with a dashed red ring pulsing on
+    the ground round it (art/fx-aoe-alerte.svg stretched to its reach: its half width + a mage's gap + one ring out +
+    30 px, on the ground, `portee`), then its wave spreads from a fifth of that reach to all of it in 540 ms and fades
+    (`aoe`, by species: golem, a ring of dust, fx-aoe-golem.svg, and six rocks thrown out, fx-aoe-debris.svg; troll, a
+    pale shockwave, fx-aoe-troll.svg; spectre, a violet wailing ring, fx-aoe-spectre.svg; goblin, its bomb,
+    fx-aoe-bombe.svg, thrown up and down a short way in front of it during the wind-up, then a fiery ring there,
+    fx-aoe-gobelin.svg). At the hit, every party member standing within its reach (heroes not teleporting, and their
+    apprentices; `etourdir`, from Place's render) is stunned for 3 s (`etourdi`): its frame frozen as it was then
+    (and out of the frame timer), dimmed to 0.6, two dizzy-star frames (fx-etoiles-0/1.svg) swapping over its head, and
+    no blow effect (its blows still count as damage, nothing is held: `frappe` just shows nothing). A member arriving
+    meanwhile is not stunned; one whose subagents end teleports out as usual. Purely cosmetic. Its stages and the
+    stun's end are in the frame timer's signature (`fenetres`); all of it drawn only by the shown, live village,
+    dimmed at night as the blows' effects. Art by tools/effets.py.
     **The ring:** the party (raiders and apprentices alike) stands on slots round the boss (`choisir`): a slot is an
     angle on the ground (0 = beside it, + = nearer the viewer), a ring (75 px further out each) and a side (1 = the
     village's), and a member stands at its own class gap (`ECART`) past the boss's half width along that angle, the

@@ -83,6 +83,12 @@ const ERRE = 12; // px/s the day's boss wanders its lair at (errance)
 const PAS = 50000; // ms per wander waypoint: it walks to the next, then stands there
 const PIETINE = 40; // px/s its stomps in a raid and its walk back onto its wander path
 const STOMP = [30000, 60000]; // ms between two stomps while a raid holds it
+const AOE = [60000, 90000]; // ms between two of its stunning blows while a raid holds it (secousse)
+const ALERTE = 1000; // ms its blow is telegraphed (its wind-up, a warning ring)
+const ONDE = 600; // ms its blow's wave spreads, from the end of the warning
+const ETOURDI = 3000; // ms the party members it reaches stay stunned, from the end of the warning
+// its blow's stages (ms from its start): the bomb up (a goblin) and down, the hit, the wave out, its fade, the stun's end
+const AOE_ETAPES = [600, 850, ALERTE, ALERTE + 60, ALERTE + ONDE, ALERTE + ONDE + 300, ALERTE + ETOURDI];
 const SAUT = [120, 220]; // px a stomp takes it (fewer when its lair has no such room: pietine)
 export const VOYAGE = [400, 700]; // a hero's teleport's stages (portail): fade into the portal, show at the far end
 export const PORTAIL = 1400; // and its end, both portals closed
@@ -188,6 +194,22 @@ export function ecart(k, t) {
   const h = hash(`${k}:${i}`), dx = (h & 1 ? 1 : -1) * (10 + ((h >>> 1) % 11));
   return dt < 350 ? { dx, e: 1 } : { dx: 0, e: 2 };
 }
+
+const STUN_VOILE = 0.6; // a stunned fighter's opacity: dimmed, greyed by the ground under it
+
+/** A stunned fighter's dizzy stars over its head (head: its top, from its feet): fx-etoiles-0/1 turning (a two-frame
+ *  swap, both loops on the same render), drawn only while it is stunned (bounded). */
+export function etoiles(head) {
+  const at = (k) => image(`${ART}/fx-etoiles-${k}.svg`).absolute().left(-17).top(head - 16).w(34).h(14);
+  return [at(0).loop("opacity", { from: 7, to: -6, period: 360, easing: "linear" }), at(1).loop("opacity", { from: -6, to: 7, period: 360, easing: "linear" })];
+}
+
+/** The wait before a raided boss's next stunning blow (AOE). */
+const aoeAttente = () => AOE[0] + Math.random() * (AOE[1] - AOE[0]);
+
+/** The reach of the day's boss's stunning blow, on the ground from its feet: its half width + a mage's gap + one ring
+ *  out + 30 px (rings 0 and 1, and a margin). */
+const portee = (day) => geantDe(espece(day)).demi + ECART.mage + ANNEAU + 30;
 
 /** The wait before a raided boss's next stomp (STOMP). */
 const attente = () => STOMP[0] + Math.random() * (STOMP[1] - STOMP[0]);
@@ -382,7 +404,8 @@ export class Activites {
     if (!A || A.day !== b.day || A.carte !== carte) {
       const fin = b.slain ? b.slainAt ?? 1 : 0, e = errance(b.day, fin || now);
       A = this.arene = { day: b.day, carte, x: Math.round(e.x), y: Math.round(e.y),
-        side: antre(b.day).cote === "ouest" ? -1 : 1, pas: null, next: 0, at: 0, fin, places: new Map(), apps: new Map() };
+        side: antre(b.day).cote === "ouest" ? -1 : 1, pas: null, next: 0, at: 0, fin, places: new Map(), apps: new Map(),
+        aoe: null, nextAoe: 0 };
       this.raids.clear();
     }
     if (A.fin && now - A.fin >= CHUTE && this.raids.size) this.raids.clear();
@@ -435,7 +458,7 @@ export class Activites {
     }
     if (!avant && vifs.length) { // the raid begins: it stops where it is
       const p = this.ici(now);
-      Object.assign(A, { x: Math.round(p.x), y: Math.round(p.y), pas: null, next: now + attente() });
+      Object.assign(A, { x: Math.round(p.x), y: Math.round(p.y), pas: null, next: now + attente(), nextAoe: now + aoeAttente() });
     }
     for (const [addr, ids] of vifs) {
       const r = this.raids.get(addr);
@@ -446,8 +469,84 @@ export class Activites {
       A.pas = { a: [Math.round(p.x), Math.round(p.y)], b: [Math.round(f.x), Math.round(f.y)], t0: now, t1 };
       changed = true;
     }
-    if (this.raids.size && now >= A.next && !(A.pas && now < A.pas.t1)) changed = this.pietine(now) || changed;
+    if (this.raids.size) changed = this.secousse(now) || changed;
+    // a stomp waits for a stunning blow and its stun to end
+    if (this.raids.size && now >= A.next && !(A.pas && now < A.pas.t1) && !this.secoue(now)) changed = this.pietine(now) || changed;
     return changed;
+  }
+
+  /** True while today's boss's stunning blow runs, its warning and its stun (secousse). */
+  secoue(t) {
+    const A = this.arene;
+    return Boolean(A?.aoe) && t < A.aoe.t0 + ALERTE + ETOURDI;
+  }
+
+  /** Its stunning blow, every AOE ms while a raid holds it (never over a stomp: one running pushes it 3 s past its end;
+   *  the next stomp waits for the stun to end): telegraphed ALERTE ms (its wind-up, a warning ring), then its wave
+   *  (aoe) stuns the party members inside its reach for ETOURDI ms (etourdir: chosen at the hit). True when it starts. */
+  secousse(now) {
+    const A = this.arene;
+    if (A.fin || now < A.nextAoe || this.secoue(now)) return false;
+    if (A.pas && now < A.pas.t1) { A.nextAoe = A.pas.t1 + 3000; return false; }
+    A.aoe = { t0: now, touches: null };
+    A.nextAoe = now + aoeAttente();
+    A.next = Math.max(A.next, now + ALERTE + ETOURDI + 3000);
+    return true;
+  }
+
+  /** At its blow's hit (the warning over), who it stuns: every raider standing (not teleporting: one arriving later
+   *  is not stunned) and its apprentices, their feet within its reach (portee, on the ground: the ring's flattening
+   *  undone). Once per blow, from Place's render (units, apps: where they are drawn). */
+  etourdir(units, apps, t) {
+    const A = this.arene;
+    if (!A?.aoe || A.aoe.touches || t < A.aoe.t0 + ALERTE || !this.secoue(t)) return;
+    const R = portee(A.day), dans = (x, y) => Math.hypot(x - A.x, (y - (A.y - 16)) / APLAT) <= R;
+    const la = units.filter((u) => this.raid(u.a.address) && !u.portail);
+    A.aoe.touches = new Set([...la.filter((u) => dans(u.x, u.y)).map((u) => u.a.address),
+      ...apps.filter((ap) => la.some((u) => u.a.address === ap.addr) && dans(ap.vu.x, ap.vu.y)).map((ap) => ap.key)]);
+  }
+
+  /** When party member k (a hero's address, or address:subagent id) was stunned, while it is (its frames frozen as
+   *  they were then), else null. */
+  etourdi(k, t) {
+    const A = this.arene, a = A?.aoe;
+    if (!a?.touches?.has(k)) return null;
+    const t1 = a.t0 + ALERTE;
+    return t >= t1 && t < t1 + ETOURDI ? t1 : null;
+  }
+
+  /** Its stunning blow drawn (secousse; none when none runs): the warning ring on the ground round it, pulsing,
+   *  through the wind-up (a goblin throws its bomb, up then down a short way in front of it), then its species' wave
+   *  spreading from small to its whole reach and fading (golem: a ring of dust and rocks thrown out; troll: a pale
+   *  shockwave; spectre: a violet wailing ring; goblin: a fiery ring where its bomb burst). Native transitions carry
+   *  each stage (AOE_ETAPES in fenetres). al: its opacity (dimmed at night). [{ z, el }]. */
+  aoe(t, al) {
+    const A = this.arene, a = A?.aoe;
+    if (!a || t >= a.t0 + ALERTE + ONDE + 300 || !this.ecrit) return [];
+    const dt = t - a.t0, e = AOE_ETAPES.filter((s) => dt >= s).length, sp = espece(A.day), R = portee(A.day);
+    const W = Math.round(2 * R), H = Math.round(2 * R * APLAT), cy = A.y - 16, out = [];
+    const tr = (el, d) => el.transition("left", d).transition("top", d).transition("width", d).transition("height", d);
+    if (dt < ALERTE) {
+      out.push({ z: cy - 400, el: image(`${ART}/fx-aoe-alerte.svg`).id(`aoe-${a.t0}-alerte`).absolute().left(A.x - W / 2).top(cy - H / 2).w(W).h(H)
+        .opacity(0.9 * al).loop("opacity", { from: 0.35 * al, to: 0.95 * al, period: 330 }) });
+    }
+    const dir = [...A.places.values()].reduce((n, P) => n + Math.sign(P.q[0] - A.x), 0) >= 0 ? 1 : -1;
+    const [bx, by] = sp === "gobelin" ? [A.x + dir * 40, cy] : [A.x, cy]; // the goblin's bomb bursts a short way off
+    if (sp === "gobelin" && e <= 2) { // its bomb: from its hand, up, then down
+      const K = geantDe(sp).k, top = A.y - CREATURES[sp].pret.h * K * 0.6, [x, y] = e === 0 ? [A.x - dir * 20, top] : e === 1 ? [A.x + dir * 15, top - 60] : [bx, by - 7];
+      out.push({ z: A.y + 50000, el: tr(image(`${ART}/fx-aoe-bombe.svg`).id(`aoe-${a.t0}-bombe`).absolute().left(x - 7).top(y - 8).w(14).h(16), { duration: e === 1 ? 250 : 150, easing: e === 1 ? "ease-out" : "ease-in" }).opacity(al) });
+    }
+    if (e >= 3) { // the wave: from a fifth of its reach to all of it, then fading
+      const f = e >= 4 ? 1 : 0.2, w = Math.round(W * f), h = Math.round(H * f);
+      out.push({ z: cy - 300, el: tr(image(`${ART}/fx-aoe-${sp}.svg`).id(`aoe-${a.t0}-onde`).absolute().left(bx - w / 2).top(by - h / 2).w(w).h(h), { duration: ONDE - 60, easing: "ease-out" })
+        .opacity(e >= 5 ? 0 : al).transition("opacity", { duration: 300, easing: "linear" }) });
+      if (sp === "golem") for (let i = 0; i < 6; i++) { // rocks thrown out from its feet
+        const ang = (i / 6) * 2 * Math.PI + 0.4, r = f * R * 0.8, x = A.x + Math.cos(ang) * r, y = cy + Math.sin(ang) * r * APLAT - (e === 4 ? 30 : 0);
+        out.push({ z: A.y + 50000, el: tr(image(`${ART}/fx-aoe-debris.svg`).id(`aoe-${a.t0}-roc-${i}`).absolute().left(x - 5).top(y - 4).w(10).h(8), { duration: ONDE - 60, easing: "ease-out" })
+          .opacity(e >= 5 ? 0 : al).transition("opacity", { duration: 300, easing: "linear" }) });
+      }
+    }
+    return out;
   }
 
   /** A stomp: SAUT px (on screen) to a walkable point of its lair with room on both its sides (cotes; the first of 24
@@ -654,6 +753,7 @@ export class Activites {
       const fin = A.fin && t - A.fin < CHUTE;
       if (t - A.at < COUP || fin) s += `boss:${A.at}:${A.fin}:${fin ? etape(t - A.fin) : "-"};`;
       if (A.pas && t < A.pas.t1) s += `boss-pas:${A.pas.t0};`; // a stomp or its walk back: redraw at its end (its bob)
+      if (this.secoue(t)) s += `boss-aoe:${A.aoe.t0}:${AOE_ETAPES.filter((x) => t - A.aoe.t0 >= x).length};`; // its blow's stages and its stun's end
     }
     // the minions': a blow, a fall's puff, a flight and its stages
     for (const [k, o] of this.sbires) {
@@ -779,6 +879,7 @@ export class Activites {
     const sc = this.scenes.get(addr)?.scene;
     if (!this.raid(addr) && !this.sbires.has(addr) && (id || (sc !== "combat" && sc !== "test"))) return;
     const k = id ? `${addr}:${id}` : addr, e = this.effets.get(k);
+    if (this.etourdi(k, now) !== null) return; // stunned: its blows count, but show nothing
     if ((e && now - e.t0 < FX) || (!e && this.effets.size >= FX_MAX)) return;
     this.effets.set(k, { t0: now, addr, id, cible: undefined });
   }
@@ -1019,7 +1120,8 @@ export class Activites {
       const A = HEROES[key]?.anims?.[name];
       if (!A) return null;
       const ph = hash(x.id) % 997;
-      const f = animate ? Math.floor(((t + ph) / 1000) * A.fps) % A.n : 0;
+      const stun = this.etourdi(id, t); // stunned (secousse): its frame frozen as it was then
+      const f = animate || stun !== null ? Math.floor((((stun ?? t) + ph) / 1000) * A.fps) % A.n : 0;
       const { w, h, ax, ay } = A; // full hero size
       const dir = `${ART}/heros/${key}/${name}`;
       const [gx, gy] = p.leg ? p.leg.b : [p.x, p.y];
@@ -1030,14 +1132,15 @@ export class Activites {
         .opacity(pt ? pt.voile : 1).transition("opacity", { duration: VOYAGE[1] - VOYAGE[0], easing: "linear" }) // a teleport's fade
         // its sidestep outside a raid (pasDeCote), carried natively
         .child(div().id(`apprenti-${addr}-${x.id}-pas`).absolute().left(this.pasDeCote(id, addr, t, Boolean(leg) || Boolean(pt))).top(0).w(0).h(0)
-          .transition("left", { duration: 250, easing: "ease-out" })
+          .transition("left", { duration: 250, easing: "ease-out" }).opacity(stun !== null ? STUN_VOILE : 1).transition("opacity", { duration: 200, easing: "linear" })
           .child(div().absolute().left(-ax).top(-ay).w(w).h(h)
             .children(Array.from({ length: A.n }, (_, i) =>
               image(`${dir}/${String(i).padStart(2, "0")}${sfx}.png`).absolute().left(0).top(0).w(w).h(h).opacity(i === f ? 1 : 0)))))
-        .when(!leg && READS.has(x.act), (e) => e.child(image(`${ART}/ic-parchemin.svg`).absolute().left(-9).top(-ay - 22).size(18)));
+        .when(!leg && READS.has(x.act), (e) => e.child(image(`${ART}/ic-parchemin.svg`).absolute().left(-9).top(-ay - 22).size(18)))
+        .when(stun !== null, (e) => e.children(etoiles(-ay)));
       // vu: what it shows now (its ghost when it leaves; Place.passages)
       const vu = { src: `${dir}/${String(f).padStart(2, "0")}${sfx}.png`, w, h, ax, ay, x: p.x, y: p.y, leg: p.leg };
-      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, key: `${addr}:${x.id}`, look: key, vu, anim: { fps: animate ? A.fps : 0, n: A.n, ph, trail: tr } };
+      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, key: `${addr}:${x.id}`, look: key, vu, anim: { fps: animate && stun === null ? A.fps : 0, n: A.n, ph, trail: tr } };
     }).filter(Boolean);
   }
 
@@ -1152,6 +1255,8 @@ export class Activites {
           .loop("opacity", { from: 1, to: 0, period: 450 }));
       } else if (leg) {
         out.push(div().absolute().left(0).top(0).w(0).h(0).loop("top", { from: 0, to: -5, period: 420 }).child(sprite("pret")));
+      } else if (this.raids.size && r.aoe && t - r.aoe.t0 < ALERTE) {
+        out.push(sprite("attaque")); // its stunning blow's wind-up
       } else if (this.raids.size) {
         out.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: 1700 + (hash(addr) % 400), easing: "linear" })));
         out.push(sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: 1700 + (hash(addr) % 400), easing: "linear" })));
