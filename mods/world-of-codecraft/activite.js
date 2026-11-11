@@ -57,6 +57,11 @@ const RESULT = 5000; // a test result stays on screen this long
 const BETE = 1.5; // fight creatures drawn this much larger (art 2x: 3x3 screen px per art px, still crisp)
 const STUCK = 10000; // a fight with no blow for this long (delegating to subagents) no longer holds the hero
 const SCENE_OF = { pense: "pense", eclaire: "eclaire", web: "eclaire", code: "combat", commande: "combat", medite: "medite", test: "test" };
+const DUEL = [20000, 40000]; // ms between two shifts of a foe outside a raid (ancre)
+const DECALE = [30, 60]; // px a shift takes the foe (and its hero after it)
+const LAISSE = 120; // px at most from the hero's spot when its fight began
+const GLISSE = 1200; // ms a shifting foe glides
+const PAS_COTE = [10000, 15000]; // ms between two sidesteps of a fighter outside a raid (ecart)
 const FX_MAX = 12; // fight effects running at once at most (a burst of calls spawns no more)
 const SUB_TTL = 30 * 60_000; // an activity file silent this long has no running subagents (as the hook drops them)
 const subsOf = (s) => (s && Date.now() - (s.t ?? 0) < SUB_TTL ? s.subs ?? 0 : 0);
@@ -150,11 +155,15 @@ function jalon(day, Z, i) {
   return JALONS.get(id);
 }
 function choisirJalon(day, Z, i) {
-  const pts = Array.from({ length: 24 }, (_, k) => {
+  let first = null; // the first walkable one (the walkable() tests stop at the first with room)
+  for (let k = 0; k < 24; k++) {
     const h = hash(`${day}:jalon:${i}:${k}`);
-    return [Z.x[0] + (h % (Z.x[1] - Z.x[0] + 1)), Z.y[0] + ((h >>> 12) % (Z.y[1] - Z.y[0] + 1))];
-  }).filter((q) => walkable(q));
-  return pts.find((q) => cotes(day, q)) ?? pts[0] ?? [Math.round((Z.x[0] + Z.x[1]) / 2), Math.round((Z.y[0] + Z.y[1]) / 2)];
+    const q = [Z.x[0] + (h % (Z.x[1] - Z.x[0] + 1)), Z.y[0] + ((h >>> 12) % (Z.y[1] - Z.y[0] + 1))];
+    if (!walkable(q)) continue;
+    if (cotes(day, q)) return q;
+    first ??= q;
+  }
+  return first ?? [Math.round((Z.x[0] + Z.x[1]) / 2), Math.round((Z.y[0] + Z.y[1]) / 2)];
 }
 
 /** Where today's boss wanders at t: each PAS ms from waypoint floor(t / PAS) to the next at ERRE px/s, then standing
@@ -166,6 +175,18 @@ export function errance(day, t) {
   if (t >= t1) return { x: b[0], y: b[1], leg: null, fin: t0 + PAS };
   const k = (t - t0) / (t1 - t0);
   return { x: a[0] + (b[0] - a[0]) * k, y: a[1] + (b[1] - a[1]) * k, leg: { a, b, t0, t1 }, fin: t1 };
+}
+
+/** The wait before a fight's next shift outside a raid (DUEL). */
+const duel = () => DUEL[0] + Math.random() * (DUEL[1] - DUEL[0]);
+
+/** Fighter k's sidestep at t: every PAS_COTE[0] to PAS_COTE[1] ms (by k) a 10-20 px step to one side (by the step's index),
+ *  out from its start for 350 ms, then back over the next 350. { dx (its offset now), e (0 none, 1 out, 2 back) }. */
+export function ecart(k, t) {
+  const P = PAS_COTE[0] + (hash(`${k}:ecart`) % (PAS_COTE[1] - PAS_COTE[0])), i = Math.floor(t / P), dt = t - i * P;
+  if (dt >= 700) return { dx: 0, e: 0 };
+  const h = hash(`${k}:${i}`), dx = (h & 1 ? 1 : -1) * (10 + ((h >>> 1) % 11));
+  return dt < 350 ? { dx, e: 1 } : { dx: 0, e: 2 };
 }
 
 /** The wait before a raided boss's next stomp (STOMP). */
@@ -254,6 +275,7 @@ export class Activites {
     this.effets = new Map(); // member (address, or address:subagent id) -> its blow's effect { t0, addr, id, cible } (frappe)
     this.subT = new Map(); // address -> { subagent id: its last event } at the last poll (whose blows these are)
     this.subC = new Map(); // address -> its subCoups at the last poll (frappesSub)
+    this.duels = new Map(); // address -> { base, d, next, glisse }: a fight outside a raid that moves (ancre)
     this.timer = null;
     this.busy = false;
   }
@@ -275,20 +297,81 @@ export class Activites {
   face(u) {
     const addr = u.a.address, A = this.raid(addr) && this.arene;
     if (A) return A.x < u.x ? -1 : 1;
-    if (this.sbires.has(addr)) return rangs(u, sbire(), u.x > lieux().BASCULE ? -1 : 1).side;
+    if (this.sbires.has(addr)) return rangs(this.au(u), sbire(), this.pied(u)[0] > lieux().BASCULE ? -1 : 1).side;
     return this.cible(u) ?? 0;
+  }
+
+  /** Where hero addr stands to fight outside a raid (its scene's creature or the dummy, or its minions; Place sets
+   *  its goal there): its spot g when the fight began (base) moved by d. Every DUEL ms the foe shifts DECALE px on
+   *  screen (d changes: within LAISSE px of the base, on walkable ground inside the strip; the first of 12 random tries;
+   *  none when none fits) and
+   *  glides there GLISSE ms; the hero walks after it, a few steps. null (its fight dropped) in a raid, teleporting, or
+   *  not fighting so. */
+  ancre(addr, g, t, teleporte) {
+    const s = this.file(addr), sc = this.scenes.get(addr)?.scene;
+    const bat = !this.raid(addr) && (this.sbires.has(addr) || sc === "combat" || sc === "test" || recent(s?.essai?.t, RESULT));
+    if (!bat || teleporte || !this.ecrit) { this.duels.delete(addr); return null; } // none in the demo
+    let D = this.duels.get(addr);
+    if (!D) { D = { base: g, d: [0, 0], next: t + duel(), glisse: 0 }; this.duels.set(addr, D); }
+    if (t >= D.next) {
+      D.next = t + duel();
+      for (let k = 0; k < 12; k++) {
+        const a = Math.random() * 2 * Math.PI, r = DECALE[0] + Math.random() * (DECALE[1] - DECALE[0]);
+        const d = [Math.round(D.d[0] + Math.cos(a) * r), Math.round(D.d[1] + Math.sin(a) * r * APLAT)], q = [D.base[0] + d[0], D.base[1] + d[1]];
+        const pas = Math.hypot(d[0] - D.d[0], d[1] - D.d[1]); // on screen: the ring's flattening applied to its depth
+        if (pas < DECALE[0] || Math.hypot(...d) > LAISSE || !walkable(q) || q[1] <= 60 || q[1] >= lieux().WORLD.h - 15) continue;
+        Object.assign(D, { d, glisse: t + GLISSE });
+        break;
+      }
+    }
+    return [D.base[0] + D.d[0], D.base[1] + D.d[1]];
+  }
+
+  /** The feet point a hero fights from outside a raid: its anchor (ancre), else where it is. */
+  pied(u) {
+    const D = this.duels.get(u.a.address);
+    return D ? [D.base[0] + D.d[0], D.base[1] + D.d[1]] : [u.x, u.y];
+  }
+
+  /** u standing at its anchor (pied), for the places its foes take round it. */
+  au(u) {
+    const [x, y] = this.pied(u);
+    return { ...u, x, y };
+  }
+
+  /** True when hero u is away from its fight: walking or teleporting, unless it is only re-engaging (walking within
+   *  150 px of its anchor after a shift); its foes are then not drawn. */
+  ailleurs(u) {
+    if (u.portail) return true;
+    if (!u.leg) return false;
+    const D = this.duels.get(u.a.address), [x, y] = this.pied(u);
+    return !D || Math.hypot(u.x - x, u.y - y) > 150;
+  }
+
+  /** The native glide (ms) of hero addr's foes now: what is left of a shift, else 16 (declared on every render). */
+  glisse(addr, t) {
+    const D = this.duels.get(addr);
+    return D && D.glisse > t ? D.glisse - t : 16;
+  }
+
+  /** A fighter's sidestep at t outside a raid (k: its hero's address addr, or addr:subagent id for an apprentice):
+   *  every PAS_COTE ms (by k) a 10-20 px step aside, out for 350 ms then back (ecart), not while it walks or teleports
+   *  (busy) or its blow's effect runs. Its x offset now (native transitions carry it). */
+  pasDeCote(k, addr, t, busy) {
+    if (!this.duels.has(addr) || busy || this.effets.has(k)) return 0;
+    return ecart(k, t).dx;
   }
 
   /** The side of the creature (or the training dummy) a hero standing at u fights outside a raid (creature): on its
    *  right, on its left past BASCULE; null when none is drawn. */
   cible(u) {
     const addr = u.a.address;
-    if (u.leg || u.portail || this.raid(addr)) return null;
+    if (this.ailleurs(u) || this.raid(addr)) return null;
     const s = this.file(addr) ?? u.a.demoAct;
     if (!s) return null;
     const sc = this.scene(addr);
     if (sc !== "combat" && sc !== "test" && !recent(s.essai?.t, RESULT)) return null;
-    return u.x > lieux().BASCULE ? -1 : 1;
+    return this.pied(u)[0] > lieux().BASCULE ? -1 : 1;
   }
 
   /** The day's boss, made on first use each day (and on another map): in today's lair (antre), on its wander's spot
@@ -728,7 +811,7 @@ export class Activites {
    *  chest), fy (its feet) }, or null (none, or its hero walks or teleports). */
   adversaire(u, id, t) {
     const addr = u.a.address;
-    if (u.leg || u.portail) return null;
+    if (this.raid(addr) ? u.leg || u.portail : this.ailleurs(u)) return null;
     if (this.raid(addr)) {
       const A = this.arene, sp = especeBoss(A.day), p = this.ici(t);
       return A.fin ? null : { x: p.x, y: p.y - (CREATURES[sp].pret.h * geantDe(sp).k) / 2 + 4, fy: p.y };
@@ -738,7 +821,7 @@ export class Activites {
       const vifs = o.list.filter((m) => !m.fin);
       if (!vifs.length) return null;
       const m = (id && vifs.find((n) => n.id === id)) || vifs.reduce((p, q) => (q.at > p.at ? q : p));
-      const sp = sbire(), { pts } = rangs(u, sp, u.x > lieux().BASCULE ? -1 : 1), [x, y] = pts[m.k];
+      const sp = sbire(), { pts } = rangs(this.au(u), sp, this.pied(u)[0] > lieux().BASCULE ? -1 : 1), [x, y] = pts[m.k];
       return { x, y: y - (CREATURES[sp].pret.h * BETE) / 2 + 4, fy: y };
     }
     return this.ouCreature(u);
@@ -754,7 +837,7 @@ export class Activites {
     // creatures are drawn larger (BETE); the troll is wide: keep it off the hero (a mage's; nearer or further by class)
     const sp = !dummy && (boss(s) ? "troll" : species(addr, s.tache ?? 0, Math.floor((s.coups ?? 0) / blowsFor(s)), clsOf(u.a)));
     const off = dummy ? 44 : proche(u, boss(s) ? 115 : 70, sp, side);
-    const x = Math.round(u.x + side * off), fy = Math.round(u.y + 16);
+    const [px, py] = this.pied(u), x = Math.round(px + side * off), fy = Math.round(py + 16);
     const h = dummy ? CREATURES.mannequin?.pret?.h ?? 40 : CREATURES[sp].pret.h * BETE;
     return { side, x, y: fy - h / 2 + 4, fy, s, dummy, sp };
   }
@@ -897,7 +980,7 @@ export class Activites {
     // its own spot while it fights, and its foe's x: the raid boss, or its subagent's minion once the hero stands by them
     const det = (x, key) => {
       if (A) { const q = this.coin(addr, x.id, key); return q && { q, foe: A.x }; }
-      const mm = sb && !u.leg && o.list.find((n) => n.id === x.id && !n.fin);
+      const mm = sb && !this.ailleurs(u) && o.list.find((n) => n.id === x.id && !n.fin);
       if (!mm) return null;
       const [mx, my] = sb.pts[mm.k], q = [Math.round(mx + sb.side * proche({ a: { demoHero: key }, key }, 70, SP, -sb.side)), Math.round(my)];
       return walkable(q) ? { q, foe: mx } : null;
@@ -945,9 +1028,12 @@ export class Activites {
       const el = div().id(`apprenti-${addr}-${x.id}`).absolute().left(Math.round(gx)).top(Math.round(gy)).w(0).h(0)
         .transition("left", { duration: dur, easing: "linear" }).transition("top", { duration: dur, easing: "linear" })
         .opacity(pt ? pt.voile : 1).transition("opacity", { duration: VOYAGE[1] - VOYAGE[0], easing: "linear" }) // a teleport's fade
-        .child(div().absolute().left(-ax).top(-ay).w(w).h(h)
-          .children(Array.from({ length: A.n }, (_, i) =>
-            image(`${dir}/${String(i).padStart(2, "0")}${sfx}.png`).absolute().left(0).top(0).w(w).h(h).opacity(i === f ? 1 : 0))))
+        // its sidestep outside a raid (pasDeCote), carried natively
+        .child(div().id(`apprenti-${addr}-${x.id}-pas`).absolute().left(this.pasDeCote(id, addr, t, Boolean(leg) || Boolean(pt))).top(0).w(0).h(0)
+          .transition("left", { duration: 250, easing: "ease-out" })
+          .child(div().absolute().left(-ax).top(-ay).w(w).h(h)
+            .children(Array.from({ length: A.n }, (_, i) =>
+              image(`${dir}/${String(i).padStart(2, "0")}${sfx}.png`).absolute().left(0).top(0).w(w).h(h).opacity(i === f ? 1 : 0)))))
         .when(!leg && READS.has(x.act), (e) => e.child(image(`${ART}/ic-parchemin.svg`).absolute().left(-9).top(-ay - 22).size(18)));
       // vu: what it shows now (its ghost when it leaves; Place.passages)
       const vu = { src: `${dir}/${String(f).padStart(2, "0")}${sfx}.png`, w, h, ax, ay, x: p.x, y: p.y, leg: p.leg };
@@ -962,7 +1048,9 @@ export class Activites {
     if (!c) return null;
     const { side, x, fy: y, s, dummy, sp } = c;
     const kids = dummy ? this.dummy(u, s, night ? "-n" : "", side) : this.fight(u, s, night ? "-n" : "", side, sp);
-    const el = div().absolute().left(x).top(y).w(0).h(0).children(kids);
+    const dur = this.glisse(u.a.address, Date.now()); // a shift's glide (ancre); declared on every render
+    const el = div().id(`bete-${u.a.address}`).absolute().left(x).top(y).w(0).h(0)
+      .transition("left", { duration: dur, easing: "ease-in-out" }).transition("top", { duration: dur, easing: "ease-in-out" }).children(kids);
     return { z: y + 3, el };
   }
 
@@ -1085,9 +1173,10 @@ export class Activites {
    *  Depth-sorted world elements [{ z, el }]. */
   sbiresDe(u, night) {
     const addr = u.a.address, o = this.sbires.get(addr);
-    if (!o || u.leg || u.portail) return []; // shown once it stands (not while it walks or teleports)
+    if (!o || this.ailleurs(u)) return []; // shown once it stands (not while it walks off or teleports)
     const sp = sbire(), D = CREATURES[sp];
-    const { side, pts } = rangs(u, sp, u.x > lieux().BASCULE ? -1 : 1);
+    const { side, pts } = rangs(this.au(u), sp, this.pied(u)[0] > lieux().BASCULE ? -1 : 1);
+    const dur = this.glisse(addr, Date.now()); // a shift's glide (ancre)
     const g = side > 0 ? "" : "-g", sfx = night ? "-n" : "";
     const now = Date.now();
     const sprite = (pose, extra, gg = g) => {
@@ -1114,7 +1203,8 @@ export class Activites {
       const left = BLOWS - (m.coups % BLOWS);
       kids.push(div().absolute().left(-2.5 * BLOWS).top(-D.pret.h * BETE - 6).flex().gap(1)
         .children(Array.from({ length: BLOWS }, (_, i) => div().w(4).h(3).bg(i < left ? "#e5685a" : "#3a2a2a").border_1().border_color("#000000"))));
-      out.push({ z: y + 3, el: div().absolute().left(x).top(y).w(0).h(0).children(kids) });
+      out.push({ z: y + 3, el: div().id(`sbire-${addr}-${m.id}-pos`).absolute().left(x).top(y).w(0).h(0)
+        .transition("left", { duration: dur, easing: "ease-in-out" }).transition("top", { duration: dur, easing: "ease-in-out" }).children(kids) });
     }
     // the felled ones: fade and rise in a puff where they stood
     for (const f of o.felled) {

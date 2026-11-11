@@ -165,7 +165,7 @@ the clock. The art is original: it imitates no existing game.
     creature's `pret` box would come within 10 px of the hero's feet (`proche` in activite.js; never further than a
     mage's for that): sprites may overlap, swings and lunges included, as by the raid boss. The hero and its
     apprentices working face the creature (or the dummy) as a raider faces the boss (`cible`, `travail`): on their left
-    past `BASCULE`;
+    past `BASCULE`. The fight moves (as the minions', below: `ancre`);
   - running tests: a training dummy beside the hero, struck while they run; the result stays
     5 s: knocked over + "Tests passed!", or "Tests failing";
   - compacting: sits cross-legged (`rest`), sparks orbit, a crystal pulses;
@@ -302,7 +302,17 @@ the clock. The art is original: it imitates no existing game.
     place. A minion whose subagent ends flees (turns, walks 150 px off, fades, 1.2 s), and a newer
     subagent waiting past the 3 takes the free place; when all end, all flee. The hero plays `work` and stays where it
     stands, its scene waits; it faces its minions as a raider faces the boss (`travail`, from the side `rangs` puts
-    them on), and so do its apprentices. No HP, no trophies, no streak, no chronicle line, nothing stored; at midnight they go and
+    them on), and so do its apprentices. **A fight outside a raid moves** (a creature or the dummy, or minions;
+    `ancre` in activite.js, read by place.js `units`): it is anchored at the hero's spot when it began (`duels`), the
+    hero standing on the anchor and its foes placed round it as before. Every 20 to 40 s the foe shifts 30 to 60 px on
+    screen (the anchor moves: within 120 px of that spot, on walkable ground inside the strip; the first of 12 random
+    tries, none when none fits) and glides there natively over 1.2 s; the hero walks after it, a few steps, and its
+    apprentices follow (file slots, or their minions' spots), each facing its foe again once there (`travail`); the
+    foes stay drawn while it only re-engages (walking within 150 px of its anchor; `ailleurs`). Between blows each
+    fighter (hero or apprentice) takes a sidestep every 10 to 15 s (by its key; `ecart`): 10 to 20 px to one side for
+    350 ms, then back, an x offset on a layer of its own that native transitions carry (`pasDeCote`), never while it
+    walks, teleports or its blow's effect runs; the stages are in the frame timer's signature. None in a raid (the
+    anchor is dropped), while teleporting, or in the demo. No HP, no trophies, no streak, no chronicle line, nothing stored; at midnight they go and
     the new day's boss comes. None in the demo, or for shells.
     **Champion's crown:** the hero whose subagent dealt the last blow wears a small gold crown (art/couronne.svg,
     13 × 9) over its head until midnight: in the village (a child of its unit, so it walks and sorts with it; above its

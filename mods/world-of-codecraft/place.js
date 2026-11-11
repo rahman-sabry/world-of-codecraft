@@ -19,7 +19,7 @@ import { HEROES } from "./heros-data.js";
 import { lieux, market } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
-import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail } from "./activite.js";
+import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart } from "./activite.js";
 import { effet, FX, FX_ETAPES } from "./effets.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
@@ -318,6 +318,12 @@ export default class Place {
         if (moved(addr, goals.get(addr))) this.sauter(addr);
       }
     }
+    // a fight outside a raid moves (Activites.ancre): its hero walks after its foe when it shifts
+    for (const u of want) {
+      const addr = u.a.address, m = this.mob.get(addr);
+      const q = m && this.act.ancre(addr, goals.get(addr), t, Boolean(portail(m, t)) || this.sauts.has(addr));
+      if (q) { taken.add(q.join()); goals.set(addr, q); }
+    }
     const out = [];
     const alive = new Set();
     for (const u of want) {
@@ -410,7 +416,9 @@ export default class Place {
         .child(image(`${ART}/heros/${u.key}/stand${suffix}.png`).absolute().left(0).top(0).w(w).h(hh)
           .loop("top", u.leg ? { from: 0, to: -2, period: 380 } : { from: 0, to: -1, period: 2600 + (hash(a.address) % 900) }));
     }
-    el = el.child(body);
+    // its sidestep in a fight outside a raid (Activites.pasDeCote), carried natively
+    el = el.child(div().id(`pas-${a.address}`).absolute().left(this.act.pasDeCote(a.address, a.address, t, Boolean(u.leg) || Boolean(u.portail))).top(0).w(0).h(0)
+      .transition("left", { duration: 250, easing: "ease-out" }).child(body));
 
     // hit box, tooltip, click
     el = el.child(div().id(`clic-${a.address}`).absolute().left(-ax).top(-ay).w(w).h(hh).cursor_pointer()
@@ -477,6 +485,10 @@ export default class Place {
     for (const [k, g] of this.fantomes) s += `${k}:${t - g.t0 < BLINK}:${etape(t - g.t0, ADIEU)};`;
     for (const [k, v] of this.invocations) s += `${k}:${etape(t - v.t0, [OUVRE, LEAD, FONDU, CAST, SUMMON])};`;
     for (const [k, e] of this.act.effets) s += `fx:${k}:${etape(t - e.t0, [...FX_ETAPES, FX])};`; // a blow's effect: each stage and its end
+    for (const addr of this.act.duels.keys()) { // a fighter's sidestep outside a raid: out and back
+      s += `pas:${addr}:${ecart(addr, t).e};`;
+      for (const id of this.act.slots.get(addr)?.keys() ?? []) s += `pas:${addr}:${id}:${ecart(`${addr}:${id}`, t).e};`;
+    }
     for (const [k, m] of this.mob) if (m.portail) s += `${k}:${etape(t - m.portail.t0, [100, ...VOYAGE, FERME, PORTAIL])}:${Math.floor((t - m.portail.t0) / TICK) % 3};`;
     return s + this.act.fenetres(t); // a raid blow, fall or flight: each stage and its end
   }
@@ -850,7 +862,7 @@ export default class Place {
     this.passages(units, apps, !hidden && !props()?.demo, t);
     // the frame timer also runs while someone blinks in or out or is summoned, or a raid boss is hit, falls or flees, and
     // redraws at each stage and its end
-    this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0 || [...this.mob.values()].some((m) => m.portail) || this.act.effets.size > 0 || this.act.fenetres(t) !== ""));
+    this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0 || [...this.mob.values()].some((m) => m.portail) || this.act.effets.size > 0 || this.act.duels.size > 0 || this.act.fenetres(t) !== ""));
     this.sig = this.frameSig(t);
     const things = units.map((u, i) => ({ z: u.y + 3, el: this.blink(u.a.address, els[i], t) }));
     for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); things.push(...this.act.sbiresDe(u, nightHeroes)); }
