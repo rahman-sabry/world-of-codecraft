@@ -80,6 +80,24 @@ export function walkable(p) {
  *  front of its door (left of the steps, right of them, then further left), clear of the lanterns and the road. */
 export const BANNIERES = [[1172, 336], [1262, 344], [1140, 350]];
 
+/** The victory-day standards (place.js etendards: one red cup standard each, on a day the boss is slain): the feet of
+ *  their poles around the whole world, both maps, on open ground 25+ px off the road, 40+ px from every stroll and
+ *  work spot, out of the water and the building boxes, no door hidden (checked on the bake). */
+export const VICTOIRE = [
+  [-820, 305], // west farmland, in front of the west field's fence
+  [-440, 300], // by the windmill, between it and the east field
+  [360, 300], // along the road, by the barn's hay
+  [660, 300], // along the road, right of the mage tower
+  [1462, 300], // the market square, between the town hall and the tavern
+  [2190, 300], // by the temple, right of its steps
+  [2600, 280], // by the barracks, right of its tower
+  [3020, 190], // the footbridge's west end, north of the ramp
+  [3222, 247], // the footbridge's east end, between the river and the road
+  [3348, 246], // the lake shore, west of the jetty
+  [3790, 278], // the lake's east shore, above the lane
+  [3890, 372], // the east lane, south side among the bushes
+];
+
 /** The market's name in the current language, and its box [x, y, w, h] (the red and blue stalls). */
 export const market = () => t("market");
 export const MARCHE = [1647, 309, 317, 91];

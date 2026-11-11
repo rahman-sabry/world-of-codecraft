@@ -200,8 +200,20 @@ the clock. The art is original: it imitates no existing game.
     (`touche` and an impact flash, 900 ms). At 0 HP it falls: the felled puff at its size and a gold burst (a gold ring
     opening and 10 sparkles rising, 1.2 s), every running raid's troll with it; the chronicle says "[Mage Tower]
     Gruntak the Mossback is slain by Aldric, Human mage!"; the trophies count it (`total`, and `streak`: consecutive
-    days with a kill, alive while the last kill is today or yesterday); and no raid starts again until midnight
-    (apprentices still show, heroes play their scenes).
+    days with a kill, alive while the last kill is today or yesterday); and no raid starts again until midnight.
+    **Minions (after the kill):** until midnight a hero with running subagents fights the boss's minions instead
+    (`suit` / `sbiresDe` in activite.js), once its own boss's fall is over: one per running subagent (oldest first,
+    up to 3), of the day's species (golem, spectre, goblin; a troll day brings goblins, three trolls are too wide),
+    drawn at a fight creature's size (`BETE` 1.5x), `pret` / `attaque` alternating, each with its 4 blow pips. They
+    stand on the hero's open side (`rangs`: the creature's side unless the other one has room for more): the first
+    places of `PLACES` (80 px in front, 170 px behind, 170 px further in front, then spares) on walkable ground whose
+    `pret` boxes overlap none taken; the apprentices keep to the other side and off their zone, as in a raid. Each
+    successful subagent tool call (the same `subCoups` deltas, which no longer hit a slain boss) is a blow on the next
+    minion in turn (`touche` and a flash, 900 ms); 4 fell it (the felled puff, 1.2 s) and a fresh one stands in its
+    place. A minion whose subagent ends flees like the boss (turns, walks 150 px off, fades, 1.2 s), and a newer
+    subagent waiting past the 3 takes the free place; when all end, all flee. The hero plays `work` and stays where it
+    stands, its scene waits. No HP, no trophies, no streak, no chronicle line, nothing stored; at midnight they go and
+    the new day's raid starts. None with animations off, in the demo, or for shells.
     **Champion's crown:** the hero whose subagent dealt the last blow wears a small gold crown (art/couronne.svg,
     13 × 9) over its head until midnight: in the village (a child of its unit, so it walks and sorts with it; above its
     HP bar when selected, above its `!` / `?` mark; never on apprentices) and on the Selected Unit card (2×, on the
@@ -218,6 +230,13 @@ the clock. The art is original: it imitates no existing game.
     second at a current streak of 3, a third at 7 (`bannieres()` in kit.js). World elements at depth = the pole's
     foot, sorted with the units. Dimmed at night (opacity 1 - 0.55 ×
     the night weight: 0.45 at night), a 1 px native sway while animated, still with animations off, none in the demo.
+    **Victory-day standards:** on a day the boss is slain (`bossDuJour().slain`), 12 more red cup standards (the same
+    pole and banner, `etendard` in place.js) stand around the whole world until midnight, `VICTOIRE` in lieux.js: the
+    west farmland, by the windmill, along the road by the barn and by the mage tower, the market square, by the temple,
+    by the barracks, both ends of the footbridge, the lake shore west of the jetty, its east shore and the east lane.
+    Each on open ground 25+ px off the road and 40+ px from every stroll and work spot (no unit stands in a pole), out
+    of the water and the building boxes, hiding no door, checked composited on both maps' bakes; same layout for
+    both maps. Depth, night dimming, sway, animations off and demo as the town hall's, which stay as they are.
     When a hero's subagents all end with HP left, its troll flees:
     it turns its back, walks 150 px away from the hero over 1.2 s and fades; its HP stays for the next raid that day.
     The raid wins over thinking, scouting, combat, the dummy and meditation (their anti-zapping state keeps running
@@ -368,7 +387,7 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   - commands: `agent.focus`, `agent.next`, `pane.focus`, `space.select`, `tab.select`,
     `tab.new`, `space.new`, `pane.split`, `pane.zoom` and `pane.close`.
 - **Timers:** one shared 100 ms timer runs only while a visible unit animates or walks, or someone blinks in or out
-  or is summoned, or a raid boss is hit, falls or flees (its signature changes at each stage of the fall and the
+  or is summoned, or a raid boss or a minion is hit, falls or flees (its signature changes at each stage of the fall and the
   flight, and drops each window's end: `Activites.fenetres`),
   and stops when its village block (`place` or `place-immersion`) is hidden. The clock ticks every 30 s; the sky and quotas
   update every 60 s.

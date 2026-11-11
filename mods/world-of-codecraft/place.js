@@ -14,10 +14,10 @@
 import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, spaces, run, setAgentOrder, props, layout, shared, setShared } from "herdr";
-import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss, champion, bannieres, carte, monde } from "./kit.js";
+import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss, champion, bannieres, bossDuJour, carte, monde } from "./kit.js";
 import { WORLD, TILES, FRONTS } from "./monde-data.js";
 import { HEROES } from "./heros-data.js";
-import { SPOTS, FLANE, ROAD, BUILDINGS, MARCHE, market, SMOKE, GLOWS, BANNIERES } from "./lieux.js";
+import { SPOTS, FLANE, ROAD, BUILDINGS, MARCHE, market, SMOKE, GLOWS, BANNIERES, VICTOIRE } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
 import { Activites, TRAIL } from "./activite.js";
@@ -233,7 +233,7 @@ export default class Place {
     const addr = u.a.address;
     let p = this.postes.get(addr);
     if (!p || p.goal !== m.goal.join()) { p = { n: p?.n ?? 0, goal: m.goal.join(), at: null }; this.postes.set(addr, p); }
-    if (!this.live || u.a.status !== "working" || this.act.raid(addr) || (m.legs.length && t < m.legs[m.legs.length - 1].t1)) return null;
+    if (!this.live || u.a.status !== "working" || this.act.melee(addr) || (m.legs.length && t < m.legs[m.legs.length - 1].t1)) return null;
     if (p.at === null) p.at = t;
     const due = p.at + STAY(addr, p.n);
     if (t < due) { this.wake = Math.min(this.wake ?? Infinity, due); return null; }
@@ -253,7 +253,7 @@ export default class Place {
       const h = a.demoHero ? { ...heroOf(a.address, a.program), race: RACE_FR[a.demoHero.split("-")[0]], cls: CLS_FR[a.demoHero.split("-")[1]] } : heroOf(a.address, a.program);
       // shells stroll like idle heroes; a working, blocked or done hero, or one in a raid, stays where it is (demo
       // heroes: at their class building)
-      const group = (a.status === "idle" && !this.act.raid(a.address)) || a.guard ? "flane" : a.demoHero ? WORK[h.cls] : "poste";
+      const group = (a.status === "idle" && !this.act.melee(a.address)) || a.guard ? "flane" : a.demoHero ? WORK[h.cls] : "poste";
       if (group === "flane") {
         const w = this.flane(a.address, t);
         goals.set(a.address, FLANE[w.i]);
@@ -326,7 +326,7 @@ export default class Place {
     let name;
     if (u.leg) name = walkAnim(u.leg.b[0] - u.leg.a[0], u.leg.b[1] - u.leg.a[1]);
     else if ([...this.invocations.values()].some((s) => s.hero === u.a.address && Date.now() - s.t0 < CAST)) name = "work"; // summoning
-    else if (this.act.raid(u.a.address)) name = "work"; // fighting the raid boss
+    else if (this.act.melee(u.a.address)) name = "work"; // fighting the raid boss or its minions
     else name = (u.a.status === "working" && this.act.anim(u.a.address)) || (u.a.status === "working" ? "work" : "idle");
     const info = H?.anims?.[name];
     if (info) return { name, info, frames: true };
@@ -571,13 +571,21 @@ export default class Place {
    *  animated. World elements at depth = the pole's foot, sorted with the units like any standing thing. */
   etendards(nightK) {
     if (props()?.demo) return [];
-    return BANNIERES.slice(0, bannieres()).map(([x, y], i) => ({ z: y,
+    const out = BANNIERES.slice(0, bannieres()).map(([x, y], i) => this.etendard(x, y, ETOFFES[i], 2600 + i * 700, nightK));
+    // a victory day: red cup standards all over the world until midnight (VICTOIRE)
+    if (bossDuJour().slain) out.push(...VICTOIRE.map(([x, y], i) => this.etendard(x, y, 0, 2600 + (i % 4) * 700, nightK)));
+    return out;
+  }
+
+  /** One standard: the pole's foot at (x, y), the banner of cloth `etoffe` swaying over `period` ms. */
+  etendard(x, y, etoffe, period, nightK) {
+    return { z: y,
       el: div().absolute().left(x).top(y).w(0).h(0).opacity(1 - 0.55 * nightK)
         .child(div().absolute().left(-2).top(-82).w(4).h(82).bg("#4a2f1e").border_1().border_color("#1e120c"))
         .child(div().absolute().left(-21).top(-79).w(42).h(3).bg("#6b3f26").border_1().border_color("#1e120c"))
         .child(div().absolute().left(-4).top(-88).size(8).rounded_full().bg("#e0a32a").border_1().border_color("#6b3f10"))
-        .child(image(art(`banniere-${ETOFFES[i]}-coupe`)).absolute().left(-19).top(-76).w(39).h(60)
-          .when(this.live, (e) => e.loop("left", { from: -19, to: -18, period: 2600 + i * 700 }))) }));
+        .child(image(art(`banniere-${etoffe}-coupe`)).absolute().left(-19).top(-76).w(39).h(60)
+          .when(this.live, (e) => e.loop("left", { from: -19, to: -18, period }))) };
   }
 
   // ---------------------------------------------------------------- the panel
@@ -739,7 +747,7 @@ export default class Place {
     this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0 || this.act.fenetres(t) !== ""));
     this.sig = this.frameSig(t);
     const things = units.map((u, i) => ({ z: u.y + 3, el: this.blink(u.a.address, els[i], t) }));
-    for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); }
+    for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); things.push(...this.act.sbiresDe(u, nightHeroes)); }
     const working = list.filter((a) => a.status === "working").length;
     this.amb.watch(cx, this.live && !hidden, { phase: sk.phase, wake: this.wake });
     const life = this.live ? this.amb.things(nightHeroes, sk.phase, working, units) : [];

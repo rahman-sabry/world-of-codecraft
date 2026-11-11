@@ -16,6 +16,9 @@
 // golem, spectre or goblin by date, all as tall as the troll drawn twice as large, kit.js bossDuJour), whose HP every
 // hero shares: each successful subagent tool call is 1 damage. At 0 HP it falls in a gold burst (no more raids that
 // day); when a hero's subagents all end first, it flees and keeps its HP. It wins over the scenes.
+// Minions: once today's boss is slain, a hero with running subagents fights the boss's minions instead (one per
+// subagent, up to 3, the day's species at a fight creature's size); each successful subagent tool call is a blow,
+// round-robin, 4 fell one and a fresh one comes; they flee when its subagents end. Nothing stored, no chronicle.
 // Lot 2: six creatures in the draw (imp, wolf, goblin, boar, rust golem, spectre); a task with 3+ failed
 // tools brings the forest troll, a boss of 8 blows.
 // Anti-zapping: a scene changes only when the new one has been asked for 8 s and the current one has
@@ -67,6 +70,10 @@ const CHUTE = 1200; // the raid boss's fall (the felled puff and the gold burst)
 const ETAPES = [100, 700]; // the fall's and the flight's stages: open / walk off from here, fade from here
 const etape = (dt) => ETAPES.filter((s) => dt >= s).length;
 const FUIR = 150; // px the raid boss walks away from the hero when it flees
+const SBIRES = 3; // minions at most per hero
+// A minion's feet from its hero's (side 1 = right), in order of preference: in front, behind, further in front, spares
+const PLACES = [[80, 18], [170, -26], [170, 56], [255, 14], [260, -44], [100, -60]];
+const SBIRE = { troll: "gobelin" }; // the troll is too wide for three: its minions are goblins
 const VUS = "wocc.boss.vus"; // { address: the subCoups already counted as damage }, so a reload neither loses nor recounts
 
 /** A raid boss species' drawing: its scale k (the troll's height at GEANT, rounded to a half so an art px stays whole
@@ -128,6 +135,7 @@ export class Activites {
     this.hits = new Map(); // address -> { coups, at, felled: [{ species, at }] }
     this.slots = new Map(); // address -> Map(subagent id -> apprentice slot)
     this.raids = new Map(); // address -> { ids (running subagents), at (last blow), fin (its end, 0 = none), issue ("mort" | "fuite") }
+    this.sbires = new Map(); // address -> { rr (next to be hit), list: [{ id (its subagent), k (its place), coups, at (last blow), fin (its flight, 0 = none) }], felled: [{ k, at }] }
     this.abattu = null; // (address, day) when this village's damage slays the boss: the chronicle line (Place)
     this.timer = null;
     this.busy = false;
@@ -135,8 +143,13 @@ export class Activites {
 
   /** The scene a unit plays now (decided in the poll, read in render); none during a raid. */
   scene(addr) {
-    if (this.off || this.raid(addr)) return null;
+    if (this.off || this.melee(addr)) return null;
     return this.scenes.get(addr)?.scene ?? null;
+  }
+
+  /** True while a hero fights: a raid, or minions standing or fleeing (it plays `work` and stays where it is). */
+  melee(addr) {
+    return Boolean(this.raid(addr)) || (!this.off && this.sbires.has(addr));
   }
 
   /** A hero's raid, while it has running subagents and through the boss's fall or flight (null = none). */
@@ -167,14 +180,51 @@ export class Activites {
     return true;
   }
 
+  /** Follows a hero's minions once today's boss is slain (slain), not while its raid still falls: one per running
+   *  subagent (up to SBIRES, at the first free place), the poll's d new subagent tool calls as blows spread round-robin
+   *  (every BLOWS fells one: its puff, and a fresh one stands there), and a minion whose subagent ended flees. A day
+   *  with no kill (midnight) drops them. True when something visible changed. */
+  suit(addr, s, now, slain, d) {
+    const sb = this.sbires.get(addr);
+    if (!slain) return this.sbires.delete(addr);
+    if (this.raid(addr)) return false;
+    const ids = this.subagents(s).map((x) => x.id);
+    const o = sb ?? { rr: 0, list: [], felled: [] };
+    let changed = false;
+    for (const m of o.list) if (!m.fin && !ids.includes(m.id)) { m.fin = now; changed = true; }
+    const n = o.list.length;
+    o.list = o.list.filter((m) => !m.fin || now - m.fin < CHUTE);
+    o.felled = o.felled.filter((f) => now - f.at < 1200);
+    changed ||= o.list.length !== n;
+    const vifs = o.list.filter((m) => !m.fin);
+    for (const id of ids) {
+      if (vifs.length >= SBIRES || vifs.some((m) => m.id === id)) continue;
+      const k = [0, 1, 2].find((k) => !vifs.some((m) => m.k === k));
+      vifs.push({ id, k, coups: 0, at: 0, fin: 0 });
+      o.list.push(vifs[vifs.length - 1]);
+      changed = true;
+    }
+    for (let i = 0; i < d && vifs.length; i++) {
+      const m = vifs[o.rr++ % vifs.length];
+      m.coups++;
+      m.at = now;
+      if (m.coups % BLOWS === 0) o.felled.push({ k: m.k, at: now });
+      changed = true;
+    }
+    if (!o.list.length) { this.sbires.delete(addr); return Boolean(sb); }
+    this.sbires.set(addr, o);
+    return changed || !sb;
+  }
+
   /** The shown, live village only (ecrit; not the demo): each hero's new successful subagent tool calls since its
    *  stored count (VUS) are damage on today's boss, the first sight of a terminal only stores its count, and vanished
    *  terminals are forgotten. The last blow slays the boss: trophies and the chronicle line. Returns { coups
-   *  (address -> damage dealt in this poll), tue (slain in this poll), boss (today's, after the damage) }. */
+   *  (address -> damage dealt in this poll), tue (slain in this poll), boss (today's, after the damage), sbires (once it
+   *  is slain: address -> the new calls, blows on its minions) }. */
   degats(lus, now) {
-    const coups = new Map();
+    const coups = new Map(), sbires = new Map();
     let boss = bossDuJour(new Date(now));
-    if (!this.ecrit) return { coups, tue: false, boss };
+    if (!this.ecrit) return { coups, tue: false, boss, sbires };
     const vus = { ...(shared(VUS) ?? {}) };
     let neuf = false;
     for (const [addr, s] of lus) {
@@ -190,8 +240,8 @@ export class Activites {
     const alive = new Set((this.list ?? []).map((a) => a.address));
     for (const k of Object.keys(vus)) if (!alive.has(k)) { delete vus[k]; neuf = true; }
     if (neuf) setShared(VUS, vus);
-    if (boss.slain) { coups.clear(); return { coups, tue: false, boss }; } // it already fell today: no more blows
-    if (!coups.size) return { coups, tue: false, boss };
+    if (boss.slain) return { coups: sbires, tue: false, boss, sbires: coups }; // it already fell today: the blows go to its minions
+    if (!coups.size) return { coups, tue: false, boss, sbires };
     boss = { ...boss };
     for (const [addr, d] of coups) {
       boss.hp = Math.max(0, boss.hp - d);
@@ -208,7 +258,7 @@ export class Activites {
       setShared(TROPHEES, { total: (T.total ?? 0) + 1, streak, lastDay: boss.day });
       this.abattu?.(boss.by, boss.day);
     }
-    return { coups, tue: boss.slain, boss };
+    return { coups, tue: boss.slain, boss, sbires };
   }
 
   /** The raids' bounded windows open at t (a blow, a fall or a flight, with its stages): the frame timer runs while
@@ -219,6 +269,14 @@ export class Activites {
     for (const [k, r] of this.raids) {
       const fin = r.fin && t - r.fin < CHUTE;
       if (t - r.at < COUP || fin) s += `${k}:${r.at}:${r.fin}:${fin ? etape(t - r.fin) : ""};`;
+    }
+    // the minions': a blow, a fall's puff, a flight and its stages
+    for (const [k, o] of this.sbires) {
+      for (const m of o.list) {
+        const fin = m.fin && t - m.fin < CHUTE;
+        if (t - m.at < COUP || fin) s += `${k}:${m.id}:${m.at}:${m.fin}:${fin ? etape(t - m.fin) : ""};`;
+      }
+      for (const f of o.felled) if (t - f.at < 1200) s += `${k}:${f.k}:${f.at};`;
     }
     return s;
   }
@@ -238,7 +296,7 @@ export class Activites {
     this.list = list;
     this.off = off;
     this.ecrit = ecrit;
-    if (off) this.raids.clear();
+    if (off) { this.raids.clear(); this.sbires.clear(); }
     const need = !hidden && !off && list.some((a) => this.reads(a) || this.scenes.has(a.address));
     if (need && !this.timer) this.timer = cx.timer.every(POLL, (cx) => this.poll(cx));
     else if (!need && this.timer) { this.timer.cancel(); this.timer = null; }
@@ -262,8 +320,9 @@ export class Activites {
         changed = this.apply(a, s, now) || changed;
         lus.push([a.address, s]);
       }
-      const { coups, tue, boss } = this.degats(lus, now);
+      const { coups, tue, boss, sbires } = this.degats(lus, now);
       for (const [addr, s] of lus) changed = this.mene(addr, s, now, boss.slain, tue && coups.has(addr)) || changed;
+      for (const [addr, s] of lus) changed = this.suit(addr, s, now, boss.slain, sbires.get(addr) ?? 0) || changed;
       for (const addr of coups.keys()) { const r = this.raids.get(addr); if (r && !r.fin) { r.at = now; changed = true; } } // the boss flinches
       // short-lived flashes (blow on the creature, hero hit): redraw when they start or end
       for (const a of this.list ?? []) {
@@ -275,6 +334,7 @@ export class Activites {
       for (const k of [...this.scenes.keys()]) if (!alive.has(k)) { this.scenes.delete(k); changed = true; }
       for (const k of [...this.slots.keys()]) if (!alive.has(k)) this.slots.delete(k);
       for (const k of [...this.raids.keys()]) if (!alive.has(k)) this.raids.delete(k);
+      for (const k of [...this.sbires.keys()]) if (!alive.has(k)) this.sbires.delete(k);
       // a felled creature's puff lasts 1.2 s
       for (const h of this.hits.values()) {
         const n = h.felled.length;
@@ -443,7 +503,10 @@ export class Activites {
     }
     const drawn = subs.filter((x) => slots.has(x.id)).sort((p, q) => slots.get(p.id) - slots.get(q.id));
     // the slots by the hero's goal and, on a walk, by its starting point
-    const raid = this.raid(addr) ? geantDe(especeBoss(bossDuJour().day)) : null;
+    // a raid boss's footprint, or the minions' (their side, then): no apprentice stands there
+    const sb = this.sbires.has(addr) && rangs(m.x, m.y, sbire(), side);
+    if (sb) side = sb.side;
+    const raid = this.raid(addr) ? geantDe(especeBoss(bossDuJour().day)) : sb;
     const at = (p) => { const taken = []; return drawn.map((x) => { const q = spot(p, slots.get(x.id), side, taken, raid); taken.push(q); return q; }); };
     const ends = at([m.x, m.y]), starts = m.legs.length ? at(m.legs[0].a) : ends;
     const sfx = night ? "-n" : "";
@@ -567,14 +630,7 @@ export class Activites {
       const p = D[pose];
       return image(`${CRE}/${sp}/${pose}${gg}${sfx}.png`).absolute().left(-p.ax * K).top(-p.ay * K + 4).w(p.w * K).h(p.h * K).when(Boolean(extra), extra);
     };
-    if (r.issue === "fuite") {
-      // drawn where it stood, then (stage 1) given the far point and opacity 0, which its native transitions carry
-      const tr = { duration: CHUTE - ETAPES[0], easing: "ease-in" };
-      return { z: y + 3, el: div().id(`fuite-${addr}`).absolute().left(e ? x + side * FUIR : x).top(y).w(0).h(0).opacity(e ? 0 : 1)
-        .transition("left", tr).transition("opacity", tr)
-        .child(div().absolute().left(0).top(0).w(0).h(0).loop("top", { from: 0, to: -5, period: 320 })
-          .child(sprite("pret", null, side > 0 ? "-g" : ""))) };
-    }
+    if (r.issue === "fuite") return { z: y + 3, el: fuite(`fuite-${addr}`, x, y, side, e, sprite("pret", null, side > 0 ? "-g" : "")) };
     const out = [];
     if (r.issue === "mort") {
       // felled: fades and rises in a puff, at the boss's size, in a gold burst
@@ -609,6 +665,89 @@ export class Activites {
     }
     return { z: y + 3, el: div().absolute().left(x).top(y).w(0).h(0).children(out) };
   }
+
+  /** A hero's minions (after the day's kill): each at its place (rangs), drawn at BETE like a fight creature, `pret` /
+   *  `attaque` alternating, `touche` and a flash COUP ms after a blow, its blows left in pips; a felled one's puff at
+   *  its place (the fresh one stands there already); a fleeing one turns, walks FUIR px off and fades (fuite).
+   *  Depth-sorted world elements [{ z, el }]. */
+  sbiresDe(u, night) {
+    const addr = u.a.address, o = this.sbires.get(addr);
+    if (!o || u.leg || this.off) return [];
+    const sp = sbire(), D = CREATURES[sp];
+    const { side, pts } = rangs(u.x, u.y, sp, u.x > 2700 ? -1 : 1);
+    const g = side > 0 ? "" : "-g", sfx = night ? "-n" : "";
+    const now = Date.now();
+    const sprite = (pose, extra, gg = g) => {
+      const p = D[pose];
+      return image(`${CRE}/${sp}/${pose}${gg}${sfx}.png`).absolute().left(-p.ax * BETE).top(-p.ay * BETE + 4).w(p.w * BETE).h(p.h * BETE).when(Boolean(extra), extra);
+    };
+    const at = (k) => [Math.round(pts[k][0]), Math.round(pts[k][1])];
+    const out = [];
+    for (const m of o.list) {
+      const [x, y] = at(m.k);
+      if (m.fin) {
+        if (now - m.fin < CHUTE) out.push({ z: y + 3, el: fuite(`sbire-${addr}-${m.id}`, x, y, side, etape(now - m.fin), sprite("pret", null, side > 0 ? "-g" : "")) });
+        continue;
+      }
+      const per = 1700 + (hash(`${addr}:${m.id}`) % 400), kids = [];
+      if (now - m.at < COUP) {
+        kids.push(sprite("touche"));
+        kids.push(div().absolute().left(-6).top((-D.pret.h * BETE) / 2 - 4).size(12).rounded_full().bg("#fff6d8")
+          .loop("opacity", { from: 1, to: 0, period: 450 }));
+      } else {
+        kids.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: per, easing: "linear" })));
+        kids.push(sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: per, easing: "linear" })));
+      }
+      const left = BLOWS - (m.coups % BLOWS);
+      kids.push(div().absolute().left(-2.5 * BLOWS).top(-D.pret.h * BETE - 6).flex().gap(1)
+        .children(Array.from({ length: BLOWS }, (_, i) => div().w(4).h(3).bg(i < left ? "#e5685a" : "#3a2a2a").border_1().border_color("#000000"))));
+      out.push({ z: y + 3, el: div().absolute().left(x).top(y).w(0).h(0).children(kids) });
+    }
+    // the felled ones: fade and rise in a puff where they stood
+    for (const f of o.felled) {
+      if (now - f.at >= 1200) continue;
+      const [x, y] = at(f.k), p = D.touche;
+      out.push({ z: y + 3.5, el: div().absolute().left(x).top(y).w(0).h(0)
+        .child(image(`${CRE}/${sp}/touche${g}${sfx}.png`).absolute().left(side * 14 - p.ax * BETE).top(-p.ay * BETE).w(p.w * BETE).h(p.h * BETE)
+          .loop("opacity", { from: 0.9, to: 0, period: 1200 }).loop("top", { from: -p.ay * BETE, to: -p.ay * BETE - 16, period: 1200 }))
+        .child(div().absolute().left(side * 14 - 12).top(-20).size(24).rounded_full().bg("#e8e2d0aa")
+          .loop("opacity", { from: 0.8, to: 0, period: 1200 })) });
+    }
+    return out;
+  }
+}
+
+/** The species of today's boss's minions. */
+const sbire = () => { const sp = especeBoss(bossDuJour().day); return SBIRE[sp] ?? sp; };
+
+/** Where a hero standing at (x, y) has its minions (species sp) stand: the first PLACES on walkable ground whose `pret`
+ *  boxes at BETE overlap none of those taken, on its creature's side (side0) unless the other side has room for more;
+ *  cramped (fewer than SBIRES), the rest from the first free PLACES whatever the ground. { side, pts, loin, large }:
+ *  loin and large mark the zone apprentices keep off, as a raid boss's (geantDe). */
+function rangs(x, y, sp, side0) {
+  const P = CREATURES[sp].pret, W = P.w * BETE, H = P.h * BETE;
+  const at = (side, sol) => {
+    const pts = [];
+    for (const [dx, dy] of PLACES) {
+      const q = [x + side * dx, y + dy];
+      if (pts.length < SBIRES && (!sol || walkable(q)) && pts.every((o) => Math.abs(o[0] - q[0]) >= W || Math.abs(o[1] - q[1]) >= H)) pts.push(q);
+    }
+    return pts;
+  };
+  let side = side0, pts = at(side0, true);
+  if (pts.length < SBIRES) { const o = at(-side0, true); if (o.length > pts.length) { side = -side0; pts = o; } }
+  if (pts.length < SBIRES) for (const q of at(side, false)) if (pts.length < SBIRES && pts.every((o) => Math.abs(o[0] - q[0]) >= W || Math.abs(o[1] - q[1]) >= H)) pts.push(q);
+  const xs = pts.map((q) => q[0]), lo = Math.min(...xs) - W / 2, hi = Math.max(...xs) + W / 2;
+  return { side, pts, loin: side * ((lo + hi) / 2 - x), large: (hi - lo) / 2 + 25 };
+}
+
+/** A creature fleeing from (x, y): drawn there, then (stage e 1) given the far point FUIR px off and opacity 0, which
+ *  its native transitions carry; it bobs as it goes. */
+function fuite(id, x, y, side, e, el) {
+  const tr = { duration: CHUTE - ETAPES[0], easing: "ease-in" };
+  return div().id(id).absolute().left(e ? x + side * FUIR : x).top(y).w(0).h(0).opacity(e ? 0 : 1)
+    .transition("left", tr).transition("opacity", tr)
+    .child(div().absolute().left(0).top(0).w(0).h(0).loop("top", { from: 0, to: -5, period: 320 }).child(el));
 }
 
 /** The gold burst over a slain raid boss (mid px above its feet): a gold ring opening and 10 sparkles rising, gold
