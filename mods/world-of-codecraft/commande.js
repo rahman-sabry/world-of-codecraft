@@ -95,12 +95,12 @@ function choix(id, nom, n, change, prevTip, nextTip) {
     .child(fleche("suiv", "›", 1, nextTip));
 }
 
-/** The day's boss's dot on a minimap (b = [x, y, fallen], WORLD, k its scale): red alive, muted fallen; [] = none. */
+/** The day's boss's red dot on a minimap (b = [x, y], WORLD, k its scale); [] = none. */
 export function bossDot(b, WORLD, k) {
   if (!b) return [];
-  const [x, y, mort] = b;
+  const [x, y] = b;
   return [div().absolute().left((x - WORLD.x) * k - 3).top(Math.min(WORLD.h, Math.max(0, y)) * k - 4).size(6)
-    .bg(mort ? "#6b5a5e" : "#ff3048").border_1().border_color("#000000")];
+    .bg("#ff3048").border_1().border_color("#000000")];
 }
 
 /** The whole panel, `width` wide; `minimap` is place.js's minimap element. Under it the map switch (wocc.map) and the

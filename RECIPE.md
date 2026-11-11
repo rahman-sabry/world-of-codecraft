@@ -204,8 +204,8 @@ the clock. The art is original: it imitates no existing game.
     on both its sides (`cotes`: beside it at a warrior's gap and a mage's one ring out), else the first walkable one.
     It walks with `pret` turned the way it goes and a 5 px native bob, its feet gliding natively along the leg; the
     ambient timer redraws at each leg's start and end (`reveil`, Place's `wake`). Standing, it shows `pret` facing the
-    village. A red dot (6 px) marks it on both minimaps (`bossDot` in commande.js; place.js passes it in `wocc.view`), muted
-    once it has fallen; none in the demo, where no boss is drawn.
+    village. A red dot (6 px) marks it on both minimaps while it stands (`bossDot` in commande.js; place.js passes it in
+    `wocc.view`); none once it is slain, or in the demo, where no boss is drawn.
     **The raid:** while a hero (not a demo hero) has running subagents (the apprentices' rule: ids with an event in the
     last 30 min), whatever its status, and the day's boss still stands, it is in the raid and fights the boss instead
     of its scene (`mene`). The first raider holds the boss where it is (its wander pauses). Every raider, the first
@@ -247,16 +247,39 @@ the clock. The art is original: it imitates no existing game.
     rim round a deep blue swirl of three arms turning a third of a turn per frame, one frame per 100 ms tick), over
     its glow on the ground, art/portail-sol.svg (30 × 8 at 3×); tools/portail.py draws them (gen.py's `Px`). The
     stages and the swirl's frame are in the frame timer's signature while a teleport runs, so it stops after.
+    **Blows** (`frappe` in activite.js, drawn by effets.js through Place `effets`): each blow of a fighter shows its
+    class's effect, once, event-driven. A hero's blow is its own successful edit or command (`blows`: its `coups` rose)
+    while it fights (a raid, minions, its scene's creature or the dummy); an apprentice's is its own subagent's
+    successful tool call that hit the raid boss or a minion (the poll's damage for that hero, put on the subagents
+    whose last event moved since the last poll, else its latest one; `frappesSub`). By class (the apprentice's look's,
+    at 0.7 size), from its chest to its foe's (`adversaire`: the boss; the minion its subagent fights, else the one its
+    hero hit last; the creature or the dummy, `ouCreature`):
+    - warrior: a silver crescent sweep just in front of it, opening towards the foe, growing and fading;
+    - rogue: two dagger glints on the foe, the second a little later and off to one side;
+    - artificer: sparks at its tool and a small orange bolt flying to the foe;
+    - mage: a violet orb with a blue core flying to the foe, bursting into a broken violet ring;
+    - ranger: an arrow flying to the foe (turned the way it flies), a dust puff where it lands;
+    - priest: golden motes rising over a small glow on a party member it heals (the raid's heroes and apprentices,
+      else its hero's party): whoever said "Ouch!" last (a failed tool, in the last 20 s), else the nearest one,
+      chosen at its first draw (`soigne` in place.js); alone, a golden flash of eight rays on the foe.
+    Art: art/fx-*.svg at 2x (taille d/g, dague, etincelles, eclair d/g, arcane, arcane-eclat, fleche d/g, impact,
+    soin, chatiment), drawn by tools/effets.py (gen.py's `Px`). No `.loop`: drawn with ids at their starting place,
+    size and opacity, and each stage (`FX_ETAPES`: 40 ms launched, 340 landed, 500 fading; gone at `FX` 650) is in
+    the frame timer's signature, so each redraws once with new targets that native transitions carry (a projectile is
+    one element gliding from its striker to its foe in 300 ms). One effect per member at a time (a blow while one runs
+    is dropped) and 12 at most (`FX_MAX`); a projectile sorts over both (the nearer one's feet + 8), the rest with whom
+    they touch; dimmed at night (1 - 0.3 x the night weight); only the shown, live village makes them (none in
+    the demo).
     **Its drawing:** each species is drawn as tall as the troll at 2× its fight size (`GEANT`: 4×4 screen px per art
     px), the factor computed from creatures-data heights and rounded to a half so an art px stays whole screen px
     (`geantDe` in activite.js): troll 2× (184 px), golem 3.5× (175), spectre 3.5× (189), goblin 3.5× (196). Class gaps
     (`ECART`, keyed by class): warrior 10, rogue 15, artificer 30, priest 45, mage 50, ranger 65 px; file apprentices
     keep its half width + 25 px clear. In a raid `pret` / `attaque` alternate, turned to the side with more raiders;
     depth-sorted by its feet, with the day's HP in a bar over its head; drawn once (`geant`). A poll that deals damage
-    from any raider makes it flinch (`touche` and an impact flash, 900 ms). At 0 HP it falls where it is (the record
-    keeps the spot, `lieu`): the felled puff at its size and a gold burst (a gold ring opening and 10 sparkles rising,
-    1.2 s), the raiders holding their places meanwhile; then its body (`touche`, dimmed) lies there until midnight, no
-    HP bar, no wander, and the party disperses: each raider teleports back to the goal it left; the chronicle says
+    from any raider makes it flinch (`touche` and an impact flash, 900 ms). At 0 HP it falls where it is: the felled
+    puff at its size and a gold burst (a gold ring opening and 10 sparkles rising, 1.2 s), the raiders holding their
+    places meanwhile; then it is gone, its lair empty until tomorrow's boss (a reload draws nothing either: the record
+    says slain), and the party disperses: each raider teleports back to the goal it left; the chronicle says
     "[Mage Tower] Gruntak the Mossback is slain by Aldric, Human mage!"; the trophies count it (`total`, and `streak`:
     consecutive days with a kill, alive while the last kill is today or yesterday); and no raid starts again until
     midnight.
@@ -322,8 +345,8 @@ the clock. The art is original: it imitates no existing game.
     minions gone; heroes still raiding take slots afresh round it and walk there, heroes home with running subagents
     rejoin by teleport. The crown and the victory standards go with the kill.
     - **Store keys** (one writer: the shown, live village, as for the chronicle; the demo and a hidden copy write
-      nothing): `wocc.boss` = `{day, hp, max, slain, slainAt, by, heros, avant, lieu}` (`by` the slayer's
-      terminal address, `heros` its `{name, race, cls}` then, `avant` the trophies before the kill, `lieu` where it fell) (the day's boss; another day's or none reads as a
+      nothing): `wocc.boss` = `{day, hp, max, slain, slainAt, by, heros, avant}` (`by` the slayer's
+      terminal address, `heros` its `{name, race, cls}` then, `avant` the trophies before the kill) (the day's boss; another day's or none reads as a
       fresh boss at full HP, `bossDuJour` in kit.js), `wocc.trophees` = `{total, streak, lastDay}`, and
       `wocc.boss.vus` = `{address: subCoups already counted}`. Each poll the writer compares each read file's
       `subCoups` with its stored count: the difference is damage (a lower count means the file started over: all of
@@ -586,7 +609,7 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   - commands: `agent.focus`, `agent.next`, `pane.focus`, `space.select`, `tab.select`,
     `tab.new`, `space.new`, `pane.split`, `pane.zoom` and `pane.close`.
 - **Timers:** one shared 100 ms timer runs only while a visible unit animates or walks, or someone blinks in or out
-  or is summoned or teleports, or the raid boss is hit, falls, stomps or walks back, or a minion is hit, falls or flees
+  or is summoned or teleports, or a blow's effect runs, or the raid boss is hit, falls, stomps or walks back, or a minion is hit, falls or flees
   (its signature changes at each stage of the fall and the flight, and drops each window's end: `Activites.fenetres`);
   the idle boss's wander legs ride the 1 s ambient timer (`reveil`),
   and stops when its village block (`place` or `place-immersion`) is hidden. The clock ticks every 30 s; the sky and quotas

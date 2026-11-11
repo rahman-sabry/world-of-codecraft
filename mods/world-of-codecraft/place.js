@@ -20,6 +20,7 @@ import { lieux, market } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
 import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail } from "./activite.js";
+import { effet, FX, FX_ETAPES } from "./effets.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
 import { commandPanel, MINI_INSET, watchStat, bossDot } from "./commande.js";
@@ -474,6 +475,7 @@ export default class Place {
     for (const [k, t0] of this.nes) s += `${k}:${t - t0 < BLINK};`;
     for (const [k, g] of this.fantomes) s += `${k}:${t - g.t0 < BLINK}:${etape(t - g.t0, ADIEU)};`;
     for (const [k, v] of this.invocations) s += `${k}:${etape(t - v.t0, [OUVRE, LEAD, FONDU, CAST, SUMMON])};`;
+    for (const [k, e] of this.act.effets) s += `fx:${k}:${etape(t - e.t0, [...FX_ETAPES, FX])};`; // a blow's effect: each stage and its end
     for (const [k, m] of this.mob) if (m.portail) s += `${k}:${etape(t - m.portail.t0, [100, ...VOYAGE, FERME, PORTAIL])}:${Math.floor((t - m.portail.t0) / TICK) % 3};`;
     return s + this.act.fenetres(t); // a raid blow, fall or flight: each stage and its end
   }
@@ -508,6 +510,43 @@ export default class Place {
   blink(k, el, t) {
     const t0 = this.nes.get(k);
     return div().absolute().left(0).top(0).w(0).h(0).when(t0 > t, (e) => e.opacity(0)).when(t0 <= t, clignote).child(el);
+  }
+
+  /** The fight effects running (Activites.frappe, effets.js), each from its striker's chest to its foe's (adversaire),
+   *  by the striker's class (an apprentice's look's, at 0.7 size); a priest heals a party member (soigne, chosen at
+   *  its first draw), alone it smites its foe. Dimmed at night (1 - 0.3 x the night weight). [{ z, el }]. */
+  effets(units, apps, t, nightK) {
+    const out = [], al = 1 - 0.3 * nightK;
+    const poitrine = (m) => (m.a ? [m.x, m.y - this.anim(m).info.ay * 0.55, m.y] : [m.vu.x, m.vu.y - m.vu.ay * 0.55, m.vu.y]);
+    for (const [k, e] of this.act.effetsVifs(t)) {
+      const u = units.find((x) => x.a.address === e.addr), ap = e.id && apps.find((x) => x.key === k);
+      if (!u || (e.id && !ap)) continue;
+      const foe = this.act.adversaire(u, e.id, t);
+      if (!foe) continue;
+      const [x, y, fy] = poitrine(ap || u), cls = ap ? CLS_FR[ap.look.split("-")[1]] : u.h.cls;
+      let soin = null;
+      if (cls === "pretre") {
+        if (e.cible === undefined) e.cible = this.soigne(k, u, units, apps, [x, fy]);
+        const c = e.cible && (units.find((m) => m.a.address === e.cible) ?? apps.find((m) => m.key === e.cible));
+        if (c) { const [cx, cy, cf] = poitrine(c); soin = { at: [cx, cy], fy: cf }; }
+      }
+      out.push(...effet(`fx-${k}`, cls, { a: [x, y], b: [foe.x, foe.y], dir: foe.x < x ? -1 : 1, fy, tfy: foe.fy }, etape(t - e.t0, FX_ETAPES), ap ? 0.7 : 1, al, soin));
+    }
+    return out;
+  }
+
+  /** Whom a priest (member k, of hero u's party, its feet at p) heals: the party member (the raid's heroes and
+   *  apprentices, else u and its apprentices) who said "Ouch!" last (a failed tool, 20 s), else the nearest one; null
+   *  when it is alone (it smites). */
+  soigne(k, u, units, apps, p) {
+    const raid = this.act.raid(u.a.address);
+    const heros = units.filter((m) => (raid ? this.act.raid(m.a.address) : m === u));
+    const membres = [...heros.map((m) => [m.a.address, m.x, m.y]), ...apps.filter((m) => heros.some((h) => h.a.address === m.addr)).map((m) => [m.key, m.vu.x, m.vu.y])]
+      .filter(([id]) => id !== k);
+    if (!membres.length) return null;
+    const now = Date.now(), aie = (id) => { const s = this.act.file(id); return s?.errT && (s.err ?? 0) > 0 && now - s.errT < 20000 ? s.errT : 0; };
+    const blesse = membres.filter(([id]) => aie(id)).sort(([a], [b]) => aie(b) - aie(a))[0];
+    return (blesse ?? membres.sort((m, o) => Math.hypot(m[1] - p[0], m[2] - p[1]) - Math.hypot(o[1] - p[0], o[2] - p[1]))[0])[0];
   }
 
   /** The glows at the feet of those blinking in (following their walk), the ghosts blinking out (an apprentice's with
@@ -681,11 +720,11 @@ export default class Place {
       .child(div().absolute().left(vx).top(0).w(view).h(mh).border_1().border_color("#ffffff"));
   }
 
-  /** The day's boss on the minimap: [x, y (8 px steps), fallen (1) or alive (0)], or null (the demo). */
+  /** The day's boss on the minimap while it stands: [x, y (8 px steps)], or null (slain, the demo). */
   bossDot() {
-    if (props()?.demo) return null;
+    if (props()?.demo || this.act.boss().fin) return null;
     const p = this.act.ici(Date.now());
-    return [Math.round(p.x / 8) * 8, Math.round(p.y / 8) * 8, this.act.boss().fin ? 1 : 0];
+    return [Math.round(p.x / 8) * 8, Math.round(p.y / 8) * 8];
   }
 
   /** Immersive layout: the world y at the top of the view, kept inside the painted bands. */
@@ -808,7 +847,7 @@ export default class Place {
     this.passages(units, apps, !hidden && !props()?.demo, t);
     // the frame timer also runs while someone blinks in or out or is summoned, or a raid boss is hit, falls or flees, and
     // redraws at each stage and its end
-    this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0 || [...this.mob.values()].some((m) => m.portail) || this.act.fenetres(t) !== ""));
+    this.tick(cx, !hidden && (this.anims.length > 0 || this.nes.size > 0 || this.fantomes.size > 0 || this.invocations.size > 0 || [...this.mob.values()].some((m) => m.portail) || this.act.effets.size > 0 || this.act.fenetres(t) !== ""));
     this.sig = this.frameSig(t);
     const things = units.map((u, i) => ({ z: u.y + 3, el: this.blink(u.a.address, els[i], t) }));
     for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); things.push(...this.act.sbiresDe(u, nightHeroes)); }
@@ -821,6 +860,7 @@ export default class Place {
     const life = this.amb.things(nightHeroes, sk.phase, working, units);
     things.push(...life);
     things.push(...apps.map((ap) => ({ ...ap, el: this.blink(ap.key, ap.el, t) })));
+    things.push(...this.effets(units, apps, t, nightK));
     const traces = this.traces(units, apps, t);
     things.push(...traces);
     for (const fr of FRONTS) {

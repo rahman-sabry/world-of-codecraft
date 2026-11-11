@@ -33,6 +33,7 @@ import { walkable, lieux } from "./lieux.js";
 import { CREATURES } from "./creatures-data.js";
 import { HEROES } from "./heros-data.js";
 import { t as tr } from "./i18n.js";
+import { FX } from "./effets.js";
 
 const ART = "mods/world-of-codecraft/art";
 const CRE = `${ART}/creatures`;
@@ -56,6 +57,7 @@ const RESULT = 5000; // a test result stays on screen this long
 const BETE = 1.5; // fight creatures drawn this much larger (art 2x: 3x3 screen px per art px, still crisp)
 const STUCK = 10000; // a fight with no blow for this long (delegating to subagents) no longer holds the hero
 const SCENE_OF = { pense: "pense", eclaire: "eclaire", web: "eclaire", code: "combat", commande: "combat", medite: "medite", test: "test" };
+const FX_MAX = 12; // fight effects running at once at most (a burst of calls spawns no more)
 const SUB_TTL = 30 * 60_000; // an activity file silent this long has no running subagents (as the hook drops them)
 const subsOf = (s) => (s && Date.now() - (s.t ?? 0) < SUB_TTL ? s.subs ?? 0 : 0);
 const KINDS = Object.keys(HEROES); // any race x class, for the apprentices
@@ -248,6 +250,8 @@ export class Activites {
     this.arene = null;
     this.sbires = new Map(); // address -> { rr (next to be hit), list: [{ id (its subagent), k (its place), coups, at (last blow), fin (its flight, 0 = none) }], felled: [{ k, at }] }
     this.abattu = null; // (address, day) when this village's damage slays the boss: the chronicle line (Place)
+    this.effets = new Map(); // member (address, or address:subagent id) -> its blow's effect { t0, addr, id, cible } (frappe)
+    this.subT = new Map(); // address -> { subagent id: its last event } at the last poll (whose blows these are)
     this.timer = null;
     this.busy = false;
   }
@@ -286,13 +290,13 @@ export class Activites {
   }
 
   /** The day's boss, made on first use each day (and on another map): in today's lair (antre), on its wander's spot
-   *  (errance), or fallen where the stored kill says (lieu, else its wander's spot then). Its fall's end drops the raid. */
+   *  (errance); slain today (fin), it is gone once its fall is over. Its fall's end drops the raid. */
   boss() {
     const now = Date.now(), b = bossDuJour(new Date(now)), carte = lieux().id ?? "";
     let A = this.arene;
     if (!A || A.day !== b.day || A.carte !== carte) {
       const fin = b.slain ? b.slainAt ?? 1 : 0, e = errance(b.day, fin || now);
-      A = this.arene = { day: b.day, carte, x: Math.round(b.lieu?.[0] ?? e.x), y: Math.round(b.lieu?.[1] ?? e.y),
+      A = this.arene = { day: b.day, carte, x: Math.round(e.x), y: Math.round(e.y),
         side: antre(b.day).cote === "ouest" ? -1 : 1, pas: null, next: 0, at: 0, fin, places: new Map(), apps: new Map() };
       this.raids.clear();
     }
@@ -542,9 +546,7 @@ export class Activites {
       boss.hp = Math.max(0, boss.hp - d);
       if (!boss.hp) {
         const h = heroOf(addr, (this.list ?? []).find((a) => a.address === addr)?.program);
-        const p = this.ici(now);
-        Object.assign(boss, { slain: true, slainAt: now, by: addr, heros: { name: h.name, race: h.race, cls: h.cls }, avant, // avant: the reset's undo
-          lieu: [Math.round(p.x), Math.round(p.y)] }); // where it lies until midnight
+        Object.assign(boss, { slain: true, slainAt: now, by: addr, heros: { name: h.name, race: h.race, cls: h.cls }, avant }); // avant: the reset's undo
         break;
       }
     }
@@ -622,6 +624,9 @@ export class Activites {
       this.pv = { day: boss.day, hp: boss.hp };
       changed = this.mene(lus, now, boss.slain) || changed;
       for (const [addr, s] of lus) changed = this.suit(addr, s, now, boss.slain, sbires.get(addr) ?? 0) || changed;
+      const fx = this.effets.size;
+      for (const [addr, s] of lus) this.frappesSub(addr, s, coups.get(addr) ?? sbires.get(addr) ?? 0, now);
+      if (this.effets.size !== fx || [...this.effets.values()].some((e) => e.t0 === now)) changed = true; // a blow's effect starts
       if (coups.size && this.raids.size && !this.boss().fin) { this.boss().at = now; changed = true; } // the boss flinches
       // short-lived flashes (blow on the creature, hero hit): redraw when they start or end
       for (const a of this.list ?? []) {
@@ -677,7 +682,74 @@ export class Activites {
       if (after > before) h.felled.push({ species: boss(s) ? "troll" : species(addr, s.tache, before, cls), at: now });
       h.coups = coups;
       h.at = now;
+      this.frappe(addr, null, now);
     }
+  }
+
+  /** A blow of member addr (a hero; with id, its apprentice for that subagent) while it fights (a raid, minions, its
+   *  scene's creature or the dummy): its class's effect (effets.js), one at a time per member (a blow while one runs
+   *  is dropped) and FX_MAX in all. */
+  frappe(addr, id, now) {
+    if (!this.ecrit) return;
+    const sc = this.scenes.get(addr)?.scene;
+    if (!this.raid(addr) && !this.sbires.has(addr) && (id || (sc !== "combat" && sc !== "test"))) return;
+    const k = id ? `${addr}:${id}` : addr, e = this.effets.get(k);
+    if ((e && now - e.t0 < FX) || (!e && this.effets.size >= FX_MAX)) return;
+    this.effets.set(k, { t0: now, addr, id, cible: undefined });
+  }
+
+  /** A hero's subagents' blows this poll (d: its successful subagent tool calls that hit the raid boss or its
+   *  minions): on the subagents whose last event moved since the last poll, else its latest one; their apprentices
+   *  strike (frappe). */
+  frappesSub(addr, s, d, now) {
+    const ids = this.subagents(s), avant = this.subT.get(addr) ?? {};
+    this.subT.set(addr, Object.fromEntries(ids.map((x) => [x.id, x.t ?? 0])));
+    if (!d) return;
+    const bouge = ids.filter((x) => (x.t ?? 0) > (avant[x.id] ?? 0));
+    const qui = bouge.length ? bouge : [...ids].sort((p, q) => (q.t ?? 0) - (p.t ?? 0)).slice(0, 1);
+    for (const x of qui.slice(0, d)) this.frappe(addr, x.id, now);
+  }
+
+  /** The effects running at t ([member, effect]); the ended ones are dropped. */
+  effetsVifs(t) {
+    for (const [k, e] of [...this.effets]) if (t - e.t0 >= FX) this.effets.delete(k);
+    return [...this.effets];
+  }
+
+  /** Where the foe a fighting member strikes stands (u its hero's unit; id its subagent, for an apprentice): the raid
+   *  boss; the minion its subagent fights, else the one its hero hit last; its hero's creature or dummy. { x, y (its
+   *  chest), fy (its feet) }, or null (none, or its hero walks or teleports). */
+  adversaire(u, id, t) {
+    const addr = u.a.address;
+    if (u.leg || u.portail) return null;
+    if (this.raid(addr)) {
+      const A = this.arene, sp = especeBoss(A.day), p = this.ici(t);
+      return A.fin ? null : { x: p.x, y: p.y - (CREATURES[sp].pret.h * geantDe(sp).k) / 2 + 4, fy: p.y };
+    }
+    const o = this.sbires.get(addr);
+    if (o) {
+      const vifs = o.list.filter((m) => !m.fin);
+      if (!vifs.length) return null;
+      const m = (id && vifs.find((n) => n.id === id)) || vifs.reduce((p, q) => (q.at > p.at ? q : p));
+      const sp = sbire(), { pts } = rangs(u, sp, u.x > lieux().BASCULE ? -1 : 1), [x, y] = pts[m.k];
+      return { x, y: y - (CREATURES[sp].pret.h * BETE) / 2 + 4, fy: y };
+    }
+    return this.ouCreature(u);
+  }
+
+  /** Where the creature (or the dummy) a hero standing at u fights stands: { side, x, y (its chest), fy (its feet), s
+   *  (the activity file), dummy, sp (its species) }, or null. */
+  ouCreature(u) {
+    const side = this.cible(u);
+    if (side === null) return null;
+    const addr = u.a.address, s = this.file(addr) ?? u.a.demoAct;
+    const dummy = this.scene(addr) === "test" || recent(s.essai?.t, RESULT);
+    // creatures are drawn larger (BETE); the troll is wide: keep it off the hero (a mage's; nearer or further by class)
+    const sp = !dummy && (boss(s) ? "troll" : species(addr, s.tache ?? 0, Math.floor((s.coups ?? 0) / blowsFor(s)), clsOf(u.a)));
+    const off = dummy ? 44 : proche(u, boss(s) ? 115 : 70, sp, side);
+    const x = Math.round(u.x + side * off), fy = Math.round(u.y + 16);
+    const h = dummy ? CREATURES.mannequin?.pret?.h ?? 40 : CREATURES[sp].pret.h * BETE;
+    return { side, x, y: fy - h / 2 + 4, fy, s, dummy, sp };
   }
 
   /** True when a working hero may walk to another spot: no meditation or tests, no creature hurt and not yet
@@ -791,7 +863,7 @@ export class Activites {
    *  foe, and walks back to the file when the fight ends. m = the hero's mob entry,
    *  pos(trail, t) = Place.pos, side = the creature's side (1 = right), animate = its frames run (else frame 0).
    *  Depth-sorted world elements: [{ z, el, box, addr, key, vu, anim }], anim = its frame timer entry (fps, n, ph,
-   *  trail), key = hero:subagent id, vu = its frame, feet point and leg now. */
+   *  trail), key = hero:subagent id, look = its race-class, vu = its frame, feet point and leg now. */
   apprentis(u, m, pos, side, night, t, animate) {
     const addr = u.a.address;
     const subs = this.subagents(this.file(addr) ?? u.a.demoAct);
@@ -872,21 +944,16 @@ export class Activites {
         .when(!leg && READS.has(x.act), (e) => e.child(image(`${ART}/ic-parchemin.svg`).absolute().left(-9).top(-ay - 22).size(18)));
       // vu: what it shows now (its ghost when it leaves; Place.passages)
       const vu = { src: `${dir}/${String(f).padStart(2, "0")}${sfx}.png`, w, h, ax, ay, x: p.x, y: p.y, leg: p.leg };
-      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, key: `${addr}:${x.id}`, vu, anim: { fps: animate ? A.fps : 0, n: A.n, ph, trail: tr } };
+      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, key: `${addr}:${x.id}`, look: key, vu, anim: { fps: animate ? A.fps : 0, n: A.n, ph, trail: tr } };
     }).filter(Boolean);
   }
 
   /** The creature a fighting unit faces, as its own depth-sorted world element: { z, el } or null. */
   creature(u, night) {
-    // on the hero's right and a little nearer the viewer, facing it (left side near the world's right end)
-    const side = this.cible(u);
-    if (side === null) return null;
-    const addr = u.a.address, s = this.file(addr) ?? u.a.demoAct;
-    const dummy = this.scene(addr) === "test" || recent(s.essai?.t, RESULT);
-    // creatures are drawn larger (BETE); the troll is wide: keep it off the hero (a mage's; nearer or further by class)
-    const sp = !dummy && (boss(s) ? "troll" : species(addr, s.tache ?? 0, Math.floor((s.coups ?? 0) / blowsFor(s)), clsOf(u.a)));
-    const off = dummy ? 44 : proche(u, boss(s) ? 115 : 70, sp, side);
-    const x = Math.round(u.x + side * off), y = Math.round(u.y + 16);
+    // on the hero's right and a little nearer the viewer, facing it (left side near the world's right end; ouCreature)
+    const c = this.ouCreature(u);
+    if (!c) return null;
+    const { side, x, fy: y, s, dummy, sp } = c;
     const kids = dummy ? this.dummy(u, s, night ? "-n" : "", side) : this.fight(u, s, night ? "-n" : "", side, sp);
     const el = div().absolute().left(x).top(y).w(0).h(0).children(kids);
     return { z: y + 3, el };
@@ -950,8 +1017,8 @@ export class Activites {
    *  natively along its leg with a bob while it walks (`pret`, turned the way it goes), else turned to the side with
    *  more raiders (the village's when none); `pret` / `attaque` alternating in a raid, today's HP in a bar over its head
    *  and, for an Elite or Legendary boss, an aura of its tier's colour at its feet; hit COUP ms after each damage tick.
-   *  Slain: the felled puff and a gold burst CHUTE ms, and its body (`touche`, dimmed) where it fell until midnight.
-   *  None in the demo. { z, el } or null. */
+   *  Slain: the felled puff and a gold burst CHUTE ms, then nothing until tomorrow's boss. None in the demo.
+   *  { z, el } or null. */
   geant(night, t = Date.now()) {
     if (!this.ecrit) return null;
     const r = this.boss(), b = bossDuJour(), sp = especeBoss(r.day), D = CREATURES[sp];
@@ -968,16 +1035,14 @@ export class Activites {
     };
     const out = [];
     if (r.fin) {
-      // its body where it fell, dimmed
-      out.push(sprite("touche", (el) => el.opacity(0.55)));
-      if (chute) { // felled: fades and rises in a puff, at the boss's size, in a gold burst
-        const q = D.touche;
-        out.push(image(`${CRE}/${sp}/touche${g}${sfx}.png`).absolute().left(-dir * 28 - q.ax * K).top(-q.ay * K).w(q.w * K).h(q.h * K)
-          .loop("opacity", { from: 0.9, to: 0, period: CHUTE }).loop("top", { from: -q.ay * K, to: -q.ay * K - 32, period: CHUTE }));
-        out.push(div().absolute().left(-dir * 28 - 24).top(-40).size(48).rounded_full().bg("#e8e2d0aa")
-          .loop("opacity", { from: 0.8, to: 0, period: CHUTE }));
-        out.push(...eclat(addr, e, Math.round((D.pret.h * K) / 2)));
-      }
+      if (!chute) return null; // gone once its fall is over, until tomorrow's boss
+      // felled: fades and rises in a puff, at the boss's size, in a gold burst
+      const q = D.touche;
+      out.push(image(`${CRE}/${sp}/touche${g}${sfx}.png`).absolute().left(-dir * 28 - q.ax * K).top(-q.ay * K).w(q.w * K).h(q.h * K)
+        .loop("opacity", { from: 0.9, to: 0, period: CHUTE }).loop("top", { from: -q.ay * K, to: -q.ay * K - 32, period: CHUTE }));
+      out.push(div().absolute().left(-dir * 28 - 24).top(-40).size(48).rounded_full().bg("#e8e2d0aa")
+        .loop("opacity", { from: 0.8, to: 0, period: CHUTE }));
+      out.push(...eclat(addr, e, Math.round((D.pret.h * K) / 2)));
     } else {
       // an Elite or Legendary boss stands in an aura of its tier's colour (halo.svg as a mask, a smaller one for its core)
       const pl = palier(r.day);
