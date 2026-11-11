@@ -143,6 +143,8 @@ const S = {
     slainN: (n) => `${n} slain`,
     streak: (n) => `streak ${n} ${n === 1 ? "day" : "days"}`,
     trophyTip: (total, streak) => `Raid bosses slain: ${total}\nDaily streak: ${streak} ${streak === 1 ? "day" : "days"} (consecutive days with a kill)`,
+    resetTip: "Click: reset today's boss to full HP",
+    resetBoss: "Reset boss?", yes: "Yes", no: "No",
     // village life
     treasury: (p) => `Valbrume treasury: ${p}% of account A left this week`,
     fair: (t) => `The fair: reset in ${t}`,
@@ -244,6 +246,8 @@ const S = {
     slainN: (n) => `${n} vaincu${n > 1 ? "s" : ""}`,
     streak: (n) => `série ${n} j`,
     trophyTip: (total, streak) => `Boss de raid terrassés : ${total}\nSérie : ${streak} jour${streak > 1 ? "s" : ""} d'affilée avec une victoire`,
+    resetTip: "Clic : rendre au boss du jour tous ses PV",
+    resetBoss: "Relancer le boss ?", yes: "Oui", no: "Non",
     treasury: (p) => `Trésor de Valbrume : ${p} % du compte A cette semaine`,
     fair: (t) => `La foire : réinitialisation dans ${t}`,
   },

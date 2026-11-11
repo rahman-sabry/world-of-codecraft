@@ -176,10 +176,10 @@ export const hhmm = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.
 // One boss a day (local midnight), its HP shared by every hero's raid: each successful subagent tool call (the hook's
 // subCoups) is 1 damage. Only the shown, live village writes these keys (Activites.degats).
 
-/** Calibrated on the person's subagents: a median 390 / mean 496 successful tool calls per weekday, so an ordinary
- *  working day fells the boss and a light one doesn't. */
-export const BOSS_HP = 300;
-export const BOSS = "wocc.boss"; // { day, hp, max, slain, slainAt, by (the slayer's terminal address), heros ({ name, race, cls } of its hero then) }
+/** Raised from 300 (calibrated on a median 390 / mean 496 successful subagent tool calls per weekday) once raids
+ *  gathered every hero on one boss. */
+export const BOSS_HP = 1000;
+export const BOSS = "wocc.boss"; // { day, hp, max, slain, slainAt, by (the slayer's terminal address), heros ({ name, race, cls } of its hero then), avant (wocc.trophees before the kill) }
 export const TROPHEES = "wocc.trophees"; // { total (bosses slain), streak (consecutive days with a kill), lastDay }
 /** The raid boss's species, rotating by date, and each one's names. */
 export const ESPECES = ["troll", "golem", "spectre", "gobelin"];
@@ -198,10 +198,23 @@ export const jour = (d) => `${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(
 export const veille = (day) => { const [y, m, d] = day.split("-").map(Number); return jour(new Date(y, m - 1, d - 1)); };
 /** The next local midnight after d (ms): the next boss. */
 export const minuit = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
-/** Today's boss as stored, or a fresh one at full HP when the stored one is another day's (or none yet). */
+/** Today's boss as stored, or a fresh one at full HP when the stored one is another day's (or none yet). A standing
+ *  record from a lower BOSS_HP reads lifted to it, the damage done kept (the village's degats writes it back). */
 export function bossDuJour(d = new Date()) {
   const day = jour(d), b = shared(BOSS);
-  return b?.day === day ? b : { day, hp: BOSS_HP, max: BOSS_HP, slain: false };
+  if (b?.day !== day) return { day, hp: BOSS_HP, max: BOSS_HP, slain: false };
+  return !b.slain && b.max < BOSS_HP ? { ...b, hp: BOSS_HP - (b.max - b.hp), max: BOSS_HP } : b;
+}
+/** The reset (the top bar's boss plaque): today's boss back to full HP, not slain; a kill today is undone in the
+ *  trophies, to the record stored with it (avant), else derived: total - 1, and the streak - 1 ending yesterday when it
+ *  was 2+, else none (a streak of 1 began today: whatever came before it was already broken). */
+export function remiseBoss(d = new Date()) {
+  const day = jour(d), b = shared(BOSS);
+  if (b?.day === day && b.slain) {
+    const T = shared(TROPHEES) ?? {}, s = (T.streak ?? 1) - 1;
+    setShared(TROPHEES, b.avant ?? { total: Math.max(0, (T.total ?? 1) - 1), streak: Math.max(0, s), lastDay: s > 0 ? veille(day) : null });
+  }
+  setShared(BOSS, { day, hp: BOSS_HP, max: BOSS_HP, slain: false });
 }
 /** The day's boss species (a hash of the date). */
 export const especeBoss = (day) => ESPECES[hash(`${day}:espece`) % ESPECES.length];

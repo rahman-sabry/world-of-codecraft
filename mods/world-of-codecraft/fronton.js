@@ -6,13 +6,14 @@
 // files exist (see readQuotas in kit.js); without them the header shows Heroes only. In the middle,
 // the district's banner and a parchment scroll with the district and quest. On the right,
 // the waiting-heroes button (click: go to the next one), then the hour plaque. After Heroes, today's raid boss (its HP,
-// slain in gold) and the trophies (bosses slain, daily streak), the trophies only when the bar has room for them.
+// slain in gold; a click asks to reset it) and the trophies (bosses slain, daily streak), the trophies only when the bar
+// has room for them.
 
 import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { spaces, agents, run, props, layout, nextCommand, window as appWindow } from "herdr";
 import { freshStat } from "./commande.js";
-import { VILLAGE, ART, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left, selectedAddress, bossDuJour, nomBoss, trophees, minuit, especeBoss, palier, serieEnJeu, PALIERS } from "./kit.js";
+import { VILLAGE, ART, district, clip, heroOf, heroTitle, hourName, hhmm, isNight, readQuotas, left, selectedAddress, bossDuJour, remiseBoss, nomBoss, trophees, minuit, especeBoss, palier, serieEnJeu, PALIERS } from "./kit.js";
 import { CREATURES } from "./creatures-data.js";
 import { P, DECO, TEXTE, bar, pic, txt, button, mark, banner } from "./ui.js";
 import { DEMO_SPACES } from "./demo.js";
@@ -81,17 +82,40 @@ export default class Fronton {
 
   /** Today's raid boss: its species (slain: felled), its HP (slain: in gold), its tier and name (an Elite or Legendary
    *  boss's HP in its tier's colour); the tooltip says the tier, who slew it, when the next one comes, and gives the
-   *  trophies when their plaque has no room (more). */
+   *  trophies when their plaque has no room (more). A click turns it into the reset's confirmation (confirme). */
   boss(more) {
+    if (this.confirme) return this.confirmation();
     const b = bossDuJour(this.now), p = palier(b.day), nom = nomBoss(b.day, p), reset = left(minuit(this.now)) || "?";
     const by = !b.slain ? null : b.heros ? heroTitle(b.heros)
       : b.by ? heroTitle(heroOf(b.by, agents().find((a) => a.address === b.by)?.program ?? { key: "claude" })) : null;
     const tip = (b.slain ? t("bossSlainTip", nom, by, reset) : t("bossTip", nom, b.hp, b.max, reset))
-      + (p ? `\n${t("tierTip", p, serieEnJeu(b.day))}` : "") + (more ? `\n\n${more}` : "");
+      + (p ? `\n${t("tierTip", p, serieEnJeu(b.day))}` : "") + `\n${t("resetTip")}` + (more ? `\n\n${more}` : "");
     const sp = especeBoss(b.day), pose = b.slain ? "touche" : "pret", D = CREATURES[sp][pose], k = Math.min(32 / D.w, 28 / D.h);
     const bete = image(`${ART}/creatures/${sp}/${pose}.png`).w(Math.round(D.w * k)).h(Math.round(D.h * k)).flex_none();
     return this.plaque("res-boss", bete, b.slain ? t("slain") : t("hp", b.hp, b.max), p ? `${t("tiers")[p]} · ${nomBoss(b.day, 0)}` : nom, tip, false,
-      b.slain ? P.goldHi : PALIERS[p] ?? P.cream);
+      b.slain ? P.goldHi : PALIERS[p] ?? P.cream)
+      .cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => {
+        const at = Date.now();
+        this.confirme = at;
+        cx.timer.after(5000, (cx) => { if (this.confirme === at) { this.confirme = null; cx.notify(); } }); // closes by itself
+        cx.notify();
+      });
+  }
+
+  /** The boss plaque asking "Reset boss? Yes / No" in place. Yes: today's boss back to full HP and a kill today undone
+   *  (kit.js remiseBoss; the village drops its raid and minions when it sees the HP rise). */
+  confirmation() {
+    const choix = (id, label, tone, oui) => div().id(id).h(18).px(8).flex().items_center().rounded(2).bg(P.enamel)
+      .border_1().border_color(P.goldLo).cursor_pointer().hover((s) => s.bg(P.enamelHi))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { if (oui) remiseBoss(new Date()); this.confirme = null; cx.notify(); })
+      .child(txt(label, 14, tone, 800));
+    return div().id("res-boss-remise").relative().flex_none().w(PW).h(40)
+      .child(pic("plaque", PW, 40).absolute().left(0).top(0))
+      .child(v_flex().absolute().left(6).right(6).top(2).bottom(2).items_center().justify_center().gap(1)
+        .child(txt(t("resetBoss"), 13, P.cream, 800).line_height(1.05).whitespace_nowrap())
+        .child(h_flex().gap(8).child(choix("boss-oui", t("yes"), P.goldHi, true)).child(choix("boss-non", t("no"), P.cream, false))));
   }
 
   /** The immersive-mode switch: swaps the village (big) and the terminal (below), in the same layout. */

@@ -138,6 +138,7 @@ export default class Place {
     this.mob = new Map(); // address -> { x, y, goal, legs: [{ a, b, t0, t1 }] }
     this.flanes = new Map(); // address -> { n, i, at }: an idle hero's stroll (spot index, arrival time)
     this.postes = new Map(); // address -> { n, goal, at }: a working hero's spot (arrival time, moves so far)
+    this.retours = new Map(); // address -> the goal a raider left for its place by the boss: it walks back there after
     this.timer = null;
     this.sig = "";
     this.vus = null; // key (address, or hero:subagent id) -> its frame and feet point on the last live render; null = next is a first one
@@ -248,7 +249,7 @@ export default class Place {
     const want = list.map((a) => {
       const h = a.demoHero ? { ...heroOf(a.address, a.program), race: RACE_FR[a.demoHero.split("-")[0]], cls: CLS_FR[a.demoHero.split("-")[1]] } : heroOf(a.address, a.program);
       // shells stroll like idle heroes; a working, blocked or done hero, or one in a raid, stays where it is (demo
-      // heroes: at their class building)
+      // heroes: at their class building; a raider other than the boss's first hero: at its place by the boss, below)
       const group = (a.status === "idle" && !this.act.melee(a.address)) || a.guard ? "flane" : a.demoHero ? WORK[h.cls] : "poste";
       if (group === "flane") {
         const w = this.flane(a.address, t);
@@ -283,6 +284,24 @@ export default class Place {
       taken.add(g.join());
       goals.set(u.a.address, g);
     }
+    // the raid: its boss comes beside its first hero (where that one stands or heads), every other raider walks to its
+    // place by the boss, and one that leaves the raid (or once the boss has fallen) walks back to the goal it left
+    const A = this.act.boss();
+    if (A && A.x === null) { // its first hero gone already: the next raider
+      A.lead = goals.has(A.lead) ? A.lead : [...this.act.raids.keys()].find((k) => goals.has(k)) ?? A.lead;
+      if (goals.has(A.lead)) this.act.poser(goals.get(A.lead));
+    }
+    for (const u of want) {
+      const addr = u.a.address, q = this.act.place(addr);
+      if (q) {
+        if (!this.retours.has(addr)) this.retours.set(addr, goals.get(addr));
+        taken.add(q.join());
+        goals.set(addr, q);
+      } else if (this.retours.has(addr)) {
+        if (u.group === "poste") { const g = libre(this.retours.get(addr), taken); taken.add(g.join()); goals.set(addr, g); }
+        this.retours.delete(addr);
+      }
+    }
     const out = [];
     const alive = new Set();
     for (const u of want) {
@@ -312,6 +331,7 @@ export default class Place {
     for (const k of [...this.mob.keys()]) if (!alive.has(k)) this.mob.delete(k);
     for (const k of [...this.flanes.keys()]) if (!want.some((u) => u.group === "flane" && u.a.address === k)) this.flanes.delete(k);
     for (const k of [...this.postes.keys()]) if (!alive.has(k)) this.postes.delete(k);
+    for (const k of [...this.retours.keys()]) if (!alive.has(k)) this.retours.delete(k);
     return out;
   }
 
@@ -690,7 +710,7 @@ export default class Place {
     const t = Date.now();
     const L = lieux(), { WORLD, TILES, FRONTS, EXT } = L;
     // another map: its heroes, strolls and work spots start afresh on its spots
-    if (this.carteId && this.carteId !== L.id) { this.mob.clear(); this.flanes.clear(); this.postes.clear(); }
+    if (this.carteId && this.carteId !== L.id) { this.mob.clear(); this.flanes.clear(); this.postes.clear(); this.retours.clear(); }
     this.carteId = L.id;
     const at = new Date(this.now);
     if (typeof props()?.heure === "number") at.setHours(props().heure, 0); // demo: another time of day
@@ -752,6 +772,8 @@ export default class Place {
     this.sig = this.frameSig(t);
     const things = units.map((u, i) => ({ z: u.y + 3, el: this.blink(u.a.address, els[i], t) }));
     for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); things.push(...this.act.sbiresDe(u, nightHeroes)); }
+    const geant = this.act.geant(nightHeroes); // the raid boss, one for every raider
+    if (geant) things.push(geant);
     const working = list.filter((a) => a.status === "working").length;
     this.amb.watch(cx, !hidden, { phase: sk.phase, wake: this.wake });
     const life = this.amb.things(nightHeroes, sk.phase, working, units);
