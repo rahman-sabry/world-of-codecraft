@@ -83,14 +83,28 @@ const RANGS = [[-1, 0, -16], [1, 0, 54], [-1, 0, 54], [1, 0, -86], [-1, 0, -86],
 const PRES = 60; // px kept between two raiders' places
 const VUS = "wocc.boss.vus"; // { address: the subCoups already counted as damage }, so a reload neither loses nor recounts
 
+// The gap (px) a hero of each class keeps from its enemy: from its feet to a raid boss's edge (geantDe); a minion or a
+// fight creature stands this much minus the mage's nearer (or further) than a mage has it (proche)
+export const ECART = { guerrier: 10, voleur: 15, artificier: 30, pretre: 45, mage: 50, rodeur: 65 };
+const ecartDe = (a) => ECART[a ? clsOf(a) : "mage"] ?? ECART.mage;
+
 /** A raid boss species' drawing: its scale k (the troll's height at GEANT, rounded to a half so an art px stays whole
- *  screen px), loin (px from the hero's feet to its feet: half its widest pose + 50) and large (that half width plus an
- *  apprentice's half body: no apprentice's feet that close to its x). */
-export function geantDe(sp) {
+ *  screen px), loin (px from the hero's feet to its feet: half its widest pose + the hero's class gap, ECART; ecart
+ *  defaults to a mage's) and large (that half width plus an apprentice's half body: no apprentice's feet that close to
+ *  its x). */
+export function geantDe(sp, ecart = ECART.mage) {
   const D = CREATURES[sp], T = CREATURES.troll;
   const k = Math.round((T.pret.h * GEANT * 2) / D.pret.h) / 2;
   const demi = Math.max(...Object.values(D).flatMap((p) => [p.ax, p.w - p.ax])) * k;
-  return { k, loin: Math.round(demi + 50), large: demi + 25 };
+  return { k, loin: Math.round(demi + ecart), large: demi + 25 };
+}
+
+/** How far (px, feet to feet, along x) a fight creature or a minion of species sp (at BETE) on side `side` stands from
+ *  hero u when a mage has it at off: moved by u's class gap minus the mage's (ECART), but never so near that its `pret`
+ *  box's near edge comes within 10 px of the hero's feet, unless off itself was (sprites may overlap, as in a raid). */
+function proche(u, off, sp, side) {
+  const P = CREATURES[sp].pret;
+  return Math.max(off + ecartDe(u.a) - ECART.mage, Math.min(off, (side > 0 ? P.ax : P.w - P.ax) * BETE + 10));
 }
 
 /** Where slot k stands by a hero standing at p: its offset, else mirrored, else pulled in (mirrored too), the first
@@ -143,7 +157,7 @@ export class Activites {
     this.slots = new Map(); // address -> Map(subagent id -> apprentice slot)
     this.raids = new Map(); // address -> { ids (running subagents) }: the heroes in the raid
     // the one raid boss: { lead (the hero it came beside), x, y (its feet; null until Place sets them, poser), side (1 =
-    // right of its lead), at (last blow), fin (its end, 0 = none), issue ("mort" | "fuite"), places (address -> [x, y]) }
+    // right of its lead), loin (from its lead's feet, geantDe), at (last blow), fin (its end, 0 = none), issue ("mort" | "fuite"), places (address -> [x, y]) }
     this.arene = null;
     this.sbires = new Map(); // address -> { rr (next to be hit), list: [{ id (its subagent), k (its place), coups, at (last blow), fin (its flight, 0 = none) }], felled: [{ k, at }] }
     this.abattu = null; // (address, day) when this village's damage slays the boss: the chronicle line (Place)
@@ -160,6 +174,15 @@ export class Activites {
   /** True while a hero fights: a raid, or minions standing or fleeing (it plays `work` and stays where it is). */
   melee(addr) {
     return Boolean(this.raid(addr)) || this.sbires.has(addr);
+  }
+
+  /** The side a hero standing at u fights towards (1 = right, -1 = left: its mirrored `work-g` frames, as hero work
+   *  frames face right): a raider the boss's, a hero with minions theirs (rangs); 1 when it does not fight. */
+  face(u) {
+    const addr = u.a.address, A = this.raid(addr) && this.arene;
+    if (A && A.x !== null) return A.x < u.x ? -1 : 1;
+    if (this.sbires.has(addr)) return rangs(u, sbire(), u.x > lieux().BASCULE ? -1 : 1).side;
+    return 1;
   }
 
   /** The raid boss, standing, or through its fall or flight (null = none; its end drops the raid). */
@@ -184,9 +207,9 @@ export class Activites {
     if (A?.fin) return false;
     const vifs = lus.map(([addr, s]) => [addr, this.subagents(s).map((x) => x.id)]).filter(([, ids]) => ids.length);
     if (!A) {
-      if (tue) { this.arene = { lead: tue, x: null, y: null, side: 1, at: 0, fin: now, issue: "mort", places: new Map() }; return true; }
+      if (tue) { this.arene = { lead: tue, x: null, y: null, side: 1, loin: 0, at: 0, fin: now, issue: "mort", places: new Map() }; return true; }
       if (mort || !vifs.length) return false;
-      A = this.arene = { lead: vifs[0][0], x: null, y: null, side: 1, at: 0, fin: 0, issue: null, places: new Map() };
+      A = this.arene = { lead: vifs[0][0], x: null, y: null, side: 1, loin: 0, at: 0, fin: 0, issue: null, places: new Map() };
     }
     if (mort) return Object.assign(A, { fin: now, issue: "mort" }), true;
     let changed = false;
@@ -199,11 +222,12 @@ export class Activites {
     return changed;
   }
 
-  /** Place sets the boss's feet once, beside its first hero standing (or heading) at g: half its widest pose + 50 px
-   *  off on the creature's side (right; left past BASCULE), 16 px nearer the viewer. */
+  /** Place sets the boss's feet once, beside its first hero standing (or heading) at g: half its widest pose + that
+   *  hero's class gap (ECART; loin, kept) off on the creature's side (right; left past BASCULE), 16 px nearer the viewer. */
   poser(g) {
     const A = this.arene, side = g[0] > lieux().BASCULE ? -1 : 1;
-    Object.assign(A, { side, x: Math.round(g[0] + side * geantDe(especeBoss(bossDuJour().day)).loin), y: Math.round(g[1] + 16) });
+    const { loin } = geantDe(especeBoss(bossDuJour().day), ecartDe(this.list?.find((a) => a.address === A.lead)));
+    Object.assign(A, { side, loin, x: Math.round(g[0] + side * loin), y: Math.round(g[1] + 16) });
   }
 
   /** Where a hero of the raid, not its first, stands by the boss (kept while it raids; null = where it is): the first
@@ -214,8 +238,8 @@ export class Activites {
     const A = this.boss();
     if (!A || A.x === null || A.lead === addr || !this.raids.has(addr)) return null;
     if (A.places.has(addr)) return A.places.get(addr);
-    const { loin, large } = geantDe(especeBoss(bossDuJour().day));
-    const pris = [[A.x - A.side * loin, A.y - 16], ...A.places.values()];
+    const { loin, large } = geantDe(especeBoss(bossDuJour().day), ecartDe(this.list?.find((a) => a.address === addr)));
+    const pris = [[A.x - A.side * A.loin, A.y - 16], ...A.places.values()];
     const libre = (q) => walkable(q) && q[1] > 60 && q[1] < lieux().WORLD.h - 15 // in the strip's view, head to feet
       && pris.every((o) => Math.hypot(o[0] - q[0], o[1] - q[1]) >= PRES);
     const pts = RANGS.map(([c, px, dy]) => [Math.round(A.x - c * A.side * (loin + px)), A.y + dy]);
@@ -560,7 +584,7 @@ export class Activites {
     const drawn = subs.filter((x) => slots.has(x.id)).sort((p, q) => slots.get(p.id) - slots.get(q.id));
     // the slots by the hero's goal and, on a walk, by its starting point
     // a raid boss's footprint, or the minions' (their side, then): no apprentice stands there
-    const sb = this.sbires.has(addr) && rangs(m.x, m.y, sbire(), side);
+    const sb = this.sbires.has(addr) && rangs({ ...u, x: m.x, y: m.y }, sbire(), side);
     if (sb) side = sb.side;
     const A = this.raid(addr) && this.arene.x !== null ? this.arene : null;
     if (A) side = A.x < m.x ? -1 : 1; // the boss's side: the apprentices keep to the other
@@ -572,7 +596,8 @@ export class Activites {
       const k = slots.get(x.id);
       const tr = trail(m.legs, starts[i], ends[i], SLOTS[k][2]);
       const p = pos(tr, t), leg = p.leg && (p.leg.a[0] !== p.leg.b[0] || p.leg.a[1] !== p.leg.b[1]) ? p.leg : null;
-      const name = leg ? walkAnim(leg.b[0] - leg.a[0], leg.b[1] - leg.a[1]) : WORKS.has(x.act) ? "work" : "idle";
+      // working by a raid boss or minions (on the creature's side), it faces them: the mirrored set on the left
+      const name = leg ? walkAnim(leg.b[0] - leg.a[0], leg.b[1] - leg.a[1]) : !WORKS.has(x.act) ? "idle" : raid && side < 0 ? "work-g" : "work";
       const key = KINDS[hash(`${addr}:${x.id}`) % KINDS.length];
       const A = HEROES[key]?.anims?.[name];
       if (!A) return null;
@@ -606,9 +631,11 @@ export class Activites {
     if (sc !== "combat" && !dummy) return null;
     // on the hero's right and a little nearer the viewer, facing it (left side near the world's right end)
     const side = u.x > lieux().BASCULE ? -1 : 1;
-    const off = dummy ? 44 : boss(s) ? 115 : 70; // creatures are drawn larger (BETE); the troll is wide: keep it off the hero
+    // creatures are drawn larger (BETE); the troll is wide: keep it off the hero (a mage's; nearer or further by class)
+    const sp = !dummy && (boss(s) ? "troll" : species(addr, s.tache ?? 0, Math.floor((s.coups ?? 0) / blowsFor(s)), clsOf(u.a)));
+    const off = dummy ? 44 : proche(u, boss(s) ? 115 : 70, sp, side);
     const x = Math.round(u.x + side * off), y = Math.round(u.y + 16);
-    const kids = dummy ? this.dummy(u, s, night ? "-n" : "", side) : this.fight(u, s, night ? "-n" : "", side);
+    const kids = dummy ? this.dummy(u, s, night ? "-n" : "", side) : this.fight(u, s, night ? "-n" : "", side, sp);
     const el = div().absolute().left(x).top(y).w(0).h(0).children(kids);
     return { z: y + 3, el };
   }
@@ -625,11 +652,10 @@ export class Activites {
   }
 
   /** The creature (drawn at its own feet point), its blows and the puff of the last one felled. */
-  fight(u, s, sfx, side) {
+  fight(u, s, sfx, side, sp) {
     const addr = u.a.address;
     const h = this.hits.get(addr) ?? { coups: s.coups ?? 0, at: 0, felled: [] };
     const B = blowsFor(s);
-    const sp = boss(s) ? "troll" : species(addr, s.tache ?? 0, Math.floor((s.coups ?? 0) / B), clsOf(u.a));
     const D = CREATURES[sp];
     if (!D) return [];
     const g = side > 0 ? "" : "-g";
@@ -728,7 +754,7 @@ export class Activites {
     const addr = u.a.address, o = this.sbires.get(addr);
     if (!o || u.leg) return [];
     const sp = sbire(), D = CREATURES[sp];
-    const { side, pts } = rangs(u.x, u.y, sp, u.x > lieux().BASCULE ? -1 : 1);
+    const { side, pts } = rangs(u, sp, u.x > lieux().BASCULE ? -1 : 1);
     const g = side > 0 ? "" : "-g", sfx = night ? "-n" : "";
     const now = Date.now();
     const sprite = (pose, extra, gg = g) => {
@@ -774,16 +800,16 @@ export class Activites {
 /** The species of today's boss's minions. */
 const sbire = () => { const sp = especeBoss(bossDuJour().day); return SBIRE[sp] ?? sp; };
 
-/** Where a hero standing at (x, y) has its minions (species sp) stand: the first PLACES on walkable ground whose `pret`
+/** Where hero u standing at (u.x, u.y) has its minions (species sp) stand: the first PLACES (dx by its class, proche) on walkable ground whose `pret`
  *  boxes at BETE overlap none of those taken, on its creature's side (side0) unless the other side has room for more;
  *  cramped (fewer than SBIRES), the rest from the first free PLACES whatever the ground. { side, pts, loin, large }:
  *  loin and large mark the zone apprentices keep off, as a raid boss's (geantDe). */
-function rangs(x, y, sp, side0) {
-  const P = CREATURES[sp].pret, W = P.w * BETE, H = P.h * BETE;
+function rangs(u, sp, side0) {
+  const { x, y } = u, P = CREATURES[sp].pret, W = P.w * BETE, H = P.h * BETE;
   const at = (side, sol) => {
     const pts = [];
     for (const [dx, dy] of PLACES) {
-      const q = [x + side * dx, y + dy];
+      const q = [x + side * proche(u, dx, sp, side), y + dy];
       if (pts.length < SBIRES && (!sol || walkable(q)) && pts.every((o) => Math.abs(o[0] - q[0]) >= W || Math.abs(o[1] - q[1]) >= H)) pts.push(q);
     }
     return pts;

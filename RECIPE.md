@@ -163,7 +163,10 @@ the clock. The art is original: it imitates no existing game.
     golem, spectre; other classes: their district's beasts, `DISTRICT` in activite.js). Each
     successful edit or command is a blow (hit pose + flash), 4 fell it (puff) and the next one comes;
     3+ failed tools in a task bring the forest troll, a boss of 8 blows. A failed tool hits
-    the hero (red flash, "Ouch!");
+    the hero (red flash, "Ouch!"). A mage's creature stands 70 px off (the troll 115); other classes nearer or
+    further by their class gap minus the mage's (`ECART`, see the raid), held back only where the near edge of the
+    creature's `pret` box would come within 10 px of the hero's feet (`proche` in activite.js; never further than a
+    mage's for that): sprites may overlap, swings and lunges included, as by the raid boss;
   - running tests: a training dummy beside the hero, struck while they run; the result stays
     5 s: knocked over + "Tests passed!", or "Tests failing";
   - compacting: sits cross-legged (`rest`), sparks orbit, a crystal pulses;
@@ -198,22 +201,24 @@ the clock. The art is original: it imitates no existing game.
     that hero stands or is heading (`poser`, from place.js `units`), and stays on that spot until the raid ends. That
     first hero plays `work` where it stands and never moves on (a strolling idle hero stops where it is, as when it
     turns working; it strolls again after the raid). Every other hero that starts raiding while the boss is up walks
-    to a place by it (`place` in activite.js, kept while it raids; `RANGS`): the boss's other side at the first
-    hero's distance, then a second row 70 px in front on each side (the first hero's side first), then 70 px behind,
+    to a place by it (`place` in activite.js, kept while it raids; `RANGS`): the boss's other side at its own class
+    distance (as the first hero's, below), then a second row 70 px in front on each side (the first hero's side first), then 70 px behind,
     then the same three rows 110 px further out; each on walkable ground inside the 400 px strip, 60 px from every
     other raider's place, off the boss's footprint, with walkable ground 70 px further out for its apprentices (else
     without that room, else the nearest free walkable point within 400 px). Rows 70 px apart keep each raider's
     apprentices (6 px in front to 30 px behind it) out of the next row's. The walk is an ordinary walk (road legs,
-    the frame timer, the camera following a selected hero); the hero then plays `work` there. Hero work frames have
-    one facing (Herdr cannot flip an image and there is no mirrored `work` set), so a raider faces the boss only by
-    where it stands. A hero whose subagents all end leaves the raid: the first one stays where it is, another walks
+    the frame timer, the camera following a selected hero); the hero then plays `work` there, facing the boss: hero
+    work frames face right and Herdr cannot flip an image, so a raider whose boss stands on its left (the boss's x
+    below its own) plays the mirrored set `work-g` instead (activite.js `face`, read by place.js `anim`; the first
+    hero too, past `BASCULE`). Its apprentices playing `work` turn the same way. A hero whose subagents all end leaves the raid: the first one stays where it is, another walks
     back to the goal it left for its place (place.js `retours`). The boss stays where it is while any raider is
     left. The raid lives in memory, as before (a reload starts it afresh beside the first raider found). Each
     species is drawn as tall as the troll at 2× its fight size (`GEANT`: 4×4 screen px per art px), the factor computed
     from creatures-data heights and rounded to a half so an art px stays whole screen px (`geantDe` in activite.js):
     troll 2× (184 px), golem 3.5× (175), spectre 3.5× (189), goblin 3.5× (196); its feet are its widest pose's half
-    width + 50 px from the hero's (troll 170, golem 197, spectre 183, goblin 194; the apprentices keep its half width
-    + 25 px clear) from the first raider's, on the creature's side (right; left past x 2700, the map's `BASCULE`) and 16 px nearer the viewer, `pret` / `attaque` alternating,
+    width + the first raider's class gap from that hero's (`ECART` in activite.js, keyed by class: warrior 10, rogue
+    15, artificer 30, priest 45, mage 50, ranger 65 px; for a mage: troll 170, golem 197, spectre 183, goblin 194; the
+    apprentices keep its half width + 25 px clear), on the creature's side (right; left past x 2700, the map's `BASCULE`) and 16 px nearer the viewer, `pret` / `attaque` alternating,
     depth-sorted by its feet, with the day's HP in a bar over its head; drawn once (`geant`), not per hero. A poll that
     deals damage from any raider makes it flinch (`touche` and an impact flash, 900 ms). At 0 HP it falls once where it
     stands: the felled puff at its size and a gold burst (a gold ring opening and 10 sparkles rising, 1.2 s), the
@@ -227,13 +232,15 @@ the clock. The art is original: it imitates no existing game.
     up to 3), of the day's species (golem, spectre, goblin; a troll day brings goblins, three trolls are too wide),
     drawn at a fight creature's size (`BETE` 1.5x), `pret` / `attaque` alternating, each with its 4 blow pips. They
     stand on the hero's open side (`rangs`: the creature's side unless the other one has room for more): the first
-    places of `PLACES` (80 px in front, 170 px behind, 170 px further in front, then spares) on walkable ground whose
+    places of `PLACES` (a mage's: 80 px in front, 170 px behind, 170 px further in front, then spares; other classes
+    nearer or further as their fight creature, `proche`) on walkable ground whose
     `pret` boxes overlap none taken; the apprentices keep to the other side and off their zone, as in a raid. Each
     successful subagent tool call (the same `subCoups` deltas, which no longer hit a slain boss) is a blow on the next
     minion in turn (`touche` and a flash, 900 ms); 4 fell it (the felled puff, 1.2 s) and a fresh one stands in its
     place. A minion whose subagent ends flees like the boss (turns, walks 150 px off, fades, 1.2 s), and a newer
     subagent waiting past the 3 takes the free place; when all end, all flee. The hero plays `work` and stays where it
-    stands, its scene waits. No HP, no trophies, no streak, no chronicle line, nothing stored; at midnight they go and
+    stands, its scene waits; it faces its minions as a raider faces the boss (`work-g` when `rangs` puts them on its
+    left), and so do its apprentices playing `work`. No HP, no trophies, no streak, no chronicle line, nothing stored; at midnight they go and
     the new day's raid starts. None in the demo, or for shells.
     **Champion's crown:** the hero whose subagent dealt the last blow wears a small gold crown (art/couronne.svg,
     13 × 9) over its head until midnight: in the village (a child of its unit, so it walks and sorts with it; above its
@@ -523,7 +530,8 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   `bake_map.py` (with `mapbake/`) bakes a map from its layout in `layouts/`.
 - **Art** (`art/`):
   - heroes: 30 race×class sprites with `idle`, `rest`, `work` and 4-way walk frames,
-    plus night-graded copies;
+    plus night-graded copies; `walk_dr` / `walk_ul` and `work-g` (fighting towards the left) are exact horizontal
+    mirrors made by `sync_heroes.py` (`--mirrors` remakes them from the frames already in `art/heros/`, no source);
   - the baked world: day and night tiles, front cut-outs for depth, the minimap, per look (`monde/`,
     `monde-hiver/`); the snow wheels `neige-*.svg`;
   - UI chrome: PNGs at 2×;

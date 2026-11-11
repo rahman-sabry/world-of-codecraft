@@ -343,6 +343,7 @@ export default class Place {
     else if ([...this.invocations.values()].some((s) => s.hero === u.a.address && Date.now() - s.t0 < CAST)) name = "work"; // summoning
     else if (this.act.melee(u.a.address)) name = "work"; // fighting the raid boss or its minions
     else name = (u.a.status === "working" && this.act.anim(u.a.address)) || (u.a.status === "working" ? "work" : "idle");
+    if (name === "work" && this.act.face(u) < 0) name = "work-g"; // facing the raid boss or its minions on its left
     const info = H?.anims?.[name];
     if (info) return { name, info, frames: true };
     return { name: "stand", info: H?.stand ?? { w: 50, h: 85, ax: 25, ay: 83 }, frames: false };
