@@ -686,6 +686,16 @@ export default class Place {
     return out;
   }
 
+  /** Falling water (a map's CHUTES, in a look with `chute`): two frames of foam streaks (chute-0/1.png in the look's
+   *  folder, tools/col_chute.py) over the baked waterfall, swapped by a pair of native opacity loops; dimmed at night. */
+  chutes(nightK) {
+    if (!look().chute) return [];
+    const M = monde();
+    return (lieux().CHUTES ?? []).map(({ at: [x, y], w, h }, k) => div().absolute().left(x).top(y).w(w).h(h).opacity(1 - 0.55 * nightK)
+      .child(image(`${M}/chute-${k}-1.png`).absolute().left(0).top(0).w(w).h(h).loop("opacity", { from: 7, to: -6, period: 280, easing: "linear" }))
+      .child(image(`${M}/chute-${k}-0.png`).absolute().left(0).top(0).w(w).h(h).loop("opacity", { from: -6, to: 7, period: 280, easing: "linear" })));
+  }
+
   hitboxes() {
     return Object.entries(lieux().BUILDINGS).map(([k, b]) => {
       const r = RECRUIT[k];
@@ -951,6 +961,7 @@ export default class Place {
       .children(TILES.map((tl) => image(`${M}/jour-${tl.k}.png`).absolute().left(tl.x).top(0).w(tl.w).h(WORLD.h)))
       .when(nightK > 0, (el) => el.children(TILES.map((tl) => image(`${M}/nuit-${tl.k}.png`).absolute().left(tl.x).top(0).w(tl.w).h(WORLD.h).opacity(nightK))))
       .children(this.glows(nightK))
+      .children(this.chutes(nightK))
       .children(this.hitboxes())
       .children(things.map((th) => th.el))
       .children(this.smoke());

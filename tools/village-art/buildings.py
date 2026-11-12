@@ -958,16 +958,18 @@ def col_well(): return recolor(well(), COL_PIERRE)
 @bld('col-noticeboard')
 def col_noticeboard(): return recolor(noticeboard(), COL_PIERRE)
 
-def falaise(v, seed, H, Lh=62, notch=0.0, rock=True, water=False):
+def col_falaise(v, seed, H, Lh=62, notch=0.0, rock=True, water=False, bout=False):
     """A cliff segment along the iso diagonal (d = (x - y)/sqrt2 from -Lh to Lh, n = (x + y)/sqrt2 towards the
     viewer), its foot at n ~ 0 (the anchor): a jagged face leaning back as it rises, blocky jags (lit +y facets, dark +x
-    ones), a talus of rubble at its foot, a crest of height ~H tapering at both ends so neighbours overlap; notch > 0
-    cuts a slot for a waterfall at d = 0 (its water: 'water', alone when not 'rock')."""
+    ones), a talus of rubble at its foot, a jagged crest of height ~H dropping a little at both ends so neighbours
+    overlap into one ridge ('bout': the end of a range, dropping low); notch > 0 cuts a slot for a waterfall at d = 0
+    (its water: 'water', alone when not 'rock')."""
     def nz(D, Z, sc, sd):
         return vnoise2(D, Z, sc, seed * 10 + sd)
     def crest(D):
-        tap = np.clip((Lh - np.abs(D)) / 26, 0, 1) ** 0.7
-        c = H * (0.74 + 0.30 * (nz(D, D * 0, 16, 1) - 0.5) * 2 * 0.5) * (0.30 + 0.70 * tap)
+        tap = np.clip((Lh - np.abs(D)) / (26 if bout else 22), 0, 1) ** 0.7
+        c = H * (0.72 + 0.36 * (nz(D, D * 0, 14, 1) - 0.5) + 0.16 * (nz(D, D * 0, 5, 6) - 0.5))
+        c = c * ((0.30 + 0.70 * tap) if bout else (0.5 + 0.5 * tap))
         return c - notch * 34 * np.clip(1 - np.abs(D) / 16, 0, 1) ** 1.3
     def front(X, Y, Z):
         D = (X - Y) / S2
@@ -976,6 +978,7 @@ def falaise(v, seed, H, Lh=62, notch=0.0, rock=True, water=False):
         f = f + 3.5 * hash3(np.floor(X / 5).astype(np.int64), np.floor(Y / 5).astype(np.int64), np.floor(Z / 9).astype(np.int64), seed)
         f = f + 2.5 * (((Z + 13 * nz(D, D * 0, 40, 4)) % 29) < 3.0)  # ledges
         f = f + 14 * np.clip(1 - Z / 17, 0, 1) ** 1.5  # talus
+        f = f - 12 * np.clip(1 - (Lh - np.abs(D)) / 22, 0, 1)  # the ends tuck back behind the neighbours
         return f - notch * 10 * np.clip(1 - np.abs(D) / 13, 0, 1)
     R = (Lh + 56) / S2 + 1
     bb = (-R, R, -R, R, 0, H * 1.2 + 4)
@@ -983,7 +986,8 @@ def falaise(v, seed, H, Lh=62, notch=0.0, rock=True, water=False):
         def solid(X, Y, Z):
             D, Nn = (X - Y) / S2, (X + Y) / S2
             top = crest(D) + 6 * hash3(np.floor(X / 6).astype(np.int64), np.floor(Y / 6).astype(np.int64), np.zeros_like(X, dtype=np.int64), seed + 7) - 1.3 * np.clip(-Nn - 12, 0, None)
-            return (np.abs(D) < Lh) & (Nn < front(X, Y, Z)) & (Nn > -56) & (Z < top)
+            fin = Lh - 18 * nz(Z, Nn, 9, 8)  # a ragged end, not a cut
+            return (np.abs(D) < fin) & (Nn < front(X, Y, Z)) & (Nn > -56) & (Z < top)
         mat = lambda X, Y, Z: np.where(Z < 9 + 5 * hash3(np.floor(X / 3).astype(np.int64), np.floor(Y / 3).astype(np.int64), np.zeros_like(X, dtype=np.int64), seed + 3), SCREE, GRANITE).astype(np.uint8)
         v.put(bb, solid, mat)
     if water:
@@ -1003,27 +1007,27 @@ def falaise(v, seed, H, Lh=62, notch=0.0, rock=True, water=False):
 
 @bld('col-falaise-a')
 def col_falaise_a():
-    v = Vol(-82, 82, -82, 82, 0, 210); falaise(v, 1, 150); return v
+    v = Vol(-82, 82, -82, 82, 0, 210); col_falaise(v, 1, 150); return v
 @bld('col-falaise-b')
 def col_falaise_b():
-    v = Vol(-82, 82, -82, 82, 0, 210); falaise(v, 2, 172); return v
+    v = Vol(-82, 82, -82, 82, 0, 210); col_falaise(v, 2, 172); return v
 @bld('col-falaise-c')
 def col_falaise_c():
-    v = Vol(-82, 82, -82, 82, 0, 210); falaise(v, 3, 128); return v
+    v = Vol(-82, 82, -82, 82, 0, 210); col_falaise(v, 3, 128, bout=True); return v
 @bld('col-cascade')
 def col_cascade():
-    v = Vol(-82, 82, -82, 82, 0, 230); falaise(v, 4, 182, notch=1.0, water=True); return v
+    v = Vol(-82, 82, -82, 82, 0, 230); col_falaise(v, 4, 182, notch=1.0, water=True); return v
 @bld('col-cascade-eau')
 def col_cascade_eau():
     """The waterfall's water alone: the mask of its live streaks (tools/col_chute.py)."""
-    v = Vol(-82, 82, -82, 82, 0, 230); falaise(v, 4, 182, notch=1.0, rock=False, water=True); return v
+    v = Vol(-82, 82, -82, 82, 0, 230); col_falaise(v, 4, 182, notch=1.0, rock=False, water=True); return v
 
 @bld('col-mine')
 def col_mine():
     """The mine: a lower cliff with a portal facing +y (towards the lower left), timber posts and a lintel under a
     rune, a lantern; rails running out of it on sleepers with an ore cart, a spoil heap, a barrel and crates."""
     v = Vol(-82, 82, -82, 82, 0, 170)
-    falaise(v, 5, 120)
+    col_falaise(v, 5, 120)
     # the rock hood round the portal, the gallery carved into it, its dark back
     v.put((-26, 26, -30, 10, 0, 52), lambda X, Y, Z: (np.abs(X) < 25) & (Y > -30) & (Y < 9) & (Z < 50 - 7 * hash3(np.floor(X / 5).astype(np.int64), np.floor(Y / 5).astype(np.int64), np.zeros_like(X, dtype=np.int64), 9) - np.abs(X) * 0.6), GRANITE)
     v.box(-10, 10, -22, 10, 0, 26, 0)
@@ -1060,7 +1064,7 @@ def col_mine():
     v.capsule((-19, 11, 17.5), (-13, 11, 20), 0.9, METAL)
     return v
 
-def pont(front_only=False):
+def col_pont_vol(front_only=False):
     """A humped stone bridge along x over a stream flowing along y: an arch, a flagged deck (z ~7 to 9, ramps down to
     the ground at both ends), low parapets. front_only: its front (+y) parapet alone, the mask of its cut-outs."""
     v = Vol(-50, 50, -14, 14, 0, 26)
@@ -1078,9 +1082,9 @@ def pont(front_only=False):
     return v
 
 @bld('col-pont')
-def col_pont(): return pont()
+def col_pont(): return col_pont_vol()
 @bld('col-pont-parapet')
-def col_pont_parapet(): return pont(True)
+def col_pont_parapet(): return col_pont_vol(True)
 
 @bld('col-rocher')
 def col_rocher():
