@@ -25,6 +25,9 @@ LOOKS = {
                        "sand": "neige", "sea": "froide"},
                   herbe=dict(sec=(1.03, 1.03, 1.01), dru=(0.92, 0.96, 1.04), brins="#eef3f8"), fleurs=False),
 }
+# Highpass Hold's ground kinds (mapbake/sol.py col-*) in winter: snow over the rock, the scree and the gravel road, the
+# stream iced at its edges
+LOOKS["hiver"]["sol"].update({"col-roc": "neige", "col-eboulis": "neige", "col-gravier": "neige", "col-torrent": "glace"})
 
 THEME = os.environ.get("THEME", "")
 assert THEME == "" or THEME in LOOKS, f"unknown THEME {THEME!r} (unset for summer, or one of {', '.join(LOOKS)})"
