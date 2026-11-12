@@ -910,6 +910,191 @@ def nets():
         v.ell(xx, 6.8, 2.2, 1, 0.8, 0.9, CLOTH_Y)
     return v
 
+# ---------------------------------------------------------------- Highpass Hold (maps/col.json)
+# A dwarven town in a mountain pass: granite cliffs along the north (segments along the screen's horizontal, the iso
+# diagonal x = -y, their face towards the viewer), a waterfall falling from a notch into a stream, a mine carved into
+# the cliff with rails and a cart, a stone bridge, boulders, and stone-and-slate variants of the village's buildings
+# (the same models with their plaster and tiled roofs swapped: same sprites' boxes, so the layout's offsets hold).
+# Palette ids 150-159 (Vol voxels are uint8: ids stay under 256; other maps use 140-149, 160-181, 200+).
+from engine import vnoise2
+
+def t_rock(P, n, p, lv):
+    """Natural granite: horizontal strata, broken blocks, vertical cracks, lichen; turf on the ledges turned up."""
+    z = P[:, 2]
+    st = np.sin(z * 0.42 + (blob3(P, 7.0, 151) - 0.5) * 5.0 + (blob3(P, 19.0, 157) - 0.5) * 6.0)
+    off = (st > 0.85) * 0.5 - (st < -0.92) * 0.7
+    off = off + (blob3(P, 5.0, 152) - 0.5) * 1.1 + (blob3(P, 1.3, 153) - 0.5) * 0.5
+    q = np.floor(P / np.array([4.0, 4.0, 13.0])).astype(np.int64)
+    off = np.where(hash3(q[:, 0], q[:, 1], q[:, 2], 154) > 0.94, off - 1.5, off)
+    swap = np.where((n[:, 2] > 0.55) & (blob3(P, 2.2, 155) > 0.3), p.get('turf', 0), 0)
+    swap = np.where((swap == 0) & (blob3(P, 1.6, 156) > 0.965), MOSS_R, swap)
+    return off, swap
+
+TURF = M(152, '#6f9440', t_leaf, hs=26, light=1.3, dark=0.32)              # alpine turf on ledges
+GRANITE = M(150, '#868a92', t_rock, params={'turf': TURF}, hs=16, light=1.24)  # cliff rock
+ASHLAR = M(151, '#a0979b', t_stone, params={'ch': 6, 'bl': 11, 'moss': 40, 'mossh': 10}, hs=22)  # dressed granite
+SCREE = M(153, '#7c7c84', t_noise, params={'amp': 2.2, 'sc': 1.2}, hs=16)  # rubble at the cliff's foot
+S2 = np.sqrt(2)
+
+def recolor(v, table):
+    """The model's materials swapped (a stone-and-slate variant): voxels of each key become its value."""
+    lut = np.arange(256, dtype=np.uint8)
+    for a, b in table.items():
+        lut[a] = b
+    v.m = lut[v.m]
+    return v
+
+COL_PIERRE = {PLASTER: ASHLAR, ROOF_R: ROOF_S, ROOF_B: ROOF_S, 51: ASHLAR}
+@bld('col-tavern')
+def col_tavern(): return recolor(tavern(), COL_PIERRE)
+@bld('col-townhall')
+def col_townhall(): return recolor(townhall(), COL_PIERRE)
+@bld('col-barn')
+def col_barn(): return recolor(barn(), COL_PIERRE)
+@bld('col-barracks')
+def col_barracks(): return recolor(barracks(), COL_PIERRE)
+@bld('col-well')
+def col_well(): return recolor(well(), COL_PIERRE)
+@bld('col-noticeboard')
+def col_noticeboard(): return recolor(noticeboard(), COL_PIERRE)
+
+def col_falaise(v, seed, H, Lh=62, notch=0.0, rock=True, water=False, bout=False):
+    """A cliff segment along the iso diagonal (d = (x - y)/sqrt2 from -Lh to Lh, n = (x + y)/sqrt2 towards the
+    viewer), its foot at n ~ 0 (the anchor): a jagged face leaning back as it rises, blocky jags (lit +y facets, dark +x
+    ones), a talus of rubble at its foot, a jagged crest of height ~H dropping a little at both ends so neighbours
+    overlap into one ridge ('bout': the end of a range, dropping low); notch > 0 cuts a slot for a waterfall at d = 0
+    (its water: 'water', alone when not 'rock')."""
+    def nz(D, Z, sc, sd):
+        return vnoise2(D, Z, sc, seed * 10 + sd)
+    def crest(D):
+        tap = np.clip((Lh - np.abs(D)) / (26 if bout else 22), 0, 1) ** 0.7
+        c = H * (0.72 + 0.36 * (nz(D, D * 0, 14, 1) - 0.5) + 0.16 * (nz(D, D * 0, 5, 6) - 0.5))
+        c = c * ((0.30 + 0.70 * tap) if bout else (0.5 + 0.5 * tap))
+        return c - notch * 34 * np.clip(1 - np.abs(D) / 16, 0, 1) ** 1.3
+    def front(X, Y, Z):
+        D = (X - Y) / S2
+        f = 8 * (nz(D, Z, 22, 2) - 0.5) + 10 * (nz(D, D * 0, 34, 3) - 0.5) - 0.24 * Z
+        f = f + 8 * hash3(np.floor(X / 13).astype(np.int64), np.floor(Y / 13).astype(np.int64), np.floor(Z / 38).astype(np.int64), seed + 11)  # buttresses
+        f = f + 3.5 * hash3(np.floor(X / 5).astype(np.int64), np.floor(Y / 5).astype(np.int64), np.floor(Z / 9).astype(np.int64), seed)
+        f = f + 2.5 * (((Z + 13 * nz(D, D * 0, 40, 4)) % 29) < 3.0)  # ledges
+        f = f + 14 * np.clip(1 - Z / 17, 0, 1) ** 1.5  # talus
+        f = f - 12 * np.clip(1 - (Lh - np.abs(D)) / 22, 0, 1)  # the ends tuck back behind the neighbours
+        return f - notch * 10 * np.clip(1 - np.abs(D) / 13, 0, 1)
+    R = (Lh + 56) / S2 + 1
+    bb = (-R, R, -R, R, 0, H * 1.2 + 4)
+    if rock:
+        def solid(X, Y, Z):
+            D, Nn = (X - Y) / S2, (X + Y) / S2
+            top = crest(D) + 6 * hash3(np.floor(X / 6).astype(np.int64), np.floor(Y / 6).astype(np.int64), np.zeros_like(X, dtype=np.int64), seed + 7) - 1.3 * np.clip(-Nn - 12, 0, None)
+            fin = Lh - 18 * nz(Z, Nn, 9, 8)  # a ragged end, not a cut
+            return (np.abs(D) < fin) & (Nn < front(X, Y, Z)) & (Nn > -56) & (Z < top)
+        mat = lambda X, Y, Z: np.where(Z < 9 + 5 * hash3(np.floor(X / 3).astype(np.int64), np.floor(Y / 3).astype(np.int64), np.zeros_like(X, dtype=np.int64), seed + 3), SCREE, GRANITE).astype(np.uint8)
+        v.put(bb, solid, mat)
+    if water:
+        zl = float(crest(np.zeros(1))[0]) + 3  # the lip
+        def sheet(X, Y, Z):  # a sheet hugging the slot's face, stepping over its jags and ledges
+            D, Nn = (X - Y) / S2, (X + Y) / S2
+            hw = 7 + 4 * (1 - Z / zl) + 0.8 * np.sin(Z * 0.35 + D)
+            f = front(X, Y, Z)
+            return (np.abs(D) < hw) & (Nn >= f - 0.5) & (Nn < f + 3.2) & (Z < zl) & (Z > 1)
+        streak = lambda X, Y, Z: np.where(np.sin((X - Y) * 1.3 + 4 * hash3(np.floor((X - Y) / 2).astype(np.int64), np.floor(Z / 11).astype(np.int64), np.zeros_like(X, dtype=np.int64), 5)) > 0.35, FOAM, WATER).astype(np.uint8)
+        v.put(bb, sheet, streak)
+        rng = np.random.default_rng(seed)
+        for k in range(16):  # spray and foam where it lands
+            d = rng.uniform(-11, 11); nn = rng.uniform(-6, 9)
+            r = rng.uniform(2.2, 4.2)
+            v.ell((nn + d) / S2, (nn - d) / S2, rng.uniform(1, 7), r, r, r * 0.8, FOAM)
+
+@bld('col-falaise-a')
+def col_falaise_a():
+    v = Vol(-82, 82, -82, 82, 0, 210); col_falaise(v, 1, 150); return v
+@bld('col-falaise-b')
+def col_falaise_b():
+    v = Vol(-82, 82, -82, 82, 0, 210); col_falaise(v, 2, 172); return v
+@bld('col-falaise-c')
+def col_falaise_c():
+    v = Vol(-82, 82, -82, 82, 0, 210); col_falaise(v, 3, 128, bout=True); return v
+@bld('col-cascade')
+def col_cascade():
+    v = Vol(-82, 82, -82, 82, 0, 230); col_falaise(v, 4, 182, notch=1.0, water=True); return v
+@bld('col-cascade-eau')
+def col_cascade_eau():
+    """The waterfall's water alone: the mask of its live streaks (tools/col_chute.py)."""
+    v = Vol(-82, 82, -82, 82, 0, 230); col_falaise(v, 4, 182, notch=1.0, rock=False, water=True); return v
+
+@bld('col-mine')
+def col_mine():
+    """The mine: a lower cliff with a portal facing +y (towards the lower left), timber posts and a lintel under a
+    rune, a lantern; rails running out of it on sleepers with an ore cart, a spoil heap, a barrel and crates."""
+    v = Vol(-82, 82, -82, 82, 0, 170)
+    col_falaise(v, 5, 120)
+    # the rock hood round the portal, the gallery carved into it, its dark back
+    v.put((-26, 26, -30, 10, 0, 52), lambda X, Y, Z: (np.abs(X) < 25) & (Y > -30) & (Y < 9) & (Z < 50 - 7 * hash3(np.floor(X / 5).astype(np.int64), np.floor(Y / 5).astype(np.int64), np.zeros_like(X, dtype=np.int64), 9) - np.abs(X) * 0.6), GRANITE)
+    v.box(-10, 10, -22, 10, 0, 26, 0)
+    v.put((-10, 10, -22, 10, 26, 32), lambda X, Y, Z: (Z < 26 + 6 * np.sqrt(np.clip(1 - (X / 10) ** 2, 0, 1))), 0)
+    v.box(-10, 10, -25, -22, 0, 32, COAL)
+    for xx in (-12.5, 10):  # posts, a lintel, a gold rune plate over it
+        v.box(xx, xx + 2.5, 6, 10, 0, 27, TIMBER)
+    v.box(-14, 14, 5.5, 10.5, 26.5, 30.5, TIMBER)
+    v.box(-5, 5, 8, 10.6, 32.5, 38, GOLD)
+    v.box(-3.4, 3.4, 10.2, 10.8, 33.8, 36.6, COAL)
+    v.box(-0.6, 0.6, 10.4, 11, 33.2, 37.2, GOLD)
+    lantern(v, 15, 11, 22); flamme(v, 15, 11, 22)
+    # rails on sleepers
+    for yy in np.arange(-20, 66, 4.5):
+        v.box(-6, 6, yy, yy + 2, 0, 1.2, PLANK)
+    for xx in (-4.2, 3.2):
+        v.box(xx, xx + 1, -21, 66, 1.2, 2.3, METAL)
+    # the ore cart
+    cy = 34
+    v.box(-5.6, 5.6, cy - 8, cy + 8, 3.5, 13, PLANK)
+    v.box(-4.4, 4.4, cy - 6.8, cy + 6.8, 5, 13.5, 0)
+    for zz in (4.5, 11):
+        v.box(-5.8, 5.8, cy - 8.2, cy + 8.2, zz, zz + 1.1, METAL)
+    for yy in (cy - 4.5, cy + 4.5):
+        for xx in (-6, 6):
+            v.ell(xx, yy, 3, 0.8, 2.8, 2.8, METAL)
+    v.ell(0, cy, 12.5, 4.6, 7, 3.4, STONE_D)
+    for (ox, oy, oz) in ((-1.6, cy - 3, 15), (1.8, cy + 2, 14.6), (0.3, cy + 4.6, 14), (-2.4, cy + 1.6, 14.2)):
+        v.ell(ox, oy, oz, 1.1, 1.1, 1, GOLD)
+    # spoil heap, a barrel, crates, a pick against the hood
+    v.put((10, 40, 12, 44, 0, 16), lambda X, Y, Z: ((X - 25) / 13) ** 2 + ((Y - 27) / 14) ** 2 + (Z / 12) ** 2 <= 1 - 0.3 * hash3(np.floor(X / 2).astype(np.int64), np.floor(Y / 2).astype(np.int64), np.floor(Z / 2).astype(np.int64), 11), SCREE)
+    barrel(v, -14, 20, 4.2, 11); crate(v, -22, 28, 8); crate(v, -21.5, 28.5, 6.5, z=8)
+    v.capsule((-17, 11, 0), (-16, 11, 19), 0.7, WOOD_L)
+    v.capsule((-19, 11, 17.5), (-13, 11, 20), 0.9, METAL)
+    return v
+
+def col_pont_vol(front_only=False):
+    """A humped stone bridge along x over a stream flowing along y: an arch, a flagged deck (z ~7 to 9, ramps down to
+    the ground at both ends), low parapets. front_only: its front (+y) parapet alone, the mask of its cut-outs."""
+    v = Vol(-50, 50, -14, 14, 0, 26)
+    w = 9
+    zd = lambda X: np.where(np.abs(X) < 32, 6.5 + 2.5 * (1 - (X / 32) ** 2), 6.5 * np.clip((46 - np.abs(X)) / 14, 0, 1))
+    arch = lambda X, Z: (X / 14) ** 2 + (Z / 5.8) ** 2 < 1
+    if not front_only:
+        v.put((-46, 46, -w, w, 0, 10), lambda X, Y, Z: (Z < zd(X) - 1.2) & ~arch(X, Z), ASHLAR)
+        v.put((-46, 46, -w, w, 0, 10), lambda X, Y, Z: (Z >= zd(X) - 1.2) & (Z < zd(X)), STONE)
+        for xx in (-15, 15):  # cutwaters at the springing
+            v.put((xx - 5, xx + 5, w - 1, w + 4, 0, 6), lambda X, Y, Z, xx=xx: (np.abs(X - xx) < 3.5 - (Y - w) * 0.9) & (Z < 6 - (Y - w)), ASHLAR)
+    for yy in ((w - 2,) if front_only else (-w, w - 2)):
+        v.put((-38, 38, yy, yy + 2, 0, 16), lambda X, Y, Z: (Z >= zd(X)) & (Z < zd(X) + 4.2), ASHLAR)
+        v.put((-39, 39, yy - 0.3, yy + 2.3, 0, 16), lambda X, Y, Z: (Z >= zd(X) + 4.2) & (Z < zd(X) + 5.4), STONE_D)
+    return v
+
+@bld('col-pont')
+def col_pont(): return col_pont_vol()
+@bld('col-pont-parapet')
+def col_pont_parapet(): return col_pont_vol(True)
+
+@bld('col-rocher')
+def col_rocher():
+    """Granite boulders, lichen on their tops."""
+    v = Vol(-22, 22, -20, 20, 0, 28)
+    for (x, y, rx, ry, rz, sd) in ((-3, -2, 12, 9, 15, 1), (9, 6, 7, 6, 8, 2), (-11, 9, 5, 4.5, 5, 3)):
+        v.put((x - rx - 2, x + rx + 2, y - ry - 2, y + ry + 2, 0, rz + 2),
+              lambda X, Y, Z, x=x, y=y, rx=rx, ry=ry, rz=rz, sd=sd: ((X - x) / rx) ** 2 + ((Y - y) / ry) ** 2 + (Z / rz) ** 2 <= 1 - 0.3 * hash3(np.floor(X / 4).astype(np.int64), np.floor(Y / 4).astype(np.int64), np.floor(Z / 4).astype(np.int64), 20 + sd), GRANITE)
+    return v
+
 # ---------------------------------------------------------------- the marsh (maps/marais.json, Mirewick)
 # The marsh water is drawn flat like the ground but reads as lying PROF units below the land: boardwalks and stilt
 # houses stand on piles in it, their decks at land level or above. Materials 120-139.

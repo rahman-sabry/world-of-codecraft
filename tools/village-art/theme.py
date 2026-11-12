@@ -46,6 +46,10 @@ LOOKS = {
                     sol={"grass": "forge-basalte"}, lave="braises",
                     herbe=dict(sec=(1.0, 0.98, 0.96), dru=(0.94, 0.95, 1.03), brins="#463c42"), fleurs=False),
 }
+# Highpass Hold's ground kinds (mapbake/sol.py col-*) in winter: snow over the rock, the scree and the gravel road, the
+# stream iced at its edges
+LOOKS["hiver"]["sol"].update({"col-roc": "neige", "col-eboulis": "neige", "col-gravier": "neige", "col-torrent": "glace"})
+
 # The marsh's autumn fog (maps/marais.json): rust and ochre foliage (tex.MATERIAUX "brume", in buildings.py), dun grass
 # and greyer water (mapbake/sol.py), and a muted cold daylight: 'teinte' grades the day composite in bake_map.py
 # (desaturation, a cold multiply, a mix towards the fog's colour). The mod drifts fog bands over it (look flag brume).

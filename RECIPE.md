@@ -505,6 +505,29 @@ the clock. The art is original: it imitates no existing game.
   base `automne`, `materiaux` `printemps`: fresh greens, the giants in pink and white blossom, cherry-pink trees, petals
   on the paths), and the look flag `petales`: a few petals drift over the view (place.js `petales`, as the snow's wheels,
   `art/petale-{0,1,2}.svg`, 3 petals each, 240 px apart, each window swaying 18 px on a native `left` loop).
+- **Highpass Hold (`carte-col.js`, `maps/col.json`; « Fort du Haut-Col »):** a dwarven town in a mountain pass, the
+  world x -1000 to 4000 (origine [1500, 200]). Granite cliffs run along the north from x -320 to 3320, their feet at
+  v 140 to 160 and their crests up in the north band, pines on the plateau above. West to east: an alpine meadow (the
+  west lair) with two hay fields, the barn, the mage tower; a waterfall falling from a notch in the cliff into a pool and
+  a fast stream running south across the village under a humped stone bridge (`DECK`); the forge, the mine carved into
+  the cliff behind it (`mine`, a building: its portal under a gold rune, a lantern, rails on sleepers with an ore cart,
+  a spoil heap), the tavern, the market on the square under the town hall, the temple, the barracks; past the cliffs'
+  end a second meadow (the east lair). Models (buildings.py, palette ids 150-159: voxels are uint8): `col-falaise-a`,
+  `-b`, `-c` (cliff segments along the iso diagonal, a ragged ridge when overlapped; `-c` drops low, the range's ends),
+  `col-cascade` (a cliff with the waterfall's slot, streaked water, spray at its foot) and `col-cascade-eau` (its water
+  alone, the live streaks' mask), `col-mine`, `col-pont` and `col-pont-parapet` (the front cut-out's mask), `col-rocher`
+  (granite boulders), and stone-and-slate variants of the tavern, town hall, barn, barracks, well and notice board
+  (`col-<model>`: the same models, their plaster, red and blue tiles and barn boards swapped for dressed granite and
+  slate, so Valbrume's offsets). Ground kinds (sol.py, 90-99): `col-roc` (granite slabs, grass in the joints: a band at
+  the cliffs' foot), `col-eboulis` (scree under the cliffs), `col-gravier` (the gravel road, `interdit`) and
+  `col-torrent` (the fast stream, a water kind: streaks long down the screen, white caps). Heroes never stand on the
+  stream, the pool, the cliffs or the mine (`EAU`: a line, an ellipse, two polygons). Lairs: west x -700 to -265, east
+  3240 to 3690, y 298 to 326 (ring check 99 to 100% at a 176 px half width). `BASCULE` 3700. Looks: `ete`
+  (`art/col-ete/`) and `hiver` (`art/col-hiver/`: theme.py's winter, its `sol` extended to the col kinds: snow with the
+  rock showing, packed snow on the gravel, the stream iced at its edges; the fall itself freezes, its water the winter
+  ice). Look flag `chute` (summer): the waterfall flows, two frames of foam streaks (`art/col-ete/chute-0-{0,1}.png`,
+  `tools/col_chute.py`, drawn where the baked water shows) over it at the map's `CHUTES` box, swapped by a pair of
+  native opacity loops (280 ms), dimmed at night (place.js `chutes`); trout leap in the pool and the stream in summer.
 - **Mirewick (`carte-marais.js`, `maps/marais.json`):** a marsh town, the world x -1000 to 4000 (origine [1500, 200]).
   West to east: a meadow (the west lair), the barn and its plot, a zigzag boardwalk over a reedy inlet, the mage tower,
   the forge, a boardwalk over the creek that runs through the town from the north band to the marsh, the town hall, the

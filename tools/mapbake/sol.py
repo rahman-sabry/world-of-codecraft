@@ -201,6 +201,25 @@ def rivage_mer(out, mer, d, x, y, u, v):
     out[surf] = EC[np.clip(np.round(5 + b[surf] * 0.9 - (d[surf] > 2.6)), 0, 6).astype(int)]
 
 
+# ---------------------------------------------------------------- Highpass Hold (maps/col.json): mountain ground
+# Granite slabs (col-roc), scree (col-eboulis), a gravel road (col-gravier) and a fast stream (col-torrent, one of the
+# water kinds: its banks, foam and shallows). Winter (theme.py LOOKS hiver sol): snow with the rock and stones showing
+# through, packed snow over the gravel, the stream iced at its edges with open water in its channel. Kind ids 90-99.
+from engine import ramp  # noqa: E402
+from extras import GR  # noqa: E402  (snow in winter)
+from tex import ICE_RAMP  # noqa: E402
+
+KINDS.update({
+    "col-roc": dict(i=90, bruit=1.4),
+    "col-eboulis": dict(i=91, bruit=1.2),
+    "col-gravier": dict(i=92, bruit=0.8, interdit=True),
+    "col-torrent": dict(i=93, bruit=0.5, eau=True, interdit=True),
+})
+NOMS.update({k["i"]: n for n, k in KINDS.items()})
+RK = ramp("#8a8890", hs=16, light=1.26)
+GV = ramp("#a89f90", hs=18, light=1.2)
+TR = ramp("#3a8aae", hs=12, light=1.4, dark=0.32)
+_P = 32
 # ---------------------------------------------------------------- the marsh (maps/marais.json)
 # Murky water (algae flecks, lily pads with a few flowers), mud, and on the look 'brume' (autumn fog) a dun grass,
 # greyer water and rusty pads. Its edge (marais_bords) replaces the river's foam and shallows by a silty margin and
@@ -327,6 +346,77 @@ def _i(a):
     return np.floor(a).astype(np.int64)
 
 
+def _neige(kind):
+    return LOOK["sol"].get(kind) == "neige"
+
+
+def _roc(x, y, sx, sy, macro=0):
+    """Granite slabs: blocks of 9 iso units, each its own shade, dark joints with grass in some, lit rims."""
+    gx = np.floor(x / 9); gy = np.floor((y + (gx % 2) * 4) / 9)
+    fx, fy = x - gx * 9, (y + (gx % 2) * 4) - gy * 9
+    z0 = np.zeros_like(_i(x))
+    h = hash3(_i(gx) % 16, _i(gy) % 16, z0, 401)
+    lv = 2.8 + (h - 0.5) * 1.6 + (vnoise2(x, y, 6, 402, _P) - 0.5) * 1.2 + macro * 0.5
+    lv = lv + (fx < 1.2) * 0.9 + (fy < 1.2) * 0.6 - (fx > 7.8) * 0.9 - (fy > 7.8) * 0.7
+    joint = (fx < 0.6) | (fy < 0.6) | (hash3(_i(x) % _P, _i(y) % _P, z0, 403) > 0.985)
+    lv = np.where(joint, 0.5, lv) + BAYER[sy % 4, sx % 4] * 0.3
+    c = RK[np.clip(np.round(lv), 0, 6).astype(int)]
+    if _neige("col-roc"):
+        snow = GR[np.clip(np.round(lv * 0.3 + 3.6 + BAYER[sy % 4, sx % 4] * 0.4), 0, 6).astype(int)]
+        cover = joint | (vnoise2(x, y, 10, 405, _P) + (h - 0.5) * 0.5 > 0.42)
+        return np.where(cover[..., None], snow, c)
+    herbe = joint & (hash3(_i(gx) % 16, _i(gy) % 16, z0 + 1, 404) > 0.45)
+    return np.where(herbe[..., None], GR[np.clip(np.round(lv + 1.6), 0, 6).astype(int)], c)
+
+
+def _eboulis(x, y, sx, sy, macro=0):
+    """Scree: stones of 3 iso units in staggered rows, lit on their top left, shadowed under, dark gaps."""
+    s = 3.0
+    z0 = np.zeros_like(_i(x))
+    gx = np.floor(x / s)
+    yy = y + hash3(_i(gx) % 32, z0, z0, 411) * s
+    gy = np.floor(yy / s)
+    fx, fy = x - gx * s, yy - gy * s
+    h = hash3(_i(gx) % 32, _i(gy) % 32, z0, 412)
+    lv = 3.0 + (h - 0.5) * 2.0 + macro * 0.5 + (fx + fy < 1.6) * 1.0 - (fx + fy > 4.2) * 1.2
+    gap = (fx < 0.5) | (fy < 0.5)
+    lv = np.where(gap, 0.6 + (vnoise2(x, y, 4, 413, _P) > 0.5) * 0.6, lv) + BAYER[sy % 4, sx % 4] * 0.3
+    c = RK[np.clip(np.round(lv - 0.3), 0, 6).astype(int)]
+    if _neige("col-eboulis"):
+        snow = GR[np.clip(np.round(lv * 0.25 + 3.8 + BAYER[sy % 4, sx % 4] * 0.4), 0, 6).astype(int)]
+        cover = gap | (vnoise2(x, y, 8, 414, _P) + (h - 0.5) * 0.4 > 0.38)
+        return np.where(cover[..., None], snow, c)
+    return c
+
+
+def _gravier(x, y, sx, sy, macro=0):
+    """A gravel road: fine grit, a few pebbles and darker ruts; winter: packed snow, the gravel in the ruts."""
+    z0 = np.zeros_like(_i(x))
+    h = hash3(_i(x * 2) % 64, _i(y * 2) % 64, z0, 421)
+    lv = 3.0 + (vnoise2(x, y, 7, 422, _P) - 0.5) * 1.2 + macro * 0.5 + (h > 0.86) * 1.2 - (h < 0.12) * 1.1
+    lv = lv - (vnoise2(x, y, 3, 423, _P) < 0.3) * 0.6 + BAYER[sy % 4, sx % 4] * 0.3
+    c = GV[np.clip(np.round(lv), 0, 6).astype(int)]
+    if _neige("col-gravier"):
+        snow = GR[np.clip(np.round(lv * 0.5 + 2.4), 0, 6).astype(int)]
+        return np.where((vnoise2(x, y, 6, 424, _P) < 0.34)[..., None], GV[np.clip(np.round(lv - 1), 0, 6).astype(int)], snow)
+    return c
+
+
+def _torrent(x, y, sx, sy, macro=0):
+    """Fast water: streaks drawn long down the screen (the stream runs down it), white caps; winter: ice at its
+    edges and over slow pools, open dark water down its channel."""
+    st = vnoise2(sx.astype(np.float32), sy.astype(np.float32) / 7.0, 3, 431) * 0.75 + vnoise2(x, y, 6, 432, _P) * 0.25
+    lv = 2.0 + (vnoise2(x, y, 12, 433, _P) - 0.5) * 1.2 + macro * 0.4 + (st > 0.6) * 1.4 + (st > 0.7) * 1.4
+    lv = lv + BAYER[sy % 4, sx % 4] * 0.3
+    c = np.where((st > 0.76)[..., None], EC[np.clip(np.round(lv - 1), 0, 6).astype(int)], TR[np.clip(np.round(lv), 0, 6).astype(int)])
+    if LOOK["sol"].get("col-torrent") == "glace":
+        ice = ICE_RAMP[np.clip(np.round(3.2 + (vnoise2(x, y, 9, 434, _P) > 0.6) * 1.4 + BAYER[sy % 4, sx % 4] * 0.3), 0, 6).astype(int)]
+        ouvert = vnoise2(x, y, 14, 435, _P) > 0.52
+        return np.where(ouvert[..., None], TR[np.clip(np.round(lv - 0.8), 0, 6).astype(int)], ice)
+    return c
+
+
+TEX.update({"col-roc": _roc, "col-eboulis": _eboulis, "col-gravier": _gravier, "col-torrent": _torrent})
 def _parsemer(col, x, y, sx, sy, seuil, graine):
     """Single fallen leaves (autumn) or petals (spring) sprinkled over a ground, one iso unit each."""
     on = hash3(_i(x), _i(y), _i(x) * 0, graine) > seuil
