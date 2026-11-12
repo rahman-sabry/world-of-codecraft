@@ -1458,7 +1458,7 @@ def fonderie():
     v.put((-8, 8, 10, 13, 2, 24), lambda X, Y, Z: (np.abs(X) <= 6) & (Z < 13 + np.sqrt(np.clip(36 - X ** 2, 0, None))), FONTE)
     v.put((-9, 9, 15, 17.5, 0, 24), lambda X, Y, Z: (np.abs(np.hypot(X, np.maximum(Z - 13, 0)) - 7.4) < 1.3) & (Z > 1), FER)
     v.box(10, 17.5, -3, 3, 8, 13, 0); v.box(10, 13, -2.5, 2.5, 8, 13, FONTE)  # a peep hole on the east face
-    v.box(-12, 0, -12, 0, 38, 132, BRIQUE)
+    v.box(-12, 0, -12, 0, 24, 132, BRIQUE)  # from the base's top: the dome is lower than 38 under its outer corners
     for zz in (60, 88, 116):
         v.box(-13, 1, -13, 1, zz, zz + 2.5, FER)
     v.box(-14, 2, -14, 2, 128, 133, FER)
