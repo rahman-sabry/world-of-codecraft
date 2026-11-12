@@ -6,3 +6,5 @@ mods/world-of-codecraft/jsconfig.json
 tools/village-art/assets/
 tools/village-art/.venv/
 tools/village-art/assets-hiver/
+tools/village-art/assets-forge/
+tools/village-art/assets-braises/

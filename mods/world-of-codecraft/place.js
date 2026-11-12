@@ -642,13 +642,31 @@ export default class Place {
     return out;
   }
 
+  /** Live glows at night; a glow with `jour` (0 to 1) glows by day too, at least that strong (a forge, lava under a
+   *  mountain); one with `looks` only in those looks (banked embers keep fewer). */
   glows(nightK) {
-    if (nightK <= 0) return [];
-    return lieux().GLOWS.map((g) => {
-      const s = g.size;
+    const id = look().id;
+    return lieux().GLOWS.filter((g) => (!g.looks || g.looks.includes(id)) && Math.max(nightK, g.jour ?? 0) > 0).map((g) => {
+      const s = g.size, k = Math.max(nightK, g.jour ?? 0);
       return div().absolute().left(g.at[0] - s / 2).top(g.at[1] - s / 2).size(s).rounded_full().bg(`${g.color}22`)
-        .opacity(nightK).loop("opacity", { from: 0.35 * nightK, to: nightK, period: g.period });
+        .opacity(k).loop("opacity", { from: 0.35 * k, to: k, period: g.period });
     });
+  }
+
+  /** Banked embers (a look's `braises`): a few sparks drifting up over the view, as the snow falls (neige): each wheel
+   *  (braise-k.svg, a few sparks on its rim) turns natively and shows only its left-hand sector, where the rim goes up,
+   *  so the sparks rise and never sink. Sparser than the snow: wheels every 260 px across and 330 px down. */
+  braises(vw, vh) {
+    if (!look().braises) return [];
+    const out = [];
+    for (let y = -40, r = 0; y < vh; y += 330, r++) {
+      for (let x = -20 + (r % 2) * 130, k = 0; x < vw; x += 260, k++) {
+        out.push(div().absolute().left(x).top(y).w(100).h(390).overflow_hidden()
+          .child(svg(`${ART}/braise-${(k + r) % 3}.svg`).absolute().left(0).top(-45).size(480).text_color("#ffa040")
+            .spin(26000 + ((k * 7 + r * 5) % 9) * 1700)));
+      }
+    }
+    return out;
   }
 
   hitboxes() {
@@ -951,6 +969,7 @@ export default class Place {
         .on_hover((over, cx) => { if (!over && this.drag) { this.drag = null; cx.notify(); } })
         .child(world)
         .children(this.neige(vw, this.h ?? WORLD.h))
+        .children(this.braises(vw, this.h ?? WORLD.h))
         .child(this.chronicle()));
   }
 }

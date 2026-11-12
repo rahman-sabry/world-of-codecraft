@@ -445,6 +445,28 @@ the clock. The art is original: it imitates no existing game.
   so a stomp finds its 120 to 220 px. Looks `ete` (`art/port-ete/`, `#1f5d8e`) and `hiver` (`art/port-hiver/`, snow,
   `#28506e`); fish leap in both (the sea stays open water in winter). `BASCULE` 4700 (300 px short of the east edge,
   Valbrume's rule).
+- **Emberdeep / Braisefonde (`carte-forge.js`, `maps/forge.json`, `tools/village-art/forge.py`):** a dwarven forge
+  city in a cavern hall under a mountain, the world x -1000 to 4000 (`origine` [1500, 200]). West to east: a flagstone
+  side hall (the west lair, x -650 to -200, y 300 to 330) with a smelter; the barn, a lava channel under a stone bridge
+  (`forge-pont`), the mage tower, the forge workshop, the tavern; the Great Forge (`forge-grandforge`: a stepped dais,
+  a brick furnace with a fire-rune band and an iron-banded flue, a bellows, a crucible hung from a gantry and fed by a
+  lava runnel from a third channel's pool, casting moulds, a great anvil) and the market square; the town hall, the
+  temple, a second channel and bridge, the barracks, the east side hall (the east lair, x 3240 to 3690, y 315 to 340)
+  with the other smelter. Basalt-column walls (`forge-falaise`, `forge-rochers`), carved rune pillars, stalagmites,
+  ore, ore carts and braziers; a crusted lava lake fills the south band. The village's models are the same, carved in
+  dark stone and iron by the looks' palette (`tex.MATERIAUX` `forge` / `braises`: plaster to dressed stone, timber to
+  iron, slate, copper and verdigris roofs, no moss, windows lit by firelight day and night). Ground kinds (sol.py):
+  the cavern floor is the `grass` kind in these looks (`sol: {grass: forge-basalte}`, a look variant found in `TEX`,
+  so the scatter stands on it), `forge-dalles` (flagstones with faint rune inlays), `forge-chemin` (the road,
+  `interdit`) and `forge-lave` (`bloque`: never walkable in the bake's checks; `lave`: a crust rim, plates crusting over
+  away from the shores, a rock face where the ground drops to it). `bake_map.py` lights the lava over both bakes where
+  nothing stands on it (`forge.lueur`: its ground colour kept, a posterised bloom and a warmed grade at night, the north
+  band darkening towards its top). No `DECK` (lieux.js has one deck line, there are two bridges): each channel's `EAU`
+  is left open where the deck crosses it, and the road walks the deck. Looks `forge` (`art/forge-forge/`, `#1c1618`) and
+  `braises` (`art/forge-braises/`, `#161214`: dimmer fires and lava, more crust, `braises: true` sparks rising over the
+  view: place.js `braises`, art/braise-{0,1,2}.svg wheels whose left sector shows, where the rim goes up, every 260 px;
+  glows with `looks: ["forge"]` drop). Glows with `jour` (0 to 1) glow by day too. No fish, hens, stag or sparrows
+  (`STAG` and `MOINEAUX` null skip them in ambiance.js). `BASCULE` 3700.
 - **Map and look switches** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande`
   block), two rows of the same style: ‹ map name › cycles the maps (store key `wocc.map`, default `"valbrume"`) and
   ‹ look name › the shown map's looks (`wocc.look`, default its first); a row with a single choice shows only the

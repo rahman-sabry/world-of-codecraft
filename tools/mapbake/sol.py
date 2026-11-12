@@ -17,6 +17,7 @@ from compose import seg_dist
 from engine import vnoise2, hash3, BAYER, hx
 from extras import ground_tex, sable_mouille, DR, WR, SH, EC
 from theme import LOOK
+import forge
 from .carte import s2w, Erreur
 
 # The ground kinds: index in the kind map, default edge noise, and what the edges do: interdit (nothing stands on it:
@@ -31,9 +32,15 @@ KINDS = {
     "crop": dict(i=4, bruit=0.0, sillon=True),
     "sand": dict(i=5, bruit=0.6, plage=True),
     "sea": dict(i=6, bruit=0.3, eau=True, interdit=True, mer=True),
+    # Emberdeep (maps/forge.json, village-art/forge.py): flagstones, the worn road, and lava (bloque: never walkable;
+    # lave: its crust rim and rock face, lit over the bakes by bake_map.py)
+    "forge-dalles": dict(i=7, bruit=0.8),
+    "forge-chemin": dict(i=8, bruit=0.8, interdit=True),
+    "forge-lave": dict(i=9, bruit=0.5, interdit=True, bloque=True, lave=True),
 }
 NOMS = {k["i"]: n for n, k in KINDS.items()}
 TEX = {}  # kind -> f(x, y, sx, sy, macro): RGB float, for kinds extras.ground_tex does not know
+TEX.update(forge.TEX)  # also look variants: a kind's LOOK["sol"] variant named here wins over the kind's texture
 GRASS = KINDS["grass"]["i"]
 
 
@@ -104,7 +111,7 @@ def sol(c):
     for name, k in KINDS.items():
         m = kind == k["i"]
         if m.any():
-            tex = TEX.get(name) or functools.partial(ground_tex, name)
+            tex = TEX.get(LOOK["sol"].get(name)) or TEX.get(name) or functools.partial(ground_tex, name)
             mac = mac_all[m]
             t1 = tex(x[m], y[m], u[m], v[m], macro=mac)
             t2 = tex(x[m] + 11, y[m] + 19, u[m], v[m], macro=mac)
@@ -142,6 +149,8 @@ def sol(c):
     out[sh] = out[sh] * 0.72 + WR[5] * 0.28
     if mer.any():
         rivage_mer(out, mer, -eau, x, y, u, v)
+    for i in kinds_ou("lave"):
+        forge.lave_bords(out, kind == i, ~np.isin(kind, kinds_ou("lave")), u, v)
     for i in kinds_ou("sillon"):
         fe = (kind == i) & ~(np.roll(kind, 1, 0) == i)
         out[fe] = DR[1]
