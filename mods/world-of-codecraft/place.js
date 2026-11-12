@@ -985,14 +985,11 @@ export default class Place {
     things.push(...this.act.coupDe(t, 1 - 0.3 * nightK)); // its basic blow on one party member
     const traces = this.traces(units, apps, t);
     things.push(...traces);
+    const boxes = units.map((u) => { const { info } = this.anim(u); return { y: u.y, x0: u.x - info.ax, y0: u.y - info.ay, w: info.w }; });
+    const derriere = new Set([...life, ...apps, ...traces].flatMap((th) => (th.box ? behind(th.box) : [])));
     for (const fr of FRONTS) {
-      const over = units.some((u) => {
-        const an = this.anim(u);
-        const x0 = u.x - an.info.ax, y0 = u.y - an.info.ay;
-        return u.y + 3 < fr.z && x0 < fr.x + fr.w && x0 + an.info.w > fr.x && y0 < fr.y + fr.h && u.y > fr.y;
-      });
-      const walkerBehind = [...life, ...apps, ...traces].some((th) => th.box && behind(th.box).includes(fr));
-      if (over || walkerBehind) things.push({ z: fr.z, el: this.front(fr, nightK) });
+      const over = boxes.some((b) => b.y + 3 < fr.z && b.x0 < fr.x + fr.w && b.x0 + b.w > fr.x && b.y0 < fr.y + fr.h && b.y > fr.y);
+      if (over || derriere.has(fr)) things.push({ z: fr.z, el: this.front(fr, nightK) });
     }
     things.push(...this.etendards(nightK));
     things.sort((p, q) => p.z - q.z);
