@@ -19,7 +19,7 @@ import { HEROES } from "./heros-data.js";
 import { lieux, market } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
-import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart, etoiles, cadence } from "./activite.js";
+import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart, etoiles, cycleDe, jauge, BLESSE, BLESSE_LENT, BLESSE_PAS } from "./activite.js";
 import { effet, FX, FX_ETAPES } from "./effets.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
@@ -336,7 +336,8 @@ export default class Place {
       else if (m.goal.join() !== goal.join()) {
         const pt = portail(m, t), here = pt ? { x: pt.at[0], y: pt.at[1] } : this.pos(m, t);
         m.portail = this.sauts.delete(addr) ? { t0: t, a: [here.x, here.y], b: goal } : null; // asked to teleport (sauter)
-        const speed = HEROES[`${RACE_EN[u.h.race]}-${CLS_EN[u.h.cls]}`]?.speed ?? 42;
+        // a wounded hero (under BLESSE HP) walks slower
+        const speed = (HEROES[`${RACE_EN[u.h.race]}-${CLS_EN[u.h.cls]}`]?.speed ?? 42) * ((this.act.vie(addr) ?? 100) < BLESSE ? BLESSE_PAS : 1);
         const pts = m.portail ? [] : route([here.x, here.y], goal);
         m.legs = [];
         let t0 = t;
@@ -408,12 +409,20 @@ export default class Place {
       const fige = this.act.etourdi(a.address, t); // stunned (Activites.secousse): its frame frozen as it was then
       // fighting: a swing, then a pause (cadence); a working hero with no foe loops its `work` as ever
       const bat = an.name.startsWith("work") && this.act.face(u) !== 0, ph = hash(a.address) % 997;
-      const k = !(animate || fige !== null) ? 0 : bat ? cadence(a.address, fige ?? t, an.info.fps, an.info.n, ph, this.act.effets.get(a.address)?.t0)
-        : Math.floor((((fige ?? t) + ph) / 1000) * an.info.fps) % an.info.n;
-      body = div().absolute().left(-ax).top(-ay).w(w).h(hh)
-        .children(Array.from({ length: an.info.n }, (_, i) =>
-          image(`${dir}/${String(i).padStart(2, "0")}${suffix}.png`).absolute().left(0).top(0).w(w).h(hh).opacity(i === k ? 1 : 0)));
-      u.vu = { src: `${dir}/${String(k).padStart(2, "0")}${suffix}.png`, w, h: hh, ax, ay };
+      const blesse = (this.act.vie(a.address) ?? 100) < BLESSE; // wounded: slower swings, a hurt pose in its pauses
+      const cy = bat ? cycleDe(a.address, fige ?? t, an.info.fps, an.info.n, ph, this.act.effets.get(a.address)?.t0, blesse ? BLESSE_LENT : 1) : null;
+      const k = !(animate || fige !== null) ? 0 : cy ? cy.f : Math.floor((((fige ?? t) + ph) / 1000) * an.info.fps) % an.info.n;
+      const R = cy && blesse && cy.pause && HEROES[u.key]?.anims?.rest; // its hurt pose: the first rest frame, held
+      if (R) {
+        const rd = `${ART}/heros/${u.key}/rest`;
+        body = div().absolute().left(-R.ax).top(-R.ay).w(R.w).h(R.h).child(image(`${rd}/00${suffix}.png`).absolute().left(0).top(0).w(R.w).h(R.h));
+        u.vu = { src: `${rd}/00${suffix}.png`, w: R.w, h: R.h, ax: R.ax, ay: R.ay };
+      } else {
+        body = div().absolute().left(-ax).top(-ay).w(w).h(hh)
+          .children(Array.from({ length: an.info.n }, (_, i) =>
+            image(`${dir}/${String(i).padStart(2, "0")}${suffix}.png`).absolute().left(0).top(0).w(w).h(hh).opacity(i === k ? 1 : 0)));
+        u.vu = { src: `${dir}/${String(k).padStart(2, "0")}${suffix}.png`, w, h: hh, ax, ay };
+      }
     } else {
       // no frames yet: the standing sprite, breathing (1 px) or bobbing while it walks
       u.vu = { src: `${ART}/heros/${u.key}/stand${suffix}.png`, w, h: hh, ax, ay };
@@ -458,9 +467,11 @@ export default class Place {
       const top = Math.min(-(HEROES[u.key]?.stand?.ay ?? ay) - 9, marks ? head - 61 : selected ? head - 20 : 0);
       el = el.child(image(`${ART}/couronne.svg`).absolute().left(-6).top(top).w(13).h(9));
     }
-    if (selected) {
-      el = el.child(div().absolute().left(-15).top(head - 9).w(30).h(5).bg("#1b1420").border_1().border_color("#000000")
-        .child(div().h_full().w(st === "blocked" ? 8 : 28).bg(st === "blocked" ? "#e5685a" : "#7dff6a")));
+    // its HP (its context window left) on every hero with a fresh status file; wounded (under BLESSE) a faint red glow
+    const pv = a.guard ? null : this.act.pvDe(a.address, t);
+    if (pv) {
+      el = el.child(jauge(`pv-${a.address}`, pv.pv, 30, 5, head - 9, pv.flash));
+      if (pv.pv < BLESSE) el = el.child(svg(`${ART}/halo.svg`).absolute().left(-26).top(-9).w(52).h(18).text_color("#e5304a").loop("opacity", { from: 0.15, to: 0.6, period: 900 }));
     }
     return el;
   }
@@ -485,7 +496,8 @@ export default class Place {
       if (!m) continue;
       const p = this.pos(u.trail ?? m, t); // an apprentice: its own walk
       // a fighter's frame by its cadence (a swing, then a pause: no change, no redraw), else its plain loop
-      const k = !u.fps ? 0 : u.k ? cadence(u.k, t, u.fps, u.n, u.ph, this.act.effets.get(u.k)?.t0) : Math.floor(((t + u.ph) / 1000) * u.fps) % u.n;
+      const cy = u.fps && u.k ? cycleDe(u.k, t, u.fps, u.n, u.ph, this.act.effets.get(u.k)?.t0, u.lent ? BLESSE_LENT : 1) : null;
+      const k = !u.fps ? 0 : cy ? (cy.pause ? "p" : cy.f) : Math.floor(((t + u.ph) / 1000) * u.fps) % u.n; // a pause: its own state (a hurt pose)
       s += `${u.addr}:${u.ph}:${k}:${p.leg ? p.leg.t0 : "-"};`;
     }
     // a blink in or out that ends: redraw once to drop it
@@ -952,7 +964,8 @@ export default class Place {
       u.animate = animate;
       const fige = this.act.etourdi(u.a.address, t) !== null; // a stunned hero's frame stays
       const bat = an.name.startsWith("work") && this.act.face(u) !== 0; // fighting: its cadence (frameSig)
-      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate && !fige ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997, k: bat ? u.a.address : null });
+      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate && !fige ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997, k: bat ? u.a.address : null,
+        lent: (this.act.vie(u.a.address) ?? 100) < BLESSE });
     }
     // apprentices (one half-size hero per running subagent) by their heroes, on the side away from the creature;
     // their frames and their walks (in single file on the hero's path) run on the same frame timer

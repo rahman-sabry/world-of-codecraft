@@ -34,7 +34,12 @@ async function pollStat() {
   if (address) {
     try { s = JSON.parse((await readTextFile(`${home()}/.local/state/world-of-codecraft/${address}.status.json`)) ?? "null"); } catch { s = null; }
   }
-  const next = s ? { address, at: (s.at ?? 0) * 1e3, model: s.model ?? null, ctx: typeof s.context_pct === "number" ? Math.round(s.context_pct) : null } : null;
+  // and its subagents' context (the activity hook's subIds ctx), for its apprentices' bars on the card
+  let act = null;
+  if (s) { try { act = JSON.parse((await readTextFile(`${home()}/.local/state/world-of-codecraft/${address}.json`)) ?? "null"); } catch { act = null; } }
+  const subs = Object.values(act?.subIds ?? {}).filter((v) => v && typeof v === "object" && Date.now() - (v.t ?? 0) < STAT_STALE)
+    .sort((p, q) => (p.t0 ?? 0) - (q.t0 ?? 0)).slice(0, 4).map((v) => (typeof v.ctx === "number" ? v.ctx : null));
+  const next = s ? { address, at: (s.at ?? 0) * 1e3, model: s.model ?? null, ctx: typeof s.context_pct === "number" ? Math.round(s.context_pct) : null, subs } : null;
   if (JSON.stringify(next) !== JSON.stringify(shared("wocc.stat") ?? null)) setShared("wocc.stat", next);
 }
 
@@ -51,12 +56,29 @@ export function freshStat(address) {
   return s && address && s.address === address && Date.now() - s.at <= STAT_STALE ? s : null;
 }
 
-/** "Opus 5.5 · ctx 42%" for this hero, or null when there is no fresh status file. */
+/** "Opus 5.5 · HP 58%" for this hero (HP: its context window left, as its bar over its head, in the bar's colour),
+ *  or null when there is no fresh status file. */
 function statLine(a) {
   const s = freshStat(a.address);
-  if (!s) return null;
-  const parts = [s.model, s.ctx != null ? t("ctx", s.ctx) : null].filter(Boolean);
-  return parts.length ? parts.join(" · ") : null;
+  if (!s || (!s.model && s.ctx == null)) return null;
+  const pv = s.ctx != null ? Math.max(0, 100 - s.ctx) : null;
+  return h_flex().gap(6).items_center()
+    .when(Boolean(s.model), (el) => el.child(txt(s.model, 14, P.parch, 700).truncate()))
+    .when(pv !== null, (el) => el.child(txt(t("pv", pv), 14, couleurPv(pv), 800)));
+}
+
+/** The hero's HP on its card: a bar 110 x 8 in its colour (as the one over its head) and, for each apprentice, a thin
+ *  one 22 x 3 (its subagent's HP; empty when its subagent has no ctx yet), or null with no fresh status file. */
+function pvLigne(a) {
+  const s = freshStat(a.address);
+  if (!s || s.ctx == null) return null;
+  const pv = Math.max(0, 100 - s.ctx);
+  const barre = (id, v, w, h) => div().id(id).flex_none().w(w).h(h).bg("#1b1420").border_1().border_color("#000000")
+    .when(v !== null, (el) => el.child(div().h_full().w(Math.round(((w - 2) * v) / 100)).bg(couleurPv(v))));
+  return h_flex().gap(6).items_center()
+    .child(barre("carte-pv", pv, 110, 8))
+    .when((s.subs ?? []).length > 0, (el) => el.child(h_flex().gap(3).items_center()
+      .children(s.subs.map((c, i) => barre(`carte-pv-${i}`, c === null ? null : Math.max(0, 100 - c), 22, 3)))));
 }
 
 function card(sel) {
@@ -77,7 +99,8 @@ function card(sel) {
     .child(v_flex().flex_1().min_w(0).gap(3)
       .child(title(h.name, 19, P.goldHi).truncate())
       .child(txt(heroDesc(h), 15, P.cream, 700).truncate())
-      .when(Boolean(statLine(a)), (el) => el.child(div().id("modele").tooltip(t("statTip")).child(txt(statLine(a), 14, P.parch, 700).truncate())))
+      .when(Boolean(statLine(a)), (el) => el.child(div().id("modele").tooltip(t("statTip")).child(statLine(a))))
+      .when(Boolean(pvLigne(a)), (el) => el.child(pvLigne(a)))
       .child(txt(h.prog, 14, P.muted, 700).truncate())
       .child(h_flex().gap(4).items_center().child(mark(st) ?? gem(st, true)).child(txt(word, 15, TONE[st] ?? P.idle, 800)))
       .when(Boolean(a.tab_name), (el) => el.child(well(div().px(5).py(1).rounded(2), {}).child(txt(t("questTab", a.tab_name), 14, P.parch, 700).truncate())))
@@ -126,6 +149,7 @@ import { agents, shared, setShared, props } from "herdr";
 import { heroOf, guards, C as KC } from "./kit.js";
 import { DEMO_SELECTED } from "./demo.js";
 import { lieux } from "./lieux.js";
+import { couleurPv } from "./activite.js";
 
 const DOT = { blocked: KC.quest, done: KC.gold, working: "#7dff6a", idle: "#cfc8da", garde: "#9aa4b1" };
 

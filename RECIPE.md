@@ -109,8 +109,8 @@ the clock. The art is original: it imitates no existing game.
   out; no cast, no ring. Heroes and warriors keep the plain blink. Same suppression as the blink (first render,
   hidden, demo).
 - **Selection:** the selected unit is the focused agent, or the focused pane's shell when it is a warrior on
-  guard (`selectedAddress` in kit.js; Herdr's focused agent never goes empty). It gets a green ring and a
-  health bar, and the camera glides to it (and follows it while it walks to work, not while it strolls).
+  guard (`selectedAddress` in kit.js; Herdr's focused agent never goes empty). It gets a green ring, and the
+  camera glides to it (and follows it while it walks to work, not while it strolls).
 - **Camera:** click and drag the village to pan (the camera follows the pointer with no
   glide while dragging), or use the scroll wheel or a minimap click. Any manual pan stops
   the follow until another unit is selected. Units and buttons stop the press, so their
@@ -157,7 +157,25 @@ the clock. The art is original: it imitates no existing game.
   it does, `pense` at the start then the kind of its tools, as the main hero's): added on `SubagentStart`,
   removed on `SubagentStop`, refreshed by the subagent's own tool events, kept when the main turn ends (`Stop`)
   so background subagents stay counted, cleared by a new session (`SessionStart` other than `compact`) or
-  `SessionEnd`, and dropped after 30 min with no event (a missed stop). `subs` = how many ids are left.
+  `SessionEnd`, and dropped after 30 min with no event (a missed stop). `subs` = how many ids are left. Each entry
+  also keeps `ctx`, its subagent's context used (%): on its `SubagentStart` and each of its tool results the hook
+  reads the last 64 KB of its own transcript (`<session dir>/subagents/agent-<id>.jsonl`, beside the session's
+  `transcript_path`; `agent_transcript_path` when the payload has it), takes the last assistant message's usage
+  (input + cache read + cache creation tokens) over its model's window: 1M when the model id says `[1m]` or it
+  already holds more than 200k, else the window the main session taught for that model (`fenetres`: its own
+  transcript's tokens against the status line's `context_pct`, at most every 10 min; 1M for claude-opus-5-5, whose
+  id does not say it), else 200k. Any error is skipped, never breaking the hook.
+- **HP: the context window left.** Every hero's HP is 100 - its main session's context used (the status line's
+  `<terminal>.status.json`, `context_pct`, read every 5 s by the activity poll for every hero; missing or older than
+  30 min: no bar), an apprentice's its subagent's (`ctx` above; none yet: no bar). A bar over each hero's head (30 x
+  5, `jauge` in activite.js) and each apprentice's (20 x 3), filled to its HP: green over 50%, yellow 25 to 50%, red
+  under 25%; crossing under 10% its frame flashes white 1.5 s (once; in the frame timer's window). Blocked no longer
+  changes it (its marks and ring stay). None for guards (shells) or demo heroes. Under 25% it is wounded (`BLESSE`):
+  a faint red glow pulsing at its feet; fighting, its pauses between swings last 1.6 x (`cycleDe`'s `lent`) and it
+  holds its first `rest` frame through them (its hurt pose); out of fights a wounded hero walks at 0.8 x its speed,
+  an apprentice its straight walks. Cosmetic only. The Selected Unit card shows "Opus 5.5 · HP 64%" in the bar's
+  colour, a 110 x 8 bar of it and a 22 x 3 one per apprentice (its subagent's HP; empty when it has none yet;
+  `pollStat` reads the selected hero's activity file too).
   - thinking: `idle` + a "· · ·" bubble;
   - reading / searching / web: `idle` where it stands, two ravens circling above it;
   - editing code or running commands: fights a creature drawn per task (mages: imp, wolf, goblin, boar, rust
@@ -265,7 +283,10 @@ the clock. The art is original: it imitates no existing game.
     an ellipse 56 x 30 px from every member and every other minion. Its
     member turns to face it (`engage`, read by `face` and by the apprentices' facing) and its blows' effects land on it
     (`frappe`; the effect keeps its minion, `ouRenfort`); 4 of them fell it (the felled puff), and its member turns
-    back to the boss. The others keep hitting the boss. 25 s after they came, the ones left flee. Purely cosmetic:
+    back to the boss. The others keep hitting the boss. However a summoned minion leaves play it dies where it stands
+    (its felled pose rising and fading with a puff, 800 ms, `RENFORT_MORT`; nothing waits on it): felled by its 4
+    blows, 25 s after they came (`renfortMeurt`), when its member leaves the raid (its hero gone, its subagent over),
+    when the boss falls, the raid ends, a reset, or a stomp. Purely cosmetic:
     every real subagent call still damages the boss as ever. `pret` / `attaque`, `touche` and a flash after a blow,
     pips of its blows left; its stages, blows, falls and flights in the frame timer's signature; none in the demo.
     **The ring:** the party (raiders and apprentices alike) stands on slots round the boss (`choisir`): a slot is an

@@ -92,7 +92,8 @@ const ALERTE = 1000; // ms its blow is telegraphed (its wind-up, a warning ring)
 const ONDE = 600; // ms its blow's wave spreads, from the end of the warning
 const ETOURDI = 3000; // ms the party members it reaches stay stunned, from the end of the warning
 // its blow's stages (ms from its start): the bomb up (a goblin) and down, the hit, the wave out, its fade, the stun's end
-const RENFORT = 25000; // ms its summoned minions stay before the ones left flee, from their coming (renfort)
+const RENFORT = 25000; // ms its summoned minions stay before the ones left die, from their coming (renfort)
+const RENFORT_MORT = 800; // ms a summoned minion's death lasts (its felled pose and a puff, rising and fading)
 const TEINTE = { golem: "#c9a26b", troll: "#8fd16a", spectre: "#b06bff", gobelin: "#ff9a2e" }; // its summon's runes and bursts
 // (the world's shake at the hit, its second ring 250 ms later, the marks left in the ground fading)
 const AOE_ETAPES = [600, 850, ALERTE, ALERTE + 60, ALERTE + 120, ALERTE + 180, ALERTE + 250, ALERTE + 310, ALERTE + ONDE,
@@ -217,12 +218,33 @@ export function etoiles(head) {
  *  frame (0) held 0.8 to 2 s, again. Its time is cut in slots of a cycle + 1.4 s (shifted by ph), each cycle starting
  *  0 to 0.6 s into its slot (hashed from k and the slot): reloads agree, members do not swing in step. A blow (its
  *  effect starting at coup) in a pause starts a cycle at once, so the swing lines up with the effect. */
-export function cadence(k, t, fps, n, ph, coup) {
-  const C = (n / fps) * 1000, L = C + 1400;
-  const dans = (x) => { const tt = x + ph, i = Math.floor(tt / L), dt = tt - i * L - (hash(`${k}:cycle:${i}`) % 601); return dt >= 0 && dt < C ? dt : -1; };
-  if (coup !== undefined && t >= coup && t - coup < C && dans(coup) < 0) return Math.floor(((t - coup) / 1000) * fps) % n;
+export function cadence(k, t, fps, n, ph, coup, lent = 1) {
+  return cycleDe(k, t, fps, n, ph, coup, lent).f;
+}
+
+/** cadence's state: { f (its frame), pause (in a pause, holding its ready frame) }. lent stretches its pauses (a
+ *  wounded fighter's: BLESSE_LENT). */
+export function cycleDe(k, t, fps, n, ph, coup, lent = 1) {
+  const C = (n / fps) * 1000, L = C + 1400 * lent;
+  const dans = (x) => { const tt = x + ph, i = Math.floor(tt / L), dt = tt - i * L - (hash(`${k}:cycle:${i}`) % 601) * lent; return dt >= 0 && dt < C ? dt : -1; };
+  if (coup !== undefined && t >= coup && t - coup < C && dans(coup) < 0) return { f: Math.floor(((t - coup) / 1000) * fps) % n, pause: false };
   const dt = dans(t);
-  return dt < 0 ? 0 : Math.floor((dt / 1000) * fps) % n;
+  return dt < 0 ? { f: 0, pause: true } : { f: Math.floor((dt / 1000) * fps) % n, pause: false };
+}
+
+// A hero's HP: its context window left (100 - the status line's context_pct; an apprentice's, its subagent's ctx in
+// the activity file). Its bar's colours by HP, and below BLESSE the wounded look (slower swings, a hurt pose, slower walks).
+export const BLESSE = 25, BLESSE_LENT = 1.6, BLESSE_PAS = 0.8;
+const ALERTE_PV = 10, ALERTE_PV_MS = 1500; // crossing below 10% HP: its bar flashes this long
+const STAT_STALE = 30 * 60e3; // a status file older than this: no bar
+export const couleurPv = (pv) => (pv > 50 ? "#7dff6a" : pv >= 25 ? "#ffd86b" : "#e5685a");
+
+/** An HP bar w x h px, centred at (0, top) over a feet point, filled to pv% in its colour (couleurPv); flash: its
+ *  warning (a white frame blinking, bounded by its window). */
+export function jauge(id, pv, w, h, top, flash) {
+  return div().id(id).absolute().left(-w / 2).top(top).w(w).h(h).bg("#1b1420").border_1().border_color(flash ? "#ffffff" : "#000000")
+    .when(flash, (e) => e.loop("opacity", { from: -6, to: 7, period: 250, easing: "linear" }))
+    .child(div().h_full().w(Math.max(0, Math.round(((w - 2) * pv) / 100))).bg(couleurPv(pv)));
 }
 
 /** The wait before a raided boss's next basic blow (COUP_BOSS). */
@@ -325,6 +347,9 @@ export class Activites {
     this.subT = new Map(); // address -> { subagent id: its last event } at the last poll (whose blows these are)
     this.subC = new Map(); // address -> its subCoups at the last poll (frappesSub)
     this.duels = new Map(); // address -> { base, d, next, glisse }: a fight outside a raid that moves (ancre)
+    this.ctx = new Map(); // address -> its main session's context used (%, its status file; null: none or stale)
+    this.statT = 0; // the last read of the status files
+    this.pvs = new Map(); // party member -> { pv (HP last drawn), flash (when it crossed below ALERTE_PV) }
     this.timer = null;
     this.busy = false;
   }
@@ -478,6 +503,7 @@ export class Activites {
     if (A.fin) return false;
     if (mort) {
       const p = this.ici(now);
+      this.renfortMeurt(now); // its summoned minions die with it
       return Object.assign(A, { fin: now, x: Math.round(p.x), y: Math.round(p.y), pas: null }), true;
     }
     const vifs = lus.map(([addr, s]) => [addr, this.subagents(s).map((x) => x.id)]).filter(([, ids]) => ids.length);
@@ -496,6 +522,7 @@ export class Activites {
       if (!r) { this.raids.set(addr, { ids }); changed = true; } else if (r.ids.join() !== ids.join()) { r.ids = ids; changed = true; }
     }
     if (avant && !this.raids.size) { // the raid is over: back onto its wander, where it will be when it gets there
+      this.renfortMeurt(now); // its summoned minions die
       const p = this.ici(now), e = errance(A.day, now), t1 = now + (Math.hypot(e.x - p.x, e.y - p.y) / PIETINE) * 1000, f = errance(A.day, t1);
       A.pas = { a: [Math.round(p.x), Math.round(p.y)], b: [Math.round(f.x), Math.round(f.y)], t0: now, t1 };
       changed = true;
@@ -589,6 +616,23 @@ export class Activites {
     return { dx, dy };
   }
 
+  /** Party member k's HP (0-100): a hero's 100 - its context used, an apprentice (address:subagent id) its
+   *  subagent's (ctx in the activity file); null when there is none (no bar). */
+  vie(k) {
+    const i = k.indexOf(":"), c = i < 0 ? this.ctx.get(k) : this.file(k.slice(0, i))?.subIds?.[k.slice(i + 1)]?.ctx;
+    return typeof c === "number" ? Math.max(0, Math.min(100, 100 - c)) : null;
+  }
+
+  /** Member k's HP now and its warning (crossed below ALERTE_PV within ALERTE_PV_MS): { pv, flash } or null. */
+  pvDe(k, t) {
+    const pv = this.vie(k);
+    if (pv === null) return null;
+    const o = this.pvs.get(k);
+    const flash = o && o.pv >= ALERTE_PV && pv < ALERTE_PV ? t : o?.flash ?? 0;
+    this.pvs.set(k, { pv, flash });
+    return { pv, flash: t - flash < ALERTE_PV_MS };
+  }
+
   /** True while the boss winds up or lands an attack (its stunning blow until its wave has spread, its summon until
    *  its minions come): it holds its attack pose, no blow makes it flinch (the damage still counts). */
   arme(t) {
@@ -603,7 +647,16 @@ export class Activites {
     const R = this.arene?.renfort;
     if (!R) return false;
     const fin = R.list?.length && R.list.every((m) => m.fin) ? Math.max(...R.list.map((m) => m.fin)) : R.t0 + ALERTE + RENFORT;
-    return t < fin + CHUTE;
+    return t < fin + RENFORT_MORT;
+  }
+
+  /** Every summoned minion still standing dies now (its death, RENFORT_MORT ms, where it stands): at its 25 s, when
+   *  the boss falls, the raid ends, a reset, a stomp; nothing waits on it. True when one died. */
+  renfortMeurt(now) {
+    const R = this.arene?.renfort;
+    let morts = false;
+    for (const m of R?.list ?? []) if (!m.fin) { m.fin = now; morts = true; }
+    return morts;
   }
 
   /** Its summon's minions left after RENFORT ms flee; the summon ends once they are all gone. True when that changed. */
@@ -611,7 +664,12 @@ export class Activites {
     const A = this.arene, R = A?.renfort;
     if (!R) return false;
     let changed = false;
-    for (const m of R.list ?? []) if (!m.fin && now >= R.t0 + ALERTE + RENFORT) { Object.assign(m, { fin: R.t0 + ALERTE + RENFORT, fuite: true }); changed = true; }
+    // 25 s after they came the ones left die; one whose member left the raid (its hero gone, its subagent over) too
+    if (R.list && now >= R.t0 + ALERTE + RENFORT) changed = this.renfortMeurt(R.t0 + ALERTE + RENFORT) || changed;
+    for (const m of R.list ?? []) {
+      const [addr, id] = m.cible.split(":");
+      if (!m.fin && (!this.raids.has(addr) || (id && !this.raids.get(addr).ids.includes(id)))) { m.fin = now; changed = true; }
+    }
     if (!this.renfortVif(now)) { A.renfort = null; changed = true; }
     return changed;
   }
@@ -693,11 +751,11 @@ export class Activites {
       const venue = dt < ALERTE + 500, burst = (s) => svg(`${ART}/fx-surgit.svg`).id(`renfort-${R.t0}-${m.id}-surgit`).absolute().left(-21 * s).top(-30 - 21 * s).w(42 * s).h(42 * s)
         .text_color(tint).opacity(s > 1 ? 0 : 1).transition("left", { duration: 400, easing: "ease-out" }).transition("top", { duration: 400, easing: "ease-out" })
         .transition("width", { duration: 400, easing: "ease-out" }).transition("height", { duration: 400, easing: "ease-out" }).transition("opacity", { duration: 400, easing: "linear" });
-      if (m.fin && m.fuite) { if (t - m.fin < CHUTE) out.push({ z: y + 3, el: fuite(`renfort-${R.t0}-${m.id}-fuite`, x, y, -side, etape(t - m.fin), sprite("pret")) }); continue; }
-      if (m.fin) { // felled: a puff where it stood
-        if (t - m.fin < 1200) { const p = D.touche; out.push(at("chute", [image(`${CRE}/${R.sp}/touche${g}${sfx}.png`).absolute().left(-p.ax * BETE).top(-p.ay * BETE).w(p.w * BETE).h(p.h * BETE)
-          .loop("opacity", { from: 0.9, to: 0, period: 1200 }).loop("top", { from: -p.ay * BETE, to: -p.ay * BETE - 16, period: 1200 }),
-          div().absolute().left(-12).top(-20).size(24).rounded_full().bg("#e8e2d0aa").loop("opacity", { from: 0.8, to: 0, period: 1200 })])); }
+      if (m.fin) { // dead (felled, its time up, the boss fallen, the raid over...): its felled pose rising and fading, a puff
+        const T = RENFORT_MORT;
+        if (t - m.fin < T) { const p = D.touche; out.push(at("chute", [image(`${CRE}/${R.sp}/touche${g}${sfx}.png`).absolute().left(-p.ax * BETE).top(-p.ay * BETE).w(p.w * BETE).h(p.h * BETE)
+          .loop("opacity", { from: 0.9, to: 0, period: T }).loop("top", { from: -p.ay * BETE, to: -p.ay * BETE - 16, period: T }),
+          div().absolute().left(-12).top(-20).size(24).rounded_full().bg("#e8e2d0aa").loop("opacity", { from: 0.8, to: 0, period: T })])); }
         continue;
       }
       const kids = [];
@@ -787,6 +845,7 @@ export class Activites {
    *  px/s; the whole party takes its slots afresh round the new spot (replace) and walks there. True when it moved. */
   pietine(now) {
     const A = this.arene, Z = antre(A.day);
+    this.renfortMeurt(now); // (a stomp never runs over a summon; any minion left dies rather than vanish)
     A.next = now + attente();
     const bon = (q) => q[0] >= Z.x[0] && q[0] <= Z.x[1] && q[1] >= Z.y[0] && q[1] <= Z.y[1] && walkable(q) && cotes(A.day, q);
     const loin = (q) => Math.hypot(q[0] - A.x, q[1] - A.y);
@@ -888,6 +947,7 @@ export class Activites {
    *  while raiders are left: they take places round it afresh and walk there); the minions go at once. */
   remise() {
     const A = this.boss(), now = Date.now(), e = errance(A.day, now);
+    this.renfortMeurt(now); // its summoned minions die
     Object.assign(A, { fin: 0, at: 0, pas: null, x: Math.round(e.x), y: Math.round(e.y), next: now + attente() });
     A.places.clear();
     A.apps.clear();
@@ -981,6 +1041,7 @@ export class Activites {
    *  one is, and its signature changes at each stage and when one ends (a redraw drops it). */
   fenetres(t) {
     let s = "";
+    for (const [k, o] of this.pvs) if (t - o.flash < ALERTE_PV_MS) s += `pv:${k}:${o.flash};`; // an HP warning: redraw at its end
     const A = this.arene;
     if (A) {
       const fin = A.fin && t - A.fin < CHUTE;
@@ -988,7 +1049,7 @@ export class Activites {
       if (A.pas && t < A.pas.t1) s += `boss-pas:${A.pas.t0};`; // a stomp or its walk back: redraw at its end (its bob)
       if (A.coup && t - A.coup.t0 < COUP_ETAPES[3]) s += `boss-coup:${A.coup.t0}:${COUP_ETAPES.filter((x) => t - A.coup.t0 >= x).length};`;
       const R = A.renfort; // its summon: the wind-up, the minions' coming, each one's blows, fall or flight
-      if (R && this.renfortVif(t)) s += `renfort:${R.t0}:${[ALERTE, ALERTE + 60, ALERTE + 500].filter((x) => t - R.t0 >= x).length}:${(R.list ?? []).map((m) => `${t - m.at < COUP}${m.fin ? (t - m.fin < CHUTE ? etape(t - m.fin) : "x") : ""}`).join(",")};`;
+      if (R && this.renfortVif(t)) s += `renfort:${R.t0}:${[ALERTE, ALERTE + 60, ALERTE + 500].filter((x) => t - R.t0 >= x).length}:${(R.list ?? []).map((m) => `${t - m.at < COUP}${m.fin ? (t - m.fin < RENFORT_MORT ? "m" : "x") : ""}`).join(",")};`;
       if (this.secoue(t)) s += `boss-aoe:${A.aoe.t0}:${AOE_ETAPES.filter((x) => t - A.aoe.t0 >= x).length};`; // its blow's stages and its stun's end
     }
     // the minions': a blow, a fall's puff, a flight and its stages
@@ -1038,6 +1099,17 @@ export class Activites {
         if (JSON.stringify(old) !== JSON.stringify(s)) { this.files.set(a.address, s); changed = true; }
         changed = this.apply(a, s, now) || changed;
         lus.push([a.address, s]);
+      }
+      // every hero's context (its status line's file), every 5 s, alongside the activity files
+      if (now - this.statT >= 5000) {
+        this.statT = now;
+        for (const a of this.list ?? []) {
+          if (a.guard || a.demoAct) continue; // a shell, a demo hero: no context
+          let st = null;
+          try { st = JSON.parse((await readTextFile(`${dir}/${a.address}.status.json`)) ?? "null"); } catch { st = null; }
+          const c = st && typeof st.context_pct === "number" && now - (st.at ?? 0) * 1000 < STAT_STALE ? Math.round(st.context_pct) : null;
+          if (this.ctx.get(a.address) !== c) { this.ctx.set(a.address, c); changed = true; }
+        }
       }
       const avant = bossDuJour(new Date(now));
       if (this.pv?.day === avant.day && avant.hp > this.pv.hp) { this.remise(); changed = true; } // reset from the top bar
@@ -1346,7 +1418,8 @@ export class Activites {
       } else if (d || was) {
         // the hero stands: straight to its spot, or back to its file slot
         const same = was && !was.walk && was.tr.x === E[0] && was.tr.y === E[1];
-        const a = was ? ici(was) : ends[i], t1 = t + (Math.hypot(E[0] - a[0], E[1] - a[1]) / STEP) * 1000;
+        const lent = (this.vie(id) ?? 100) < BLESSE ? BLESSE_PAS : 1; // a wounded one walks slower
+        const a = was ? ici(was) : ends[i], t1 = t + (Math.hypot(E[0] - a[0], E[1] - a[1]) / (STEP * lent)) * 1000;
         tr = same ? was.tr : { x: E[0], y: E[1], legs: t1 > t ? [{ a, b: E, t0: t, t1 }] : [] };
         if (tr.legs.length && t >= tr.legs[0].t1) tr = { x: E[0], y: E[1], legs: [] };
         if (d || tr.legs.length) this.ou.set(id, { tr, det: Boolean(d) }); else this.ou.delete(id);
@@ -1356,16 +1429,19 @@ export class Activites {
       // creature's), whatever its subagent does; else what its subagent does
       const name = leg ? walkAnim(leg.b[0] - leg.a[0], leg.b[1] - leg.a[1]) : d ? travail(key, d.foe < p.x ? -1 : 1)
         : raid ? travail(key, side) : !WORKS.has(x.act) ? "idle" : travail(key, cree ?? 0);
-      const A = HEROES[key]?.anims?.[name];
-      if (!A) return null;
+      const W = HEROES[key]?.anims?.[name];
+      if (!W) return null;
+      let A = W; // what it shows: its anim, or its hurt pose in a wounded pause
       const ph = hash(x.id) % 997;
       const stun = this.etourdi(id, t); // stunned (secousse): its frame frozen as it was then
       // fighting (its own spot, its hero's raid or minions, its hero's creature): a swing, then a pause (cadence)
       const bat = Boolean(!leg && name.startsWith("work") && (d || raid || cree));
-      const f = !(animate || stun !== null) ? 0 : bat ? cadence(id, stun ?? t, A.fps, A.n, ph, this.effets.get(id)?.t0)
-        : Math.floor((((stun ?? t) + ph) / 1000) * A.fps) % A.n;
+      const vie = this.pvDe(id, t), blesse = vie !== null && vie.pv < BLESSE; // wounded: slower swings, a hurt pose
+      const cy = bat ? cycleDe(id, stun ?? t, W.fps, W.n, ph, this.effets.get(id)?.t0, blesse ? BLESSE_LENT : 1) : null;
+      let f = !(animate || stun !== null) ? 0 : cy ? cy.f : Math.floor((((stun ?? t) + ph) / 1000) * W.fps) % W.n, nom = name;
+      if (cy && blesse && cy.pause && HEROES[key].anims.rest) { nom = "rest"; A = HEROES[key].anims.rest; f = 0; } // its hurt pose, held
       const { w, h, ax, ay } = A; // full hero size
-      const dir = `${ART}/heros/${key}/${name}`;
+      const dir = `${ART}/heros/${key}/${nom}`;
       const [gx, gy] = p.leg ? p.leg.b : [p.x, p.y];
       // the feet point glides to the end of its leg (transition always declared, as the heroes')
       const dur = p.leg ? Math.max(16, p.leg.t1 - t) : 16;
@@ -1379,10 +1455,13 @@ export class Activites {
             .children(Array.from({ length: A.n }, (_, i) =>
               image(`${dir}/${String(i).padStart(2, "0")}${sfx}.png`).absolute().left(0).top(0).w(w).h(h).opacity(i === f ? 1 : 0)))))
         .when(!leg && READS.has(x.act), (e) => e.child(image(`${ART}/ic-parchemin.svg`).absolute().left(-9).top(-ay - 22).size(18)))
-        .when(stun !== null, (e) => e.children(etoiles(-ay)));
+        .when(stun !== null, (e) => e.children(etoiles(-ay)))
+        .when(vie !== null, (e) => e.child(jauge(`apprenti-${addr}-${x.id}-pv`, vie.pv, 20, 3, -W.ay - 6, vie.flash))) // its subagent's HP
+        .when(blesse, (e) => e.child(svg(`${ART}/halo.svg`).absolute().left(-22).top(-8).w(44).h(16).text_color("#e5304a")
+          .loop("opacity", { from: 0.15, to: 0.6, period: 900 }))); // wounded: a faint red glow, pulsing
       // vu: what it shows now (its ghost when it leaves; Place.passages)
       const vu = { src: `${dir}/${String(f).padStart(2, "0")}${sfx}.png`, w, h, ax, ay, x: p.x, y: p.y, leg: p.leg };
-      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, key: `${addr}:${x.id}`, look: key, vu, anim: { fps: animate && stun === null ? A.fps : 0, n: A.n, ph, trail: tr, k: bat ? id : null } };
+      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, key: `${addr}:${x.id}`, look: key, vu, anim: { fps: animate && stun === null ? W.fps : 0, n: W.n, ph, trail: tr, k: bat ? id : null, lent: blesse } };
     }).filter(Boolean);
   }
 

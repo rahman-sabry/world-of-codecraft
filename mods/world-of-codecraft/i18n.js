@@ -68,9 +68,10 @@ const S = {
     waitingTip: (title, blocked) => `${title} ${blocked ? "awaits your orders" : "is back from a quest"} (click: go there)`,
     questTab: (name) => `Quest: ${name}`,
     ctx: (n) => `ctx ${n}%`,
+    pv: (n) => `HP ${n}%`, // a hero's context window left
     context: "ctx",
     contextTip: (n, model) => `Selected hero's context window: ${n}% used${model ? ` (${model})` : ""}\nFrom the Claude status line`,
-    statTip: "Model and context window used (from the Claude status line)",
+    statTip: "Model and HP: the context window left (from the Claude status line)",
     hourTip: (hour, night) => `${hour} (canonical hour) · ${night ? "night" : "day"}`,
     heroesAtWork: "heroes at work",
     heroesTip: (busy, all) => `${busy} heroes at work, ${all} agents in the village`,
@@ -177,9 +178,10 @@ const S = {
     waitingTip: (title, blocked) => `${title} ${blocked ? "attend tes ordres" : "revient de quête"} — clic : y aller`,
     questTab: (name) => `Quête : ${name}`,
     ctx: (n) => `ctx ${n} %`,
+    pv: (n) => `PV ${n} %`, // le contexte qui reste au héros
     context: "ctx",
     contextTip: (n, model) => `Contexte du héros choisi : ${n} % utilisés${model ? ` (${model})` : ""}\nD'après la ligne d'état de Claude`,
-    statTip: "Modèle et contexte utilisé (d'après la ligne d'état de Claude)",
+    statTip: "Modèle et PV : le contexte qui reste (d'après la ligne d'état de Claude)",
     hourTip: (hour, night) => `${hour} (heure canoniale) · ${night ? "nuit" : "jour"}`,
     heroesAtWork: "héros à l'œuvre",
     heroesTip: (busy, all) => `${busy} héros travaillent, ${all} agents au village`,

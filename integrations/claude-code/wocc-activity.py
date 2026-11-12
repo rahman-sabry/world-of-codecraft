@@ -11,8 +11,11 @@ Claude Code hook (async, never blocks). Writes ~/.local/state/world-of-codecraft
   err      consecutive tool failures, errT the last one (ms)
   subs     running subagents (len(subIds))
   subCoups successful subagent tool calls, ever (monotonic per file; each one = 1 damage on the daily raid boss)
-  subIds   {agent id: {t0 start, t last event (ms), act what it does (pense, then its tools' kind), outil}}, kept
-           across turns until SubagentStop, a new session, or 30 min with no event from that subagent
+  subIds   {agent id: {t0 start, t last event (ms), act what it does (pense, then its tools' kind), outil,
+           ctx its context used (%, from its own transcript)}}, kept across turns until SubagentStop, a new session,
+           or 30 min with no event from that subagent
+  fenetres {model id: its context window (tokens)}, learnt from the main session (its transcript's last usage
+           against the status line's context_pct), so a subagent of that model reads against the same window
   tache    prompt counter (seeds the creature drawn for the task)
   errTache tool failures this task (3+ = the next creature is a boss)
   essai    last test run {ok, t} (act "test" while it runs)   commitT / pushT  last git commit / push (ms)
@@ -53,6 +56,41 @@ READ = {"Read", "Grep", "Glob", "LS", "NotebookRead", "LSP", "ToolSearch"}
 EDIT = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 WEB = {"WebSearch", "WebFetch"}
 SUB_TTL = 30 * 60_000  # a subagent silent this long is dropped (its SubagentStop was missed)
+
+
+def usage(p):
+    """(model, tokens in context) of the last assistant message in transcript p, reading only its last 64 KB; None
+    when there is none (or the file cannot be read). Tokens: input + cache read + cache creation."""
+    try:
+        with open(p, "rb") as f:
+            f.seek(0, 2)
+            n = f.tell()
+            f.seek(max(0, n - 65536))
+            lines = f.read().decode("utf-8", "replace").split("\n")
+    except OSError:
+        return None
+    if n > 65536:
+        lines = lines[1:]  # the first line is cut
+    for line in reversed(lines):
+        if '"usage"' not in line or '"assistant"' not in line:
+            continue
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        m = d.get("message") if isinstance(d, dict) else None
+        u = m.get("usage") if isinstance(m, dict) else None
+        if d.get("type") == "assistant" and isinstance(u, dict):
+            return str(m.get("model") or ""), sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+    return None
+
+
+def fenetre(model, tokens, s):
+    """The context window of a model: 1M when its id says so ([1m]) or it holds more than 200k already, else what
+    the main session taught (fenetres), else 200k."""
+    if "[1m]" in model or tokens > 200_000:
+        return 1_000_000
+    return (s.get("fenetres") or {}).get(model, 200_000)
 
 
 def kind(t):
@@ -101,6 +139,26 @@ with open(os.path.join(DIR, ".lock"), "w") as lk:
             subIds[aid].update(act=kind(tool), outil=tool)
     if sub and name == "PostToolUse":
         s["subCoups"] += 1  # a successful subagent tool call: a blow on the raid boss
+    try:  # context used: never let it break the hook
+        tp = ev.get("transcript_path") or ""
+        if sub and aid in subIds and name in ("PostToolUse", "PostToolUseFailure", "SubagentStart"):
+            # its own transcript: <session dir>/subagents/agent-<id>.jsonl, beside the session's <session>.jsonl
+            sp = ev.get("agent_transcript_path") or os.path.join(os.path.splitext(tp)[0], "subagents", f"agent-{aid}.jsonl")
+            u = usage(sp) if tp or ev.get("agent_transcript_path") else None
+            if u:
+                subIds[aid]["ctx"] = min(100, round(u[1] * 100 / fenetre(u[0], u[1], s)))
+        elif not sub and name == "PostToolUse" and tp and now - s.get("fenetreT", 0) > 600_000:
+            # learn the main model's window (every 10 min at most): its tokens against the status line's percent
+            # (fresh, 5% or more)
+            s["fenetreT"] = now
+            with open(os.path.join(DIR, f"{term}.status.json")) as f:
+                st = json.load(f)
+            pct = st.get("context_pct")
+            u = usage(tp) if isinstance(pct, (int, float)) and pct >= 5 and time.time() - (st.get("at") or 0) < 120 else None
+            if u and u[0]:
+                s.setdefault("fenetres", {})[u[0]] = 1_000_000 if u[1] * 100 / pct > 400_000 else 200_000
+    except Exception:
+        pass
 
     def act(a):
         if s.get("act") != a:
