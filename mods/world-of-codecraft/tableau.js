@@ -8,7 +8,7 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { spaces, agents, run, props } from "herdr";
+import { spaces, agents, run, props, setShared } from "herdr";
 import { district, clip, heroOf } from "./kit.js";
 import { gradient } from "./kit.js";
 import { t } from "./i18n.js";
@@ -46,7 +46,11 @@ export default class Tableau {
     let line = h_flex().id(`quete-${tab.id}`).relative().h(28).pl(5).pr(4).gap(6).items_center().rounded(2).cursor_pointer()
       .bg(on ? P.parch : st === "blocked" ? "#3a1216" : "#00000000").hover((s) => s.bg(on ? P.parch : "#ffffff10"))
       .tooltip(t("questTip", tab.index, tab.name, tab.panes))
-      .on_click(() => { if (!sp.active) run("space.select", { id: sp.id }); run("tab.select", { id: tab.id }); })
+      .on_click(() => {
+        if (!sp.active) run("space.select", { id: sp.id });
+        run("tab.select", { id: tab.id });
+        setShared("wocc.recentre", { at: Date.now() }); // the village glides to the selected hero, even when already selected
+      })
       .child(div().w(16).flex_none().flex().justify_center().child(mark(st) ?? (st ? gem(st, true) : div().size(5).rounded(1).bg(on ? P.inkSoft : P.faint))))
       .child(txt(clip(name, 32), 15, fg, on ? 800 : 700).flex_1().min_w(0).truncate())
       .when(tab.panes > 1, (e) => e.child(txt(`×${tab.panes}`, 14, on ? P.inkSoft : P.dim, 700).flex_none()))

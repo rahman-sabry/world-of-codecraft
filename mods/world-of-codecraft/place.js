@@ -148,6 +148,7 @@ export default class Place {
     if (!_p?.immersion) watchStat(cx); // the panel is drawn here only in the Workshop strip
     this.born = Date.now();
     this.gotoAt = shared("wocc.goto")?.at; // ignore a minimap click left over from an earlier session
+    this.recentreAt = shared("wocc.recentre")?.at; // and a board click from one
     this.w = 1400;
     this.camX = null;
     this.lastFocus = null;
@@ -931,6 +932,8 @@ export default class Place {
     const imm = Boolean(props()?.immersion);
     const vw = Math.max(200, this.w - (imm ? 0 : PANEL));
     if (imm) this.bridge(units, vw);
+    const rc = shared("wocc.recentre")?.at;
+    if (rc !== this.recentreAt) { this.recentreAt = rc; this.lastFocus = null; } // a board click (tableau.js): glide again
     if (sel && sel.a.address !== this.lastFocus) {
       this.lastFocus = sel.a.address;
       this.manual = false; // a new selection takes the camera back

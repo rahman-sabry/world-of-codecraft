@@ -117,6 +117,9 @@ the clock. The art is original: it imitates no existing game.
 - **Clicks:**
   - a unit: `agent.focus` (`pane.focus` for shells), and the camera glides to it, even when it is already
     selected (after a manual pan)
+  - a quest row on the board (tableau.js): `tab.select`, and the village glides to the selected hero, even when that
+    tab was already selected (store key `wocc.recentre` { at }, read by every village view; one left from an earlier
+    session is ignored)
   - double-click the tower, the forge or the barracks: recruit with `tab.new` (claude,
     codex or a shell)
   - a district card: `space.select`
