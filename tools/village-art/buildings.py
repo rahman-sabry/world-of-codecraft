@@ -910,6 +910,249 @@ def nets():
         v.ell(xx, 6.8, 2.2, 1, 0.8, 0.9, CLOTH_Y)
     return v
 
+# ---------------------------------------------------------------- the marsh (maps/marais.json, Mirewick)
+# The marsh water is drawn flat like the ground but reads as lying PROF units below the land: boardwalks and stilt
+# houses stand on piles in it, their decks at land level or above. Materials 120-139.
+PROF = 5
+PAL[120] = Mat('#7a6a56', t_plank, params={'w': 3.1}, hs=16)                 # weathered boardwalk planks
+PAL[121] = Mat('#6a5a4a', t_plank, params={'w': 3, 'horiz': True}, hs=18)    # stilt-hut weatherboards
+PAL[122] = Mat('#4a3e36', t_plank, params={'w': 3.4, 'horiz': True}, hs=20)  # the witch's black boards
+PAL[123] = Mat('#9a7f45', t_hay, hs=16)                                       # reed thatch
+PAL[124] = Mat('#5d6b3a', t_hay, hs=20)                                       # mossy thatch
+PAL[125] = Mat('#6e9a3c', t_leaf, hs=28, light=1.32, dark=0.3)                # willow leaves
+PAL[126] = Mat('#5f8a36', t_noise, params={'amp': 0.9, 'sc': 1.0}, hs=26, light=1.3)  # willow strands
+PAL[127] = Mat('#4a3e34', t_wood, hs=20)                                      # gnarled bark
+PAL[128] = Mat('#4d6b34', t_leaf, hs=26, light=1.3, dark=0.3)                 # swamp-tree leaves
+PAL[129] = Mat('#8a9a6a', t_noise, params={'amp': 0.8, 'sc': 1.0}, hs=16)     # hanging moss
+PAL[130] = Mat('#7a9a3a', t_noise, params={'amp': 0.7, 'sc': 1.0}, hs=24)     # reed blades
+PAL[131] = Mat('#6a3a22', t_noise, params={'amp': 0.5}, hs=18)                # cattail heads
+PAL[132] = Mat('#7dff6a', t_noise, params={'amp': 1.4, 'sc': 2}, emissive=3.3, night='#9aff7a', rim=False,
+               rp=np.array([hx(c) for c in ('#0f3a1a', '#1f6a2a', '#3aa83a', '#7dff6a', '#b8ff9a', '#e8ffd8', '#ffffff')], np.float32))  # swamp light
+PAL[133] = Mat('#d8cdb4', t_noise, params={'amp': 0.6}, light=1.1, hs=12)     # bone
+PAL[134] = Mat('#b8442e', t_noise, params={'amp': 0.6}, hs=22)                # toadstool caps
+PLANK_M, BOARD_M, BOARD_W, THATCH_M, THATCH_W = 120, 121, 122, 123, 124
+WILLOW, WILLOW_S, BARK_G, LEAF_G, MOSS_H, REED, CATTAIL, WITCH, BONE, TOAD = 125, 126, 127, 128, 129, 130, 131, 132, 133, 134
+
+def caillebotis(axis):
+    """A boardwalk segment, 32 units along its axis (44.8 px: a run at 'pas' 44 joins up), its deck at land level on
+    piles standing PROF units down in the marsh water, a rope rail on its far side (-y for 'x', -x for 'y'). The
+    anchor (0, 0, 0) is the deck's centre line, mid-segment."""
+    v = Vol(-18, 18, -12, 12, -PROF - 1, 12)
+    def b(a0, a1, d0, d1, z0, z1, mat):  # a along the run, d across it
+        if axis == 'x': v.box(a0, a1, d0, d1, z0, z1, mat)
+        else: v.box(d0, d1, a0, a1, z0, z1, mat)
+    rng = np.random.default_rng(41 if axis == 'x' else 43)
+    for d in (-5.6, 4.4):
+        b(-16, 16, d, d + 1.2, -1.8, 0, TIMBER)                 # stringers
+    for a in np.arange(-16, 16, 3.1):                          # planks across, a few skewed
+        j = rng.uniform(-0.5, 0.5)
+        b(a, a + 2.6, -6.4 + j, 6.4 + j, 0, 1.0 + rng.uniform(0, 0.4), PLANK_M)
+    for a in (-14.5, 1.5):                                     # piles, weed at the waterline
+        for d in (-7.2, 5.6):
+            b(a, a + 1.8, d, d + 1.8, -PROF, 1.4, TIMBER)
+            b(a - 0.3, a + 2.1, d - 0.3, d + 2.1, -PROF, -PROF + 0.9, MOSS)
+    b(-15, -13.4, -7.4, -5.8, 1, 8, TIMBER)                    # the far rail: a post and its rope
+    v.capsule((-14.2, -6.6, 7.4) if axis == 'x' else (-6.6, -14.2, 7.4), (17.8, -6.6, 5.6) if axis == 'x' else (-6.6, 17.8, 5.6), 0.45, ROPE)
+    return v
+
+@bld('marais-boardwalk-x')
+def caillebotis_x(): return caillebotis('x')
+@bld('marais-boardwalk-y')
+def caillebotis_y(): return caillebotis('y')
+
+def pilotis(v, x0, x1, y0, y1, z, pas=13):
+    """Piles under a platform from x0..x1, y0..y1 at height z, down PROF units into the water."""
+    for px in np.arange(x0 + 1, x1, pas):
+        for py in (y0 + 1, y1 - 2.5):
+            v.box(px, px + 2.2, py, py + 2.2, -PROF, z, TIMBER)
+            v.box(px - 0.3, px + 2.5, py - 0.3, py + 2.5, -PROF, -PROF + 1, MOSS)
+    for py in np.arange(y0 + 1, y1, pas):
+        for px in (x0 + 1, x1 - 2.5):
+            v.box(px, px + 2.2, py, py + 2.2, -PROF, z, TIMBER)
+            v.box(px - 0.3, px + 2.5, py - 0.3, py + 2.5, -PROF, -PROF + 1, MOSS)
+
+def surelever(src, dz, bornes):
+    """src (a Vol built at ground level) lifted dz units (rounded to whole voxels) into a new Vol of bornes
+    (x0, x1, y0, y1, z0, z1)."""
+    v = Vol(*bornes)
+    vs = v.vs
+    ox, oy = (int(round((src.o[k] - v.o[k]) / vs)) for k in (0, 1))
+    oz = int(round((src.o[2] + dz - v.o[2]) / vs))
+    sx, sy, sz = src.m.shape
+    assert ox >= 0 and oy >= 0 and oz >= 0 and ox + sx <= v.m.shape[0] and oy + sy <= v.m.shape[1] and oz + sz <= v.m.shape[2]
+    v.m[ox:ox + sx, oy:oy + sy, oz:oz + sz] = np.maximum(v.m[ox:ox + sx, oy:oy + sy, oz:oz + sz], src.m)
+    return v, oz * vs + v.o[2] - src.o[2]
+
+@bld('marais-tavern')
+def tavern_pilotis():
+    """The tavern on stilts over a pool: a plank platform on piles, its floor 10 units over the land, a stair down from
+    its front corner."""
+    v, dz = surelever(tavern(), 10, (-60, 60, -56, 72, -PROF - 1, 165))
+    v.box(-44, 44, -38, 42, dz - 1.6, dz, PLANK_M)
+    v.box(-45, 45, -39, 43, dz - 2.6, dz - 1.6, TIMBER)
+    pilotis(v, -44, 44, -38, 42, dz - 2.6)
+    for k in range(7):  # the stair down to the bank, off the platform's front (+y) edge
+        z = dz - 1.6 - k * 1.45
+        v.box(-6, 6, 42 + k * 2.6, 44.6 + k * 2.6, z - 1.2, z, PLANK_M)
+    for sx in (-6.8, 5.6):
+        v.capsule((sx, 43, dz), (sx, 61, 0), 0.6, TIMBER)
+        v.box(sx, sx + 1.2, 59.5, 61, -PROF, 4, TIMBER)
+    return v
+
+@bld('marais-hut')
+def hutte():
+    """A fisher's hut on stilts: weatherboards, a reed-thatch roof, a porch with a lantern, nets, a ladder down."""
+    v = Vol(-30, 30, -28, 36, -PROF - 1, 64)
+    pilotis(v, -16, 16, -14, 22, 9, pas=15)
+    v.box(-16, 16, -14, 22, 8.6, 10, PLANK_M)
+    v.box(-12, 12, -11, 9, 10, 28, BOARD_M)
+    for (cx, cy) in ((-12, -11), (11, -11), (-12, 8), (11, 8)):
+        v.box(cx, cx + 1.4, cy, cy + 1.4, 10, 28, TIMBER)
+    v.roof(-16, 16, -15, 13, 26, 46, THATCH_M, axis='x', th=3.5, fill=BOARD_M)
+    v.box(-2.5, 2.5, 8.6, 9.6, 10, 22, TIMBER); v.box(-1.6, 1.6, 8.9, 9.8, 10, 21, COAL)    # door
+    window(v, 'x', 12, -6, 0, 16, 22, frame=TIMBER, cross=False, sill=False)
+    window(v, 'y', 9, 5, 9, 16, 21, frame=TIMBER, cross=False, sill=False)
+    lantern(v, -9, 20, 22); flamme(v, -9, 20, 22)
+    v.box(-10, -8.6, 19.4, 20.6, 10, 18, TIMBER)
+    for k in range(4):  # the ladder off the porch
+        v.box(-1.8, 1.8, 22 + 0.4, 23.4, 1 + k * 2.4, 1.8 + k * 2.4, WOOD_L)
+    for xx in (-2.2, 1.4):
+        v.box(xx, xx + 0.8, 22.2, 23.4, -PROF, 10, WOOD_L)
+    sag = lambda X: 24 - 3 * (1 - ((X - 4) / 9) ** 2)   # a net drying on the side
+    v.put((13, 14.4, -10, 8, 12, 26), lambda X, Y, Z: (Z < 24) & (Z > 13 + 2 * np.abs(Y / 9)) & ((np.mod(Y, 2.4) < 0.7) | (np.mod(Z, 2.4) < 0.7)), NET)
+    v.ell(6, 16, 11.4, 4, 3, 1.6, NET)
+    barrel(v, 10, 16, 2.6, 6, z=10)
+    return v
+
+def courbe(X, Z, z0, k):
+    return k * np.clip(Z - z0, 0, None) ** 2
+
+@bld('marais-witchhut')
+def sorciere():
+    """The witch's hut, the marsh's landmark: a crooked hut of black boards on tall leaning stilts, under a steep
+    mossy thatch that bends into a hooked tip, a round window and lanterns of green swamp light, a cauldron brewing
+    on the porch, a skull on a pole, toadstools on the piles."""
+    v = Vol(-42, 42, -40, 46, -PROF - 1, 150)
+    z0 = 20
+    lean = lambda Z: (Z - z0) * 0.10
+    for (px, py, dx, dy) in ((-15, -13, -3, -2), (13, -13, 2, -3), (-15, 15, -2, 3), (13, 17, 3, 2), (-1, 24, 0, 3), (-1, -14, 0, -2)):
+        v.capsule((px + dx, py + dy, -PROF), (px, py, z0), 1.3, BARK_G)
+        v.ell(px + dx, py + dy, -PROF + 0.5, 2.4, 2.4, 1.2, MOSS)
+    v.capsule((-15, -13, 4), (13, 17, 14), 0.8, TIMBER); v.capsule((13, -13, 4), (-15, 15, 14), 0.8, TIMBER)
+    v.box(-19, 17, -17, 28, z0 - 1.8, z0, PLANK_M)
+    v.put((-20, 22, -16, 16, z0, 46), lambda X, Y, Z: (np.abs(X - lean(Z) + 1) <= 13) & (np.abs(Y) <= 11), BOARD_W)
+    for (cx, cy) in ((-14, 11), (12, 11), (12, -11)):
+        v.put((cx - 4, cx + 9, cy - 2, cy + 2, z0, 46), lambda X, Y, Z, cx=cx, cy=cy: (np.abs(X - lean(Z) - cx + 1) <= 0.9) & (np.abs(Y - cy) <= 0.9), TIMBER)
+    def toit(X, Y, Z):  # a hooked hat: a cone whose axis bends towards +x near the top
+        t = np.clip((Z - 44) / 66, 0, 1)
+        cx = lean(46) - 1 + 24 * t ** 3
+        r = 22 * (1 - t) ** 1.25 + 1.2
+        return ((X - cx) ** 2 + (Y * 1.05) ** 2 <= r * r) & (Z >= 44)
+    v.put((-24, 34, -24, 24, 44, 112), toit, THATCH_W)
+    v.put((-24, 34, -24, 24, 44, 112), lambda X, Y, Z: toit(X, Y, Z) & (hash3(np.floor(X / 3).astype(np.int64), np.floor(Y / 3).astype(np.int64), np.floor(Z / 3).astype(np.int64), 17) > 0.86), MOSS)
+    lw = lean(33)
+    v.put((lw - 8, lw + 8, 9, 14, 26, 40), lambda X, Y, Z: ((X - lw + 3) ** 2 + (Z - 33) ** 2 <= 4.8 ** 2) & (Y < 12.6), TIMBER)
+    v.put((lw - 8, lw + 8, 9, 14, 26, 40), lambda X, Y, Z: ((X - lw + 3) ** 2 + (Z - 33) ** 2 <= 3.4 ** 2) & (Y < 13), WITCH)
+    xw = lean(34) + 12
+    v.put((xw - 3, xw + 3, -8, 0, 28, 40), lambda X, Y, Z: (np.abs(X - lean(Z) - 12) <= 1.3) & (np.abs(Y + 4) <= 2) & (Z >= 30) & (Z < 37), WITCH)
+    v.put((-20, 4, 9, 14, z0, 40), lambda X, Y, Z: (np.abs(X - lean(Z) + 10) <= 3.2) & (Y < 12.4) & (Z < z0 + 14), COAL)
+    v.capsule((lean(60) + 8, -6, 52), (lean(60) + 12, -8, 72), 2.4, STONE_D)
+    v.ell(lean(60) + 12, -8, 72, 3, 3, 1.2, COAL)
+    # the porch: a cauldron on its fire, a skull on a pole, green lanterns
+    v.cyl(4, 21, 4.4, z0, z0 + 6, COAL); v.cyl(4, 21, 4.8, z0 + 5.4, z0 + 6.6, METAL, rin=3.6)
+    v.ell(4, 21, z0 + 6, 3.6, 3.6, 0.9, WITCH)
+    for a in (0, 2.1, 4.2):
+        v.capsule((4 + 3 * np.cos(a), 21 + 3 * np.sin(a), z0), (4 + 1.5 * np.cos(a + 1), 21 + 1.5 * np.sin(a + 1), z0 + 1.6), 0.6, BARK)
+    v.box(-17, -15.6, 25, 26.4, z0, z0 + 16, TIMBER)
+    v.ell(-16.3, 25.7, z0 + 18, 2.2, 2.2, 2.4, BONE)
+    v.box(-17.8, -16.6, 27.6, 28, z0 + 17.6, z0 + 18.8, COAL); v.box(-16, -14.8, 27.6, 28, z0 + 17.6, z0 + 18.8, COAL)
+    lantern(v, 14, 24, z0 + 10, glow=WITCH); v.box(13.4, 14.6, 23.4, 24.6, z0, z0 + 6, TIMBER)
+    lantern(v, lean(40) - 14, -12, 40, glow=WITCH)
+    for k in range(6):  # a ladder down to the water
+        v.box(-6, -1, 28 + 0.2, 29.4, -PROF + 2 + k * 3.6, -PROF + 2.9 + k * 3.6, WOOD_L)
+    for xx in (-6.4, -1.6):
+        v.box(xx, xx + 0.9, 28, 29.4, -PROF, z0, WOOD_L)
+    for (tx, ty, tz, r) in ((-17, 18, 6, 1.8), (-16, 20, 9, 1.3), (16, 17, 3, 2.0), (-13, -15, 5, 1.6)):
+        v.ell(tx, ty, tz, r, r, r * 0.6, TOAD); v.box(tx - 0.4, tx + 0.4, ty - 0.4, ty + 0.4, tz - 2, tz, BONE)
+    return v
+
+@bld('marais-willow')
+def saule():
+    """A weeping willow: a leaning trunk, a broad crown and a curtain of strands hanging nearly to the ground."""
+    v = Vol(-38, 38, -38, 38, 0, 92)
+    v.put((-9, 12, -9, 9, 0, 50), lambda X, Y, Z: (X - Z * 0.07) ** 2 + Y ** 2 <= (3.2 + 3.4 * np.clip(1 - Z / 10, 0, 1) ** 2) ** 2, BARK)
+    v.capsule((3, 0, 36), (14, -6, 52), 2.0, BARK); v.capsule((3, 0, 38), (-8, 8, 50), 1.9, BARK)
+    canopy(v, 3, 0, 58, 23, WILLOW, seed=21, n=11)
+    rng = np.random.default_rng(22)
+    for k in range(170):
+        a = rng.uniform(0, 2 * np.pi); r = rng.uniform(15, 28)
+        x, y = 3 + r * np.cos(a), r * np.sin(a)
+        top = 66 - (r / 28) ** 2 * 26
+        bot = max(7, top - rng.uniform(26, 44))
+        v.capsule((x, y, top), (x * 1.06 + 0.2, y * 1.06, bot), 0.5, WILLOW_S if k % 3 else WILLOW)
+    return v
+
+@bld('marais-gnarled')
+def tordu():
+    """A gnarled swamp tree: buttress roots, a twisting trunk, crooked limbs with sparse dark leaves and hanging moss."""
+    v = Vol(-36, 36, -36, 36, 0, 92)
+    rng = np.random.default_rng(31)
+    for k in range(6):
+        a = k / 6 * 2 * np.pi + rng.uniform(-0.3, 0.3)
+        v.capsule((0, 0, 8), (15 * np.cos(a), 15 * np.sin(a), 0.6), 2.4, BARK_G)
+    pts = [(0, 0, 0), (2.5, -1, 14), (-1.5, 2, 28), (3, 1, 40), (1, -2, 50)]
+    for (a, b), r in zip(zip(pts[:-1], pts[1:]), (5.2, 4.4, 3.8, 3.2)):
+        v.capsule(a, b, r, BARK_G)
+    ends = []
+    def limb(p, ang, tilt, length, rad, depth):
+        q = (p[0] + length * np.cos(ang) * np.cos(tilt), p[1] + length * np.sin(ang) * np.cos(tilt), p[2] + length * np.sin(tilt))
+        v.capsule(p, q, rad, BARK_G)
+        if depth:
+            for s in (-1, 1):
+                limb(q, ang + s * rng.uniform(0.4, 0.9), tilt + rng.uniform(-0.35, 0.25), length * 0.7, max(0.8, rad * 0.65), depth - 1)
+        else:
+            ends.append(q)
+    for k, z in enumerate((34, 42, 48, 50)):
+        limb(pts[3] if z < 45 else pts[4], k / 4 * 2 * np.pi + 0.5, rng.uniform(0.2, 0.6), 15, 2.0, 2)
+    for k, e in enumerate(ends):
+        if k % 2 == 0:
+            canopy(v, e[0], e[1], e[2] + 2, 7.5, LEAF_G, seed=40 + k, n=4)
+        for j in range(3):
+            x, y = e[0] + rng.uniform(-4, 4), e[1] + rng.uniform(-4, 4)
+            v.capsule((x, y, e[2]), (x, y, e[2] - rng.uniform(7, 16)), 0.65, MOSS_H)
+    return v
+
+@bld('marais-reeds')
+def roseaux():
+    """A clump of reeds and cattails, for the banks."""
+    v = Vol(-18, 18, -18, 18, 0, 34)
+    rng = np.random.default_rng(51)
+    for k in range(48):
+        a = rng.uniform(0, 2 * np.pi); r = 12 * np.sqrt(rng.uniform(0, 1))
+        x, y = r * np.cos(a), r * np.sin(a)
+        h = rng.uniform(12, 28) * (1 - r / 24)
+        lx, ly = x * 0.25 + rng.uniform(-1.5, 1.5), y * 0.25 + rng.uniform(-1.5, 1.5)
+        v.capsule((x, y, 0), (x + lx, y + ly, h), 0.6, REED)
+        if k % 5 == 0 and h > 12:
+            v.capsule((x + lx * (h - 5) / h, y + ly * (h - 5) / h, h - 5), (x + lx, y + ly, h - 1), 0.95, CATTAIL)
+    return v
+
+BRUME = {LEAF: '#a2582a', LEAF_D: '#3f4b38', LEAF_F: '#a8692e', LEAF_A: '#b86a2a', MOSS: '#7a6a3a', MOSS_R: '#7a5a34',
+         CABBAGE: '#8a8a3a', WILLOW: '#c49a3a', WILLOW_S: '#b08a36', LEAF_G: '#7a4a28', MOSS_H: '#9a9478', REED: '#a8884a'}
+
+def brume(pal):
+    """Autumn fog over the summer palette (the marsh's look 'brume'): rust and ochre foliage, brown moss, dry reeds.
+    Called on PAL once the model has added its own materials."""
+    for k, c in BRUME.items():
+        mt = pal.get(k)
+        if mt is None or getattr(mt, 'brume', False):
+            continue
+        mt.brume = True
+        mt.ramp = ramp(c, hs=24, light=1.3, dark=0.3)
+        mt.outline = outline_of(mt.ramp)
+
+MATERIAUX['brume'] = brume
+
 def fit(r, name):
     """A look with a base (winter): the sprite cut to the base look's box (same size and anchor, from its meta.json),
     so the map's layout data (fronts, anchors) stays the same; a bare tree fits inside its summer crown's box."""

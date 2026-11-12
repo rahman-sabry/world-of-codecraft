@@ -14,7 +14,9 @@ art/<map>-<look>/. A look record:
   sol         ground-kind texture overrides, kind -> variant of extras.ground_tex ("neige", "glace"; the sea's "froide":
               colder, ice at its edges)
   herbe       grass tint: sec / dru (RGB factors on dry patches / lush hollows), brins (grass blades over edges)
-  fleurs      flowers sprinkled on the grass"""
+  fleurs      flowers sprinkled on the grass
+  teinte      optional: a daylight grade of the composite (bake_map.py): gris (desaturation), froid (RGB factors),
+              brume (a colour mixed in by mix)"""
 import os
 
 LOOKS = {
@@ -25,6 +27,13 @@ LOOKS = {
                        "sand": "neige", "sea": "froide"},
                   herbe=dict(sec=(1.03, 1.03, 1.01), dru=(0.92, 0.96, 1.04), brins="#eef3f8"), fleurs=False),
 }
+# The marsh's autumn fog (maps/marais.json): rust and ochre foliage (tex.MATERIAUX "brume", in buildings.py), dun grass
+# and greyer water (mapbake/sol.py), and a muted cold daylight: 'teinte' grades the day composite in bake_map.py
+# (desaturation, a cold multiply, a mix towards the fog's colour). The mod drifts fog bands over it (look flag brume).
+LOOKS["brume"] = dict(assets="assets-brume/", monde="monde-brume", base="ete", materiaux="brume", arbres_nus=False,
+                      sol={"grass": "brume", "marais-eau": "brume"},
+                      herbe=dict(sec=(1.04, 0.98, 0.9), dru=(0.94, 0.97, 1.0), brins="#b49a5a"), fleurs=False,
+                      teinte=dict(gris=0.28, froid=(0.91, 0.95, 1.02), brume="#aeb6bc", mix=0.12))
 
 THEME = os.environ.get("THEME", "")
 assert THEME == "" or THEME in LOOKS, f"unknown THEME {THEME!r} (unset for summer, or one of {', '.join(LOOKS)})"

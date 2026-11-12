@@ -639,6 +639,37 @@ export default class Place {
     return out;
   }
 
+  /** Fog (a look's flag brume: Mirewick's autumn): a few broad translucent bands over the view (above the world,
+   *  under the chronicle), each three nested capsules for a soft edge, drifting there and back on native `left` loops
+   *  of 24 to 40 s; thinner at night. Fixed count, no timer, no redraw. */
+  brume(vw, vh, nightK) {
+    if (!look().brume) return [];
+    const a = 1 - 0.5 * nightK;
+    return [0, 1, 2, 3, 4].map((k) => {
+      const y = ((k * 0.23 + 0.08) % 1) * vh - 40, w = vw * (0.7 + 0.12 * (k % 3)), h = 70 + 22 * (k % 3), x0 = -vw * 0.25 + ((k * 0.37) % 1) * vw * 0.4;
+      let el = div().absolute().left(x0).top(y).w(w).h(h).opacity(a)
+        .loop("left", { from: x0, to: x0 + 120 + 40 * (k % 3), period: 24000 + k * 4100 });
+      for (const [i, f] of [[0, 0.11], [1, 0.1], [2, 0.12]]) {
+        const dx = w * 0.12 * i, dy = h * 0.18 * i;
+        el = el.child(div().absolute().left(dx).top(dy).w(w - 2 * dx).h(h - 2 * dy).rounded_full().bg("#d6dce2").opacity(f));
+      }
+      return el;
+    });
+  }
+
+  /** Fireflies over the banks at night (the map's LUCIOLES, if any): two dots by each place, blinking and bobbing on
+   *  native loops, a few px apart. */
+  lucioles(nightK) {
+    const L = lieux().LUCIOLES;
+    if (!L || nightK < 0.5) return [];
+    return L.flatMap(([x, y], n) => [0, 1].map((k) => {
+      const h = hash(`${n}:${k}`), px = x + (h % 31) - 15, py = y - 6 - ((h >> 5) % 14);
+      return div().absolute().left(px).top(py).size(3).rounded_full().bg("#e6ff7a")
+        .loop("opacity", { from: 0, to: nightK, period: 900 + (h % 900) })
+        .loop("top", { from: py, to: py - 6 - (h % 5), period: 2300 + ((h >> 3) % 1400) });
+    }));
+  }
+
   glows(nightK) {
     if (nightK <= 0) return [];
     return lieux().GLOWS.map((g) => {
@@ -908,6 +939,7 @@ export default class Place {
       .children(TILES.map((tl) => image(`${M}/jour-${tl.k}.png`).absolute().left(tl.x).top(0).w(tl.w).h(WORLD.h)))
       .when(nightK > 0, (el) => el.children(TILES.map((tl) => image(`${M}/nuit-${tl.k}.png`).absolute().left(tl.x).top(0).w(tl.w).h(WORLD.h).opacity(nightK))))
       .children(this.glows(nightK))
+      .children(this.lucioles(nightK))
       .children(this.hitboxes())
       .children(things.map((th) => th.el))
       .children(this.smoke());
@@ -943,6 +975,7 @@ export default class Place {
         .on_hover((over, cx) => { if (!over && this.drag) { this.drag = null; cx.notify(); } })
         .child(world)
         .children(this.neige(vw, this.h ?? WORLD.h))
+        .children(this.brume(vw, this.h ?? WORLD.h, nightK))
         .child(this.chronicle()));
   }
 }

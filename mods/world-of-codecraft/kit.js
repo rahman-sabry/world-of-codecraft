@@ -8,6 +8,7 @@ import { home, readTextFile, panes, focused, agents, shared, setShared } from "h
 import { t, tbl } from "./i18n.js";
 import { VALBRUME } from "./carte-valbrume.js";
 import { PORT } from "./carte-port.js";
+import { MARAIS } from "./carte-marais.js";
 
 export const ART = "mods/world-of-codecraft/art";
 export const TITLE = "Cinzel"; // Roman capitals, headings only (fonts/, OFL)
@@ -16,7 +17,7 @@ export const UI = "Alegreya Sans"; // sturdy humanist text, everything else (fon
 // The maps (layouts: their data modules, carte-*.js, read through lieux.js), each with one or more looks baked into
 // their own folders of art/ (tools/bake_*.py, THEME=hiver for the winter one). The shown map is the store key wocc.map,
 // its look wocc.look, kept across restarts.
-export const CARTES = [VALBRUME, PORT];
+export const CARTES = [VALBRUME, PORT, MARAIS];
 /** The shown map (its data module's record). */
 export const carte = () => CARTES.find((c) => c.id === shared("wocc.map")) ?? CARTES[0];
 /** The shown map's name in the current language ("Valbrume", "Port-Salin"): the top bar, the panel, the chronicle. */
