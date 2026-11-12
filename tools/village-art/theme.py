@@ -24,6 +24,14 @@ LOOKS = {
                   sol={"grass": "neige", "dirt": "neige", "paved": "neige", "water": "glace", "crop": "neige",
                        "sand": "neige", "sea": "froide"},
                   herbe=dict(sec=(1.03, 1.03, 1.01), dru=(0.92, 0.96, 1.04), brins="#eef3f8"), fleurs=False),
+    # Emberdeep (maps/forge.json, forge.py): the cavern floor is basalt (the 'grass' kind), roaring forges and bright
+    # lava; "braises", banked embers: the same sprites dimmed (cut to the forge boxes), crusted lava ('lave')
+    "forge": dict(assets="assets-forge/", monde="forge", base=None, materiaux="forge", arbres_nus=False,
+                  sol={"grass": "forge-basalte"}, lave="vive",
+                  herbe=dict(sec=(1.04, 1.0, 0.96), dru=(0.95, 0.96, 1.03), brins="#4e4246"), fleurs=False),
+    "braises": dict(assets="assets-braises/", monde="braises", base="forge", materiaux="braises", arbres_nus=False,
+                    sol={"grass": "forge-basalte"}, lave="braises",
+                    herbe=dict(sec=(1.0, 0.98, 0.96), dru=(0.94, 0.95, 1.03), brins="#463c42"), fleurs=False),
 }
 
 THEME = os.environ.get("THEME", "")

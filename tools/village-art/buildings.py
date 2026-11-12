@@ -910,6 +910,273 @@ def nets():
         v.ell(xx, 6.8, 2.2, 1, 0.8, 0.9, CLOTH_Y)
     return v
 
+# ---------------------------------------------------------------- Emberdeep (maps/forge.json, forge.py)
+# A dwarven forge city in a cavern hall: the village's models in the look's dark stone and iron (forge.py MATERIAUX),
+# and these: the great forge (the landmark), smelters, ore carts, braziers, a stone bridge over the lava, carved
+# pillars, the cavern's basalt walls, stalagmites and ore.
+import forge as FG
+MATERIAUX.update(FG.MATERIAUX)
+BASALTE, FER, CUIR, FONTE, RUNE, ROC, CUIVRE, PIERRE, BRIQUE, SUIE = range(140, 150)
+
+def brasero(v, x, y, z=0, r=6, h=14):
+    """An iron brazier on three legs, coals and a fire in its bowl."""
+    for k in range(3):
+        a = k / 3 * 2 * np.pi + 0.5
+        v.capsule((x + r * 0.9 * np.cos(a), y + r * 0.9 * np.sin(a), z), (x + r * 0.35 * np.cos(a), y + r * 0.35 * np.sin(a), z + h), 0.7, FER)
+    v.cyl(x, y, r, z + h, z + h + 3, FER, rin=r - 1.2)
+    v.cyl(x, y, r - 1.2, z + h, z + h + 1.5, FER)
+    v.cyl(x, y, r - 1.3, z + h + 1.5, z + h + 2.6, SUIE)
+    v.put((x - r, x + r, y - r, y + r, z + h + 2, z + h + 12), lambda X, Y, Z: (X - x) ** 2 + (Y - y) ** 2 <= ((r - 1.8) * np.clip(1 - (Z - z - h - 2) / 10, 0, 1) ** 1.1 + 0.8 * np.sin(Z * 1.1 + np.arctan2(Y - y, X - x) * 3)) ** 2, FIRE)
+
+@bld('forge-grandforge')
+def grandforge():
+    """The great forge: a stepped basalt dais; a brick furnace with a glowing arched mouth and a band of fire runes,
+    its flue tapering up in iron bands to a glowing crown; a great bellows on its west side; on its east side a
+    crucible of molten metal hung by chains from an iron gantry, fed by a lava runnel from the back, its spout over a
+    row of casting moulds; a great anvil on a stone block in front; braziers at the dais' corners."""
+    v = Vol(-80, 80, -76, 76, 0, 215)
+    v.box(-68, 68, -60, 62, 0, 4, PIERRE)
+    v.box(-62, 62, -54, 56, 4, 8, PIERRE)
+    v.box(-56, 56, -48, 50, 8, 12, BASALTE)
+    for a in np.arange(-56, 56, 8):  # the top step's slab joints
+        v.box(a, a + 0.6, 49.4, 50.2, 8.5, 12, SUIE)
+    # furnace
+    fx0, fx1, fy0, fy1 = -36, 14, -40, 10
+    v.box(fx0, fx1, fy0, fy1, 12, 74, BRIQUE)
+    for (cx, cy) in ((fx1, fy1), (fx0, fy1), (fx1, fy0)):
+        for zz in range(12, 74, 9):
+            v.box(cx - 3, cx + 3, cy - 3, cy + 3, zz, zz + 6, BASALTE)
+    v.box(fx0 - 2, fx1 + 2, fy0 - 2, fy1 + 2, 44, 47, FER)
+    v.box(fx0 - 2, fx1 + 2, fy0 - 2, fy1 + 2, 70, 76, BASALTE)
+    v.put((fx0 - 1, fx1 + 1.2, fy0 - 1, fy1 + 1.2, 18, 24), lambda X, Y, Z: ((Y > fy1 - 0.2) & (np.sin(X * 1.1) > 0.1) & (np.abs(Z - 21) < 1.6 + (np.sin(X * 0.55) > 0.7))) |
+          ((X > fx1 - 0.2) & (np.sin(Y * 1.1) > 0.1) & (np.abs(Z - 21) < 1.6 + (np.sin(Y * 0.55) > 0.7))), RUNE)
+    mx = -11
+    v.put((mx - 10, mx + 10, fy1 - 6, fy1 + 1.5, 12, 48), lambda X, Y, Z: (np.abs(X - mx) <= 8) & (Z < 34 + np.sqrt(np.clip(64 - (X - mx) ** 2, 0, None))), 0)
+    v.put((mx - 10, mx + 10, fy1 - 7, fy1 - 4, 12, 48), lambda X, Y, Z: (np.abs(X - mx) <= 8) & (Z < 34 + np.sqrt(np.clip(64 - (X - mx) ** 2, 0, None))), FONTE)
+    v.put((mx - 12, mx + 12, fy1 - 1, fy1 + 2, 12, 50), lambda X, Y, Z: (np.abs(np.hypot(X - mx, np.maximum(Z - 34, 0)) - 9.5) < 1.6) & (Z > 12), FER)
+    v.box(mx - 9, mx + 9, fy1, fy1 + 4, 12, 13.5, SUIE)
+    # the flue, tapering in iron bands to a glowing crown
+    cx, cy = -11, -15
+    half = lambda Z: 22 - (Z - 76) * 0.085
+    v.put((cx - 23, cx + 23, cy - 23, cy + 23, 76, 196), lambda X, Y, Z: (np.abs(X - cx) <= half(Z)) & (np.abs(Y - cy) <= half(Z)), BASALTE)
+    for zz in (98, 128, 158, 186):
+        h = half(zz) + 1.6
+        v.box(cx - h, cx + h, cy - h, cy + h, zz, zz + 3, FER)
+    h = half(196)
+    v.box(cx - h - 3, cx + h + 3, cy - h - 3, cy + h + 3, 194, 200, FER)
+    v.box(cx - h + 1, cx + h - 1, cy - h + 1, cy + h - 1, 197, 201, FONTE)
+    for zz in (110, 140, 170):  # glowing vents on the flue's faces
+        v.box(cx - 2, cx + 2, cy + half(zz) - 1, cy + half(zz) + 0.6, zz, zz + 7, FONTE)
+        v.box(cx + half(zz) - 1, cx + half(zz) + 0.6, cy - 2, cy + 2, zz, zz + 7, FONTE)
+    # the great bellows on the west side, its nozzle into the furnace
+    bx0, bx1 = -58, -38
+    for yy0, yy1 in ((-30, -14), (-6, 8)):
+        v.put((bx0, bx1, yy0, yy1, 12, 34), lambda X, Y, Z: (Z < 14 + 12 * np.clip((bx1 - X) / (bx1 - bx0), 0, 1) ** 0.7) & (Z > 13.5), CUIR)
+        v.box(bx0 - 1, bx1, yy0 - 0.5, yy1 + 0.5, 12, 13.5, WOOD_L)
+        v.put((bx0 - 1, bx1, yy0 - 0.5, yy1 + 0.5, 13, 34), lambda X, Y, Z: np.abs(Z - (14 + 12 * np.clip((bx1 - X) / (bx1 - bx0), 0, 1) ** 0.7) - 1) < 0.8, WOOD_L)
+        v.box(bx1 - 1, fx0 + 1, (yy0 + yy1) / 2 - 1.5, (yy0 + yy1) / 2 + 1.5, 15, 18, FER)
+        v.box(bx0 - 4, bx0 + 1, (yy0 + yy1) / 2 - 1, (yy0 + yy1) / 2 + 1, 26, 28, WOOD_L)
+    v.box(-62, -60, -24, -22, 12, 52, FER); v.box(-62, -60, 0, 2, 12, 52, FER); v.box(-62, -60, -24, 2, 50, 53, FER)
+    # the crucible on the east side, on a stone cradle, hung from an iron gantry
+    kx, ky = 38, 22
+    v.box(kx - 11, kx + 11, ky - 9, ky + 9, 12, 20, PIERRE)
+    v.put((kx - 14, kx + 14, ky - 14, ky + 14, 20, 42), lambda X, Y, Z: ((np.hypot(X - kx, Y - ky) <= 7 + (Z - 20) * 0.32) & (np.hypot(X - kx, Y - ky) > 5 + (Z - 20) * 0.32)) | ((np.hypot(X - kx, Y - ky) <= 7 + (Z - 20) * 0.32) & (Z < 22)), FER)
+    v.put((kx - 14, kx + 14, ky - 14, ky + 14, 36, 39), lambda X, Y, Z: np.hypot(X - kx, Y - ky) <= 5 + (Z - 20) * 0.32, FONTE)
+    v.cyl(kx, ky, 14.3, 40, 42.5, FER, rin=12.6)
+    v.put((kx - 6, kx + 6, ky + 10, ky + 22, 36, 42), lambda X, Y, Z: (np.abs(X - kx) < 2.6 - (Y - ky - 12) * 0.08) & (Z < 41) & (Z > 37 - (Y - ky - 12) * 0.25), FER)
+    v.put((kx - 3, kx + 3, ky + 12, ky + 22, 36, 42), lambda X, Y, Z: (np.abs(X - kx) < 1.4) & (np.abs(Z - (40.5 - (Y - ky - 12) * 0.25)) < 0.7), FONTE)
+    v.box(kx - 1.2, kx + 1.2, ky + 19.5, ky + 21.5, 13, 36, FONTE)  # the pour, falling into a mould
+    for k in range(4):  # casting moulds in a row, the ingots glowing
+        mx_, my_ = kx - 20 + k * 9, ky + 21
+        v.box(mx_ - 3.5, mx_ + 3.5, my_ - 2.5, my_ + 2.5, 12, 15, FER)
+        v.box(mx_ - 2.5, mx_ + 2.5, my_ - 1.5, my_ + 1.5, 14, 15.4, FONTE if k < 3 else SUIE)
+    for py in (ky - 15, ky + 15):
+        v.box(kx - 1.5, kx + 1.5, py - 1.5, py + 1.5, 12, 70, FER)
+        v.box(kx - 3, kx + 3, py - 3, py + 3, 12, 15, PIERRE)
+    v.box(kx - 2, kx + 2, ky - 17, ky + 17, 68, 72, FER)
+    for (ax_, ay_) in ((kx - 8, ky), (kx + 8, ky), (kx, ky - 8)):  # chains, the links alternating
+        for k, zz in enumerate(np.arange(43, 68, 2.2)):
+            px, py = ax_, ay_
+            if k % 2: v.box(px - 0.5, px + 0.5, py - 1.0, py + 1.0, zz, zz + 1.8, FER)
+            else: v.box(px - 1.0, px + 1.0, py - 0.5, py + 0.5, zz, zz + 1.8, FER)
+    v.box(kx - 9, kx + 9, ky - 1, ky + 1, 66, 68, FER); v.box(kx - 1, kx + 1, ky - 9, ky + 1, 66, 68, FER)
+    # the lava runnel from the back of the hall, on stone piers, into the crucible
+    v.box(kx - 4, kx + 4, -76, ky - 9, 40, 44, PIERRE)
+    v.box(kx - 2.6, kx + 2.6, -76, ky - 8, 43, 44.6, FONTE)
+    for yy in (-70, -46, -22, 0):
+        v.box(kx - 3, kx + 3, yy - 3, yy + 3, 0 if yy < -50 else 12, 40, PIERRE)
+    # the great anvil on its block, a hammer leaning on it
+    ax_, ay_ = -30, 36
+    v.box(ax_ - 7, ax_ + 7, ay_ - 6, ay_ + 6, 12, 24, PIERRE)
+    v.box(ax_ - 5, ax_ + 5, ay_ - 3, ay_ + 3, 24, 28, FER)
+    v.box(ax_ - 3, ax_ + 3, ay_ - 2, ay_ + 2, 28, 31, FER)
+    v.box(ax_ - 10, ax_ + 8, ay_ - 3.5, ay_ + 3.5, 31, 36, FER)
+    v.put((ax_ + 8, ax_ + 16, ay_ - 3, ay_ + 3, 32, 36), lambda X, Y, Z: (np.abs(Y - ay_) < 2.6 * (1 - (X - ax_ - 8) / 8)) & (np.abs(Z - 34.5) < 1.6 * (1 - (X - ax_ - 8) / 9)), FER)
+    v.box(ax_ - 2, ax_ + 4, ay_ - 1.5, ay_ + 1.5, 36, 37, FONTE)
+    v.capsule((ax_ - 14, ay_ + 4, 12), (ax_ - 9, ay_ + 5, 30), 0.9, WOOD_L)
+    v.box(ax_ - 11, ax_ - 6, ay_ + 2.5, ay_ + 7.5, 29, 34, FER)
+    for (bx, by) in ((58, 52), (-58, 48), (60, -50)):
+        brasero(v, bx, by, 12)
+    return v
+
+@bld('forge-fonderie')
+def fonderie():
+    """A smelter: a brick kiln dome on a stone base, its arched mouth glowing, a tall brick chimney in iron bands, a
+    heap of copper ore and a slag heap."""
+    v = Vol(-32, 32, -30, 32, 0, 150)
+    v.box(-16, 16, -16, 16, 0, 24, PIERRE)
+    v.box(-17, 17, -17, 17, 22, 25, FER)
+    v.put((-17, 17, -17, 17, 24, 44), lambda X, Y, Z: X ** 2 + Y ** 2 + ((Z - 24) * 1.3) ** 2 <= 16 ** 2, BRIQUE)
+    v.put((-8, 8, 10, 18, 2, 24), lambda X, Y, Z: (np.abs(X) <= 6) & (Z < 13 + np.sqrt(np.clip(36 - X ** 2, 0, None))), 0)
+    v.put((-8, 8, 10, 13, 2, 24), lambda X, Y, Z: (np.abs(X) <= 6) & (Z < 13 + np.sqrt(np.clip(36 - X ** 2, 0, None))), FONTE)
+    v.put((-9, 9, 15, 17.5, 0, 24), lambda X, Y, Z: (np.abs(np.hypot(X, np.maximum(Z - 13, 0)) - 7.4) < 1.3) & (Z > 1), FER)
+    v.box(10, 17.5, -3, 3, 8, 13, 0); v.box(10, 13, -2.5, 2.5, 8, 13, FONTE)  # a peep hole on the east face
+    v.box(-12, 0, -12, 0, 38, 132, BRIQUE)
+    for zz in (60, 88, 116):
+        v.box(-13, 1, -13, 1, zz, zz + 2.5, FER)
+    v.box(-14, 2, -14, 2, 128, 133, FER)
+    v.box(-10, -2, -10, -2, 130, 134, 0); v.box(-10, -2, -10, -2, 126, 130, FONTE)
+    rng = np.random.default_rng(17)
+    for k in range(9):
+        a, d = rng.uniform(0.2, 1.4), rng.uniform(19, 26)
+        v.ell(d * np.cos(a), d * np.sin(a), 1.5, rng.uniform(2.5, 4), rng.uniform(2.2, 3.5), rng.uniform(2, 3.5), CUIVRE if k % 3 else ROC)
+    for k in range(5):
+        a, d = rng.uniform(-1.9, -0.9), rng.uniform(18, 24)
+        v.ell(d * np.cos(a) + 2, d * np.sin(a), 1.4, rng.uniform(2.5, 3.6), rng.uniform(2, 3), rng.uniform(1.6, 2.6), SUIE)
+    v.capsule((22, 4, 0), (12, 12, 20), 0.8, WOOD_L)  # a shovel at the heap
+    v.box(11, 14.5, 10.5, 13.5, 18, 22, FER)
+    return v
+
+@bld('forge-wagonnet')
+def wagonnet():
+    """An ore cart on a short run of rails: an iron-banded wooden box heaped with copper ore and a few gold flecks."""
+    v = Vol(-22, 22, -12, 12, 0, 22)
+    for yy in (-5.5, 4.5):
+        v.box(-20, 20, yy, yy + 1, 0.8, 2, FER)
+    for xx in np.arange(-19, 20, 5):
+        v.box(xx, xx + 2.5, -8, 8, 0, 0.9, PLANK)
+    v.box(-9, 9, -6, 6, 4, 13, PLANK)
+    for xx in (-9, -1, 8):
+        v.box(xx, xx + 1, -6.3, 6.3, 4, 13.3, FER)
+    v.box(-9.3, 9.3, -6.3, 6.3, 12.4, 13.4, FER)
+    for xc in (-5.5, 5.5):
+        for yc in (-6.6, 6.0):
+            v.put((xc - 3.5, xc + 3.5, yc - 0.3, yc + 0.9, 0.5, 7.5), lambda X, Y, Z, xc=xc: (X - xc) ** 2 + (Z - 3.8) ** 2 <= 3.2 ** 2, FER)
+    v.ell(0, 0, 13, 8, 5, 4, CUIVRE)
+    v.ell(-3, 1, 15, 4, 3, 2.6, ROC)
+    for (gx, gy, gz) in ((2, -1, 16.4), (-4, 2, 16.8), (5, 2, 15.2)):
+        v.box(gx, gx + 1, gy, gy + 1, gz, gz + 1, GOLD)
+    return v
+
+@bld('forge-brasero')
+def brasero_prop():
+    """A tall iron brazier on a basalt block."""
+    v = Vol(-10, 10, -10, 10, 0, 36)
+    v.box(-5, 5, -5, 5, 0, 5, BASALTE)
+    brasero(v, 0, 0, 5, 6.5, 15)
+    return v
+
+def pont(rail=False):
+    """A stone bridge over a lava channel, along x: a slab deck at land level on two abutments, its arch dropping to
+    the lava on the near (+y) face, a molten glow under it; parapets with iron lamps at the ends. rail: the near
+    parapet alone (the front cut-out drawn over units on the deck)."""
+    v = Vol(-48, 48, -16, 16, -12, 26)
+    x0, x1, w = -28, 28, 9
+    arc = lambda X: -10 + 12 * np.sqrt(np.clip(1 - (X / x1) ** 2, 0, 1))
+    if not rail:
+        for a, b in ((x0 - 16, x0 + 2), (x1 - 2, x1 + 16)):
+            v.box(a, b, -w - 2, w + 2, -12, 2, PIERRE)
+        v.put((x0, x1, -w, w + 2, -12, 2), lambda X, Y, Z: Z > arc(X) - 1.5, PIERRE)
+        v.put((x0, x1, w - 1, w + 0.5, -12, 0), lambda X, Y, Z: Z <= arc(X) - 1.5, FONTE)
+        for xx in np.arange(x0 - 16, x1 + 16, 6):
+            v.box(xx, xx + 5.4, -w, w, 2, 3.4, BASALTE)
+        v.put((x0, x1, -w - 2, w + 2, -12, 2), lambda X, Y, Z: (np.abs(Z - arc(X)) < 1.2) & (np.abs(Y) > w - 0.5), BASALTE)
+    for yy in ((w,) if rail else (-w - 2, w)):
+        for xx in np.arange(x0 - 14, x1 + 14, 7):
+            v.box(xx, xx + 2.5, yy, yy + 2, 2, 9, PIERRE)
+        v.box(x0 - 15, x1 + 15, yy - 0.2, yy + 2.2, 9, 11, BASALTE)
+        for xx in (x0 - 15, x1 + 12):
+            v.box(xx, xx + 3, yy - 0.5, yy + 2.5, 2, 18, PIERRE)
+            lantern(v, xx + 1.5, yy + 1, 23); v.box(xx + 0.2, xx + 2.8, yy - 0.3, yy + 2.3, 19.6, 23, FIRE)
+    return v
+
+@bld('forge-pont')
+def forge_pont(): return pont()
+@bld('forge-pont-rail')
+def forge_pont_rail(): return pont(True)
+
+@bld('forge-pilier')
+def pilier():
+    """A carved basalt pillar holding up the hall: a stepped base, a shaft with a glowing rune line down its faces,
+    stone bands and a flared capital."""
+    v = Vol(-16, 16, -16, 16, 0, 200)
+    v.box(-13, 13, -13, 13, 0, 6, PIERRE); v.box(-11, 11, -11, 11, 6, 12, PIERRE)
+    v.box(-8, 8, -8, 8, 12, 184, BASALTE)
+    for zz in (60, 120):
+        v.box(-9.5, 9.5, -9.5, 9.5, zz, zz + 5, PIERRE)
+    for face in ('x', 'y'):
+        fbox(v, face, 8, -1, 1, 18, 56, -0.3, 0.6, RUNE)
+        fbox(v, face, 8, -1, 1, 70, 116, -0.3, 0.6, RUNE)
+        for zz in np.arange(22, 112, 11):
+            if 56 < zz < 70: continue
+            fbox(v, face, 8, -3.5, 3.5, zz, zz + 1, -0.3, 0.6, RUNE)
+    v.put((-14, 14, -14, 14, 176, 200), lambda X, Y, Z: (np.abs(X) <= 8 + (Z - 176) * 0.3) & (np.abs(Y) <= 8 + (Z - 176) * 0.3), PIERRE)
+    return v
+
+def colonnes(v, cx, cy, rx, ry, hmin, hmax, seed, mat=ROC, r=6.5):
+    """Basalt columns packed in an ellipse: hexagonal prisms of hashed heights (lower towards the front), their tops
+    cut aslant."""
+    rng = np.random.default_rng(seed)
+    pas = r * 1.75
+    for i, xx in enumerate(np.arange(cx - rx, cx + rx + 0.1, pas)):
+        for yy in np.arange(cy - ry + (i % 2) * pas / 2, cy + ry + 0.1, pas):
+            if ((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2 > 1: continue
+            h = rng.uniform(hmin, hmax) * (1 - 0.35 * ((xx - cx) / rx + (yy - cy) / ry + 2) / 4)
+            sx, sy = rng.uniform(-0.25, 0.25), rng.uniform(-0.25, 0.25)
+            def hexa(X, Y, Z, xx=xx, yy=yy, h=h, sx=sx, sy=sy):
+                dx, dy = X - xx, Y - yy
+                d = np.maximum(np.maximum(np.abs(dx), np.abs(dx * 0.5 + dy * 0.866)), np.abs(dx * 0.5 - dy * 0.866))
+                return (d <= r * 0.92) & (Z < h + dx * sx * 3 + dy * sy * 3)
+            v.put((xx - r, xx + r, yy - r, yy + r, 0, hmax + 10), hexa, mat)
+
+@bld('forge-falaise')
+def falaise():
+    """A stretch of the cavern's wall: packed basalt columns, tallest at the back, a carved niche with a fire rune."""
+    v = Vol(-62, 62, -44, 44, 0, 262)
+    colonnes(v, 0, 0, 56, 38, 140, 250, 23)
+    v.box(-8, 8, 30, 40, 30, 60, 0)
+    v.box(-6, 6, 30, 33, 34, 56, RUNE)
+    v.box(-9, 9, 34, 40, 28, 31, PIERRE)
+    return v
+
+@bld('forge-rochers')
+def rochers():
+    """A low cluster of basalt columns (the wall's foot, the hall's edges)."""
+    v = Vol(-30, 30, -24, 24, 0, 84)
+    colonnes(v, 0, 0, 24, 16, 30, 72, 29)
+    return v
+
+@bld('forge-stalagmite')
+def stalagmite():
+    """A stalagmite cluster: a tall rough cone, two smaller ones, a vein of copper."""
+    v = Vol(-16, 16, -16, 16, 0, 72)
+    for (x, y, r, h, s) in ((0, 0, 10, 62, 1), (8, 6, 6, 34, 2), (-7, 7, 5, 24, 3)):
+        v.put((x - r - 2, x + r + 2, y - r - 2, y + r + 2, 0, h), lambda X, Y, Z, x=x, y=y, r=r, h=h, s=s:
+              np.hypot(X - x, Y - y) <= r * np.clip(1 - Z / h, 0, 1) ** 1.3 + 0.9 * (hash3(np.floor(X / 2).astype(np.int64), np.floor(Y / 2).astype(np.int64), np.floor(Z / 3).astype(np.int64), s) - 0.5), ROC)
+    v.put((-9, 9, -9, 9, 4, 30), lambda X, Y, Z: (np.hypot(X, Y) <= 8.4 * np.clip(1 - Z / 62, 0, 1) ** 1.3 + 0.5) & (np.abs(Z - 12 - X * 0.6) < 1.0), CUIVRE)
+    return v
+
+@bld('forge-minerai')
+def minerai():
+    """Ore and rubble: dark rocks, copper nuggets, a few gold flecks."""
+    v = Vol(-18, 18, -16, 16, 0, 16)
+    for (x, y, rx, ry, rz, m) in ((-4, -2, 8, 6, 7, ROC), (6, 4, 5, 4, 5, CUIVRE), (-9, 6, 4, 3.5, 3.5, ROC), (9, -5, 3.5, 3, 3, CUIVRE), (1, 8, 3, 2.5, 2.5, SUIE)):
+        v.put((x - rx - 2, x + rx + 2, y - ry - 2, y + ry + 2, 0, rz + 2), lambda X, Y, Z, x=x, y=y, rx=rx, ry=ry, rz=rz:
+              ((X - x) / rx) ** 2 + ((Y - y) / ry) ** 2 + (Z / rz) ** 2 <= 1 - 0.3 * hash3(np.floor(X / 2).astype(np.int64), np.floor(Y / 2).astype(np.int64), np.floor(Z / 2).astype(np.int64), 31), m)
+    for (gx, gy, gz) in ((5, 3, 4.4), (8, -4, 2.6), (-2, -4, 6.2)):
+        v.box(gx, gx + 1, gy, gy + 1, gz, gz + 1, GOLD)
+    return v
+
 def fit(r, name):
     """A look with a base (winter): the sprite cut to the base look's box (same size and anchor, from its meta.json),
     so the map's layout data (fronts, anchors) stays the same; a bare tree fits inside its summer crown's box."""
