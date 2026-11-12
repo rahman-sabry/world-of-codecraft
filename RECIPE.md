@@ -218,9 +218,12 @@ the clock. The art is original: it imitates no existing game.
     teleport. A hero whose subagents all end leaves the raid and teleports back to the goal it left. When none is left
     the boss walks back onto its wander path, to where its wander will be when it gets there, then wanders on. There
     is no flight. The raid lives in memory: a reload holds the boss afresh where it wanders.
-    **Its stunning blow** (`secousse` in activite.js): while a raid holds it, every 60 to 90 s (in memory, as the
-    stomps; never over a stomp: one running pushes the blow 3 s past its end, and a stomp due during the blow or its
-    stun waits for the stun to end) it telegraphs for 1 s, holding its attack pose with a dashed red ring pulsing on
+    **Its attacks** (`secousse` in activite.js): while a raid holds it, every 60 to 90 s (in memory, as the stomps)
+    it attacks, half the time its stunning blow, half the time its summon (picked at random). Never over a stomp (one
+    running pushes the attack 3 s past its end), nor over each other; a stomp due meanwhile waits for the stun to end,
+    or for the summoned minions to be gone. While it winds up and until the attack lands (`arme`) it holds its attack
+    pose: no blow makes it flinch (no `touche`, no flash), the damage counting as ever.
+    **Its stunning blow:** it telegraphs for 1 s, holding its attack pose with a dashed red ring pulsing on
     the ground round it (art/fx-aoe-alerte.svg stretched to its reach: its half width + a mage's gap + one ring out +
     30 px, on the ground, `portee`), then its wave spreads from a fifth of that reach to all of it in 540 ms and fades
     (`aoe`, by species: golem, a ring of dust, fx-aoe-golem.svg, and six rocks thrown out, fx-aoe-debris.svg; troll, a
@@ -233,6 +236,17 @@ the clock. The art is original: it imitates no existing game.
     meanwhile is not stunned; one whose subagents end teleports out as usual. Purely cosmetic. Its stages and the
     stun's end are in the frame timer's signature (`fenetres`); all of it drawn only by the shown, live village,
     dimmed at night as the blows' effects. Art by tools/effets.py.
+    **Its summon** (`renfort`): through a 1 s wind-up a rune circle (art/fx-rune.svg, a white mask drawn with `svg()`
+    in its species' colour, `TEINTE`) pulses on the ground where each minion will come; then they come in a burst of
+    that colour (fx-surgit.svg). N = round(party members / 2), 2 to 4, of its minion family (`sbire`: goblins for a
+    troll), at a fight creature's size. Chosen at its start from the members standing in their places (`preparer`, from
+    Place's render): each engages one, melee looks first, then the nearest to the boss, coming 60 px past it, away from
+    the boss (else 30 or 60 degrees round), on walkable ground in the strip, clear of the boss and of each other. Its
+    member turns to face it (`engage`, read by `face` and by the apprentices' facing) and its blows' effects land on it
+    (`frappe`; the effect keeps its minion, `ouRenfort`); 4 of them fell it (the felled puff), and its member turns
+    back to the boss. The others keep hitting the boss. 25 s after they came, the ones left flee. Purely cosmetic:
+    every real subagent call still damages the boss as ever. `pret` / `attaque`, `touche` and a flash after a blow,
+    pips of its blows left; its stages, blows, falls and flights in the frame timer's signature; none in the demo.
     **The ring:** the party (raiders and apprentices alike) stands on slots round the boss (`choisir`): a slot is an
     angle on the ground (0 = beside it, + = nearer the viewer), a ring (75 px further out each) and a side (1 = the
     village's), and a member stands at its own class gap (`ECART`) past the boss's half width along that angle, the

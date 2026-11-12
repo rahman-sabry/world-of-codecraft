@@ -538,7 +538,7 @@ export default class Place {
     for (const [k, e] of this.act.effetsVifs(t)) {
       const u = units.find((x) => x.a.address === e.addr), ap = e.id && apps.find((x) => x.key === k);
       if (!u || (e.id && !ap)) continue;
-      const foe = this.act.adversaire(u, e.id, t);
+      const foe = (e.sbire !== undefined && this.act.ouRenfort(e.sbire)) || this.act.adversaire(u, e.id, t); // a summoned minion it hit
       if (!foe) continue;
       const [x, y, fy] = poitrine(ap || u), cls = ap ? CLS_FR[ap.look.split("-")[1]] : u.h.cls;
       let soin = null;
@@ -861,6 +861,7 @@ export default class Place {
     });
     for (const ap of apps) if (ap.anim.fps || ap.anim.trail.legs.length) this.anims.push({ addr: ap.addr, ...ap.anim });
     this.act.etourdir(units, apps, t); // the raid boss's stunning blow lands: whom it stuns (Activites.secousse)
+    this.act.preparer(units, apps, t); // its summon: where its minions come, whom they engage
 
     // depth: units by feet y (+3, like the compositor), front cut-outs above the units behind them
     const els = units.map((u) => this.unit(u, u === sel, nightHeroes, t, u.animate));
@@ -882,6 +883,7 @@ export default class Place {
     things.push(...apps.map((ap) => ({ ...ap, el: this.blink(ap.key, ap.el, t) })));
     things.push(...this.effets(units, apps, t, nightK));
     things.push(...this.act.aoe(t, 1 - 0.3 * nightK)); // the raid boss's stunning blow (its warning, its wave)
+    things.push(...this.act.renfortDe(t, nightHeroes, 1 - 0.3 * nightK)); // its summon (runes, its minions)
     const traces = this.traces(units, apps, t);
     things.push(...traces);
     for (const fr of FRONTS) {

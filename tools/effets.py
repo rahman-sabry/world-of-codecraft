@@ -20,6 +20,9 @@ The raid boss's stunning blow (activite.js aoe), rings drawn flat (the ground's 
   fx-aoe-spectre.svg                  spectre: a violet wailing ring with wisps (80 x 26)
   fx-aoe-gobelin.svg, fx-aoe-bombe.svg goblin: a fiery ring (80 x 26) and the bomb it throws (7 x 8)
   fx-etoiles-0.svg, fx-etoiles-1.svg  a stunned fighter's dizzy stars, two turns of a circle of three (17 x 7)
+Its summon (activite.js renfort), white masks tinted per species (drawn with svg() and a text colour):
+  fx-rune.svg                         a rune circle on the ground where a minion will come (40 x 14)
+  fx-surgit.svg                       the burst a minion comes out of (21 x 21)
 
   python3 tools/effets.py"""
 import math, os, sys
@@ -193,7 +196,36 @@ def etoiles():
         s.svg(f"fx-etoiles-{k}")
 
 
+def rune():
+    s = gen.Px(40, 14)
+    for y in range(14):
+        for x in range(40):
+            d, a = math.hypot((x - 19.5) / 19.5, (y - 6.5) / 6.5), math.atan2((y - 6.5) / 6.5, (x - 19.5) / 19.5)
+            if 0.84 < d <= 1:
+                s.p(x, y, "#ffffff")
+            elif 0.6 < d <= 0.7 and math.cos(5 * a) > 0.2:
+                s.p(x, y, "#ffffffc0")  # the inner glyph marks
+            elif d <= 0.6:
+                s.p(x, y, "#ffffff%02x" % int(70 * (1 - d / 0.6) + 20))
+    s.svg("fx-rune")
+
+
+def surgit():
+    s = gen.Px(21, 21)
+    for y in range(21):
+        for x in range(21):
+            d, a = math.hypot(x - 10, y - 10), math.atan2(y - 10, x - 10)
+            if d < 2.5:
+                s.p(x, y, "#ffffff")
+            elif d < 10.5 and math.cos(8 * a) > 0.75 - d / 40:
+                s.p(x, y, "#ffffff%02x" % int(255 * (1 - d / 11)))
+            elif 7.5 < d < 9.2:
+                s.p(x, y, "#ffffff90")
+    s.svg("fx-surgit")
+
+
 if __name__ == "__main__":
+    rune(); surgit()
     aoe(); etoiles()
     taille(); dague(); etincelles(); eclair(); arcane(); fleche(); impact(); soin(); chatiment()
     print("fx-*.svg in", gen.OUT)

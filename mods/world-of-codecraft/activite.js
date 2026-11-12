@@ -88,6 +88,8 @@ const ALERTE = 1000; // ms its blow is telegraphed (its wind-up, a warning ring)
 const ONDE = 600; // ms its blow's wave spreads, from the end of the warning
 const ETOURDI = 3000; // ms the party members it reaches stay stunned, from the end of the warning
 // its blow's stages (ms from its start): the bomb up (a goblin) and down, the hit, the wave out, its fade, the stun's end
+const RENFORT = 25000; // ms its summoned minions stay before the ones left flee, from their coming (renfort)
+const TEINTE = { golem: "#c9a26b", troll: "#8fd16a", spectre: "#b06bff", gobelin: "#ff9a2e" }; // its summon's runes and bursts
 const AOE_ETAPES = [600, 850, ALERTE, ALERTE + 60, ALERTE + ONDE, ALERTE + ONDE + 300, ALERTE + ETOURDI];
 const SAUT = [120, 220]; // px a stomp takes it (fewer when its lair has no such room: pietine)
 export const VOYAGE = [400, 700]; // a hero's teleport's stages (portail): fade into the portal, show at the far end
@@ -318,6 +320,8 @@ export class Activites {
    *  it does not fight. */
   face(u) {
     const addr = u.a.address, A = this.raid(addr) && this.arene;
+    const m = A && this.engage(addr, Date.now()); // a summoned minion engaged with it
+    if (m) return m.q[0] < u.x ? -1 : 1;
     if (A) return A.x < u.x ? -1 : 1;
     if (this.sbires.has(addr)) return rangs(this.au(u), sbire(), this.pied(u)[0] > lieux().BASCULE ? -1 : 1).side;
     return this.cible(u) ?? 0;
@@ -405,7 +409,7 @@ export class Activites {
       const fin = b.slain ? b.slainAt ?? 1 : 0, e = errance(b.day, fin || now);
       A = this.arene = { day: b.day, carte, x: Math.round(e.x), y: Math.round(e.y),
         side: antre(b.day).cote === "ouest" ? -1 : 1, pas: null, next: 0, at: 0, fin, places: new Map(), apps: new Map(),
-        aoe: null, nextAoe: 0 };
+        aoe: null, renfort: null, nextAoe: 0 };
       this.raids.clear();
     }
     if (A.fin && now - A.fin >= CHUTE && this.raids.size) this.raids.clear();
@@ -471,7 +475,7 @@ export class Activites {
     }
     if (this.raids.size) changed = this.secousse(now) || changed;
     // a stomp waits for a stunning blow and its stun to end
-    if (this.raids.size && now >= A.next && !(A.pas && now < A.pas.t1) && !this.secoue(now)) changed = this.pietine(now) || changed;
+    if (this.raids.size && now >= A.next && !(A.pas && now < A.pas.t1) && !this.secoue(now) && !this.renfortVif(now)) changed = this.pietine(now) || changed;
     return changed;
   }
 
@@ -481,17 +485,134 @@ export class Activites {
     return Boolean(A?.aoe) && t < A.aoe.t0 + ALERTE + ETOURDI;
   }
 
-  /** Its stunning blow, every AOE ms while a raid holds it (never over a stomp: one running pushes it 3 s past its end;
-   *  the next stomp waits for the stun to end): telegraphed ALERTE ms (its wind-up, a warning ring), then its wave
-   *  (aoe) stuns the party members inside its reach for ETOURDI ms (etourdir: chosen at the hit). True when it starts. */
+  /** Its attacks, one every AOE ms while a raid holds it, each picked at random, half and half: its stunning blow
+   *  (aoe: telegraphed ALERTE ms, its wind-up and a warning ring, then its wave stuns the party members inside its
+   *  reach for ETOURDI ms, etourdir) or its summon (renfort). Never over a stomp (one running pushes it 3 s past its
+   *  end), nor over each other; the next stomp waits for the stun to end, or for the summoned minions to be gone.
+   *  True when one starts. */
   secousse(now) {
     const A = this.arene;
-    if (A.fin || now < A.nextAoe || this.secoue(now)) return false;
+    if (A.fin || now < A.nextAoe || this.secoue(now) || this.renfortVif(now)) return false;
     if (A.pas && now < A.pas.t1) { A.nextAoe = A.pas.t1 + 3000; return false; }
-    A.aoe = { t0: now, touches: null };
     A.nextAoe = now + aoeAttente();
     A.next = Math.max(A.next, now + ALERTE + ETOURDI + 3000);
+    if (Math.random() < 0.5) A.aoe = { t0: now, touches: null };
+    else A.renfort = { t0: now, list: null, felled: [] };
     return true;
+  }
+
+  /** True while the boss winds up or lands an attack (its stunning blow until its wave has spread, its summon until
+   *  its minions come): it holds its attack pose, no blow makes it flinch (the damage still counts). */
+  arme(t) {
+    const A = this.arene;
+    return Boolean(A && ((A.aoe && t - A.aoe.t0 < ALERTE + ONDE) || (A.renfort && t - A.renfort.t0 < ALERTE)));
+  }
+
+  /** True while its summon runs: from its wind-up until its minions are all gone (felled or fled, their fall or flight
+   *  over), or RENFORT ms after they came (and their flight). */
+  renfortVif(t) {
+    const R = this.arene?.renfort;
+    if (!R) return false;
+    const fin = R.list?.length && R.list.every((m) => m.fin) ? Math.max(...R.list.map((m) => m.fin)) : R.t0 + ALERTE + RENFORT;
+    return t < fin + CHUTE;
+  }
+
+  /** Its summon's minions left after RENFORT ms flee; the summon ends once they are all gone. True when that changed. */
+  renfortSuit(now) {
+    const A = this.arene, R = A?.renfort;
+    if (!R) return false;
+    let changed = false;
+    for (const m of R.list ?? []) if (!m.fin && now >= R.t0 + ALERTE + RENFORT) { Object.assign(m, { fin: R.t0 + ALERTE + RENFORT, fuite: true }); changed = true; }
+    if (!this.renfortVif(now)) { A.renfort = null; changed = true; }
+    return changed;
+  }
+
+  /** Its summon's minions, chosen at its start from where the party stands (Place's render: units, apps; the members
+   *  in their places, not walking or teleporting): N = round(members / 2), 2 to 4, of its minion family (sbire). Each engages a party member, melee looks first, then the
+   *  nearest to the boss: it comes 60 px past that member, away from the boss (else 30 or 60 degrees round), on walkable
+   *  ground in the strip, clear of the boss and of the other minions; the member turns to face it. */
+  preparer(units, apps, t) {
+    const A = this.arene, R = A?.renfort;
+    if (!R || R.list) return;
+    // the members standing in their places (not walking or teleporting there)
+    const la = units.filter((u) => this.raid(u.a.address) && !u.portail && !u.leg);
+    const pose = (ap) => { const q = A.apps.get(ap.key)?.q; return !ap.vu.leg && q && Math.hypot(ap.vu.x - q[0], ap.vu.y - q[1]) < 5; };
+    const membres = [...la.map((u) => ({ k: u.a.address, x: u.x, y: u.y, cls: u.h?.cls ?? clsOf(u.a) })),
+      ...apps.filter((ap) => la.some((u) => u.a.address === ap.addr) && pose(ap)).map((ap) => ({ k: ap.key, x: ap.vu.x, y: ap.vu.y, cls: CLS_FR[ap.look.split("-")[1]] }))];
+    const N = Math.max(2, Math.min(4, Math.round(membres.length / 2)));
+    const { demi, corps } = geantDe(espece(A.day)), loin = (m) => Math.hypot(m.x - A.x, (m.y - (A.y - 16)) / APLAT);
+    const ordre = membres.sort((p, q) => (MELEE.has(q.cls) - MELEE.has(p.cls)) || loin(p) - loin(q));
+    const list = [];
+    for (const m of ordre) {
+      if (list.length >= N) break;
+      const a0 = Math.atan2((m.y - (A.y - 16)) / APLAT, m.x - A.x);
+      for (const da of [0, 0.52, -0.52, 1.05, -1.05]) {
+        const q = [Math.round(m.x + Math.cos(a0 + da) * 60), Math.round(m.y + Math.sin(a0 + da) * 60 * APLAT)];
+        if (!walkable(q) || q[1] <= 60 || q[1] >= lieux().WORLD.h - 15 || !clair(A, q, demi, corps) || !list.every((o) => apart(o.q, q))) continue;
+        list.push({ id: list.length, q, cible: m.k, tx: m.x, coups: 0, at: 0, fin: 0 });
+        break;
+      }
+    }
+    R.list = list;
+    R.sp = sbire();
+  }
+
+  /** The summoned minion member k (a hero's address, or address:subagent id) is engaged with at t (come and standing),
+   *  else null. */
+  engage(k, t) {
+    const R = this.arene?.renfort;
+    if (!R?.list || t < R.t0 + ALERTE) return null;
+    return R.list.find((m) => m.cible === k && !m.fin) ?? null;
+  }
+
+  /** Where summoned minion i stands: { x, y (its chest), fy (its feet) } (a blow's effect flies there), or null. */
+  ouRenfort(i) {
+    const R = this.arene?.renfort, m = R?.list?.[i];
+    if (!m) return null;
+    return { x: m.q[0], y: m.q[1] - (CREATURES[R.sp].pret.h * BETE) / 2 + 4, fy: m.q[1] };
+  }
+
+  /** Its summon drawn (renfort; none when none runs): through the wind-up a rune circle in its species' colour on the
+   *  ground at each minion's place, pulsing; then each minion (its family's, at a fight creature's size) comes in a
+   *  burst of that colour, faces its member, `pret` / `attaque` alternating, `touche` and a flash COUP ms after a blow,
+   *  its blows left in pips; one felled rises in a puff, one left at the end flees (fuite). al: dimmed at night.
+   *  [{ z, el }]. */
+  renfortDe(t, night, al) {
+    const A = this.arene, R = A?.renfort;
+    if (!R?.list || !this.ecrit) return [];
+    const tint = TEINTE[espece(A.day)] ?? "#ffffff", sfx = night ? "-n" : "", D = CREATURES[R.sp], out = [], dt = t - R.t0;
+    for (const m of R.list) {
+      const [x, y] = m.q, side = m.tx > x ? 1 : -1, g = side > 0 ? "-g" : ""; // the art faces left; -g faces right
+      const sprite = (pose, extra) => { const p = D[pose]; return image(`${CRE}/${R.sp}/${pose}${g}${sfx}.png`).absolute().left(-p.ax * BETE).top(-p.ay * BETE + 4).w(p.w * BETE).h(p.h * BETE).when(Boolean(extra), extra); };
+      const at = (id, kids) => ({ z: y + 3, el: div().id(`renfort-${R.t0}-${m.id}-${id}`).absolute().left(x).top(y).w(0).h(0).opacity(al).children(kids) });
+      if (dt < ALERTE) {
+        out.push({ z: y - 200, el: svg(`${ART}/fx-rune.svg`).id(`renfort-${R.t0}-${m.id}-rune`).absolute().left(x - 40).top(y - 14).w(80).h(28).text_color(tint)
+          .opacity(al).loop("opacity", { from: 0.4 * al, to: al, period: 300 }) });
+        continue;
+      }
+      const venue = dt < ALERTE + 500, burst = (s) => svg(`${ART}/fx-surgit.svg`).id(`renfort-${R.t0}-${m.id}-surgit`).absolute().left(-21 * s).top(-30 - 21 * s).w(42 * s).h(42 * s)
+        .text_color(tint).opacity(s > 1 ? 0 : 1).transition("left", { duration: 400, easing: "ease-out" }).transition("top", { duration: 400, easing: "ease-out" })
+        .transition("width", { duration: 400, easing: "ease-out" }).transition("height", { duration: 400, easing: "ease-out" }).transition("opacity", { duration: 400, easing: "linear" });
+      if (m.fin && m.fuite) { if (t - m.fin < CHUTE) out.push({ z: y + 3, el: fuite(`renfort-${R.t0}-${m.id}-fuite`, x, y, -side, etape(t - m.fin), sprite("pret")) }); continue; }
+      if (m.fin) { // felled: a puff where it stood
+        if (t - m.fin < 1200) { const p = D.touche; out.push(at("chute", [image(`${CRE}/${R.sp}/touche${g}${sfx}.png`).absolute().left(-p.ax * BETE).top(-p.ay * BETE).w(p.w * BETE).h(p.h * BETE)
+          .loop("opacity", { from: 0.9, to: 0, period: 1200 }).loop("top", { from: -p.ay * BETE, to: -p.ay * BETE - 16, period: 1200 }),
+          div().absolute().left(-12).top(-20).size(24).rounded_full().bg("#e8e2d0aa").loop("opacity", { from: 0.8, to: 0, period: 1200 })])); }
+        continue;
+      }
+      const kids = [];
+      if (venue) kids.push(burst(dt < ALERTE + 60 ? 0.4 : 1.6));
+      if (t - m.at < COUP) {
+        kids.push(sprite("touche"), div().absolute().left(-6).top((-D.pret.h * BETE) / 2 - 4).size(12).rounded_full().bg("#fff6d8").loop("opacity", { from: 1, to: 0, period: 450 }));
+      } else {
+        const per = 1700 + (hash(`${R.t0}:${m.id}`) % 400);
+        kids.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: per, easing: "linear" })), sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: per, easing: "linear" })));
+      }
+      kids.push(div().absolute().left(-2.5 * BLOWS).top(-D.pret.h * BETE - 6).flex().gap(1)
+        .children(Array.from({ length: BLOWS }, (_, i) => div().w(4).h(3).bg(i < BLOWS - m.coups ? "#e5685a" : "#3a2a2a").border_1().border_color("#000000"))));
+      out.push(at("corps", kids));
+    }
+    return out;
   }
 
   /** At its blow's hit (the warning over), who it stuns: every raider standing (not teleporting: one arriving later
@@ -753,6 +874,8 @@ export class Activites {
       const fin = A.fin && t - A.fin < CHUTE;
       if (t - A.at < COUP || fin) s += `boss:${A.at}:${A.fin}:${fin ? etape(t - A.fin) : "-"};`;
       if (A.pas && t < A.pas.t1) s += `boss-pas:${A.pas.t0};`; // a stomp or its walk back: redraw at its end (its bob)
+      const R = A.renfort; // its summon: the wind-up, the minions' coming, each one's blows, fall or flight
+      if (R && this.renfortVif(t)) s += `renfort:${R.t0}:${[ALERTE, ALERTE + 60, ALERTE + 500].filter((x) => t - R.t0 >= x).length}:${(R.list ?? []).map((m) => `${t - m.at < COUP}${m.fin ? (t - m.fin < CHUTE ? etape(t - m.fin) : "x") : ""}`).join(",")};`;
       if (this.secoue(t)) s += `boss-aoe:${A.aoe.t0}:${AOE_ETAPES.filter((x) => t - A.aoe.t0 >= x).length};`; // its blow's stages and its stun's end
     }
     // the minions': a blow, a fall's puff, a flight and its stages
@@ -808,6 +931,7 @@ export class Activites {
       const { coups, tue, boss, sbires } = this.degats(lus, now);
       this.pv = { day: boss.day, hp: boss.hp };
       changed = this.mene(lus, now, boss.slain) || changed;
+      changed = this.renfortSuit(now) || changed;
       for (const [addr, s] of lus) changed = this.suit(addr, s, now, boss.slain, sbires.get(addr) ?? 0) || changed;
       const fx = this.effets.size;
       for (const [addr, s] of lus) this.frappesSub(addr, s, now);
@@ -881,7 +1005,9 @@ export class Activites {
     const k = id ? `${addr}:${id}` : addr, e = this.effets.get(k);
     if (this.etourdi(k, now) !== null) return; // stunned: its blows count, but show nothing
     if ((e && now - e.t0 < FX) || (!e && this.effets.size >= FX_MAX)) return;
-    this.effets.set(k, { t0: now, addr, id, cible: undefined });
+    const m = this.engage(k, now); // engaged with a summoned minion: its blow lands there (4 fell it), not on the boss
+    if (m) { m.coups++; m.at = now; if (m.coups >= BLOWS) m.fin = now; }
+    this.effets.set(k, { t0: now, addr, id, cible: undefined, sbire: m ? m.id : undefined });
   }
 
   /** A hero's subagents' blows this poll (its successful subagent tool calls since this village last read its file,
@@ -1080,7 +1206,7 @@ export class Activites {
     const o = this.sbires.get(addr), SP = sb && sbire();
     // its own spot while it fights, and its foe's x: the raid boss, or its subagent's minion once the hero stands by them
     const det = (x, key) => {
-      if (A) { const q = this.coin(addr, x.id, key); return q && { q, foe: A.x }; }
+      if (A) { const q = this.coin(addr, x.id, key), mm = this.engage(`${addr}:${x.id}`, t); return q && { q, foe: mm ? mm.q[0] : A.x }; }
       const mm = sb && !this.ailleurs(u) && o.list.find((n) => n.id === x.id && !n.fin);
       if (!mm) return null;
       const [mx, my] = sb.pts[mm.k], q = [Math.round(mx + sb.side * proche({ a: { demoHero: key }, key }, 70, SP, -sb.side)), Math.round(my)];
@@ -1249,14 +1375,14 @@ export class Activites {
         out.push(svg(`${ART}/halo.svg`).absolute().left(-w / 2).top(-h / 2 + 4).w(w).h(h).text_color(PALIERS[pl])
           .loop("opacity", { from: 0.55, to: 1, period: 1600 }));
       }
-      if (t - r.at < COUP) {
+      if (t - r.at < COUP && !this.arme(t)) { // no flinch while it winds up or lands an attack
         out.push(sprite("touche"));
         out.push(div().absolute().left(-12).top(-D.pret.h * K / 2 - 8).size(24).rounded_full().bg("#fff6d8")
           .loop("opacity", { from: 1, to: 0, period: 450 }));
       } else if (leg) {
         out.push(div().absolute().left(0).top(0).w(0).h(0).loop("top", { from: 0, to: -5, period: 420 }).child(sprite("pret")));
-      } else if (this.raids.size && r.aoe && t - r.aoe.t0 < ALERTE) {
-        out.push(sprite("attaque")); // its stunning blow's wind-up
+      } else if (this.raids.size && this.arme(t)) {
+        out.push(sprite("attaque")); // an attack's wind-up, held until it lands
       } else if (this.raids.size) {
         out.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: 1700 + (hash(addr) % 400), easing: "linear" })));
         out.push(sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: 1700 + (hash(addr) % 400), easing: "linear" })));
