@@ -17,6 +17,7 @@ from compose import seg_dist
 from engine import vnoise2, hash3, BAYER, hx
 from extras import ground_tex, sable_mouille, DR, WR, SH, EC
 from theme import LOOK
+import forge
 from .carte import s2w, Erreur
 
 # The ground kinds: index in the kind map, default edge noise, and what the edges do: interdit (nothing stands on it:
@@ -31,9 +32,15 @@ KINDS = {
     "crop": dict(i=4, bruit=0.0, sillon=True),
     "sand": dict(i=5, bruit=0.6, plage=True),
     "sea": dict(i=6, bruit=0.3, eau=True, interdit=True, mer=True),
+    # Emberdeep (maps/forge.json, village-art/forge.py): flagstones, the worn road, and lava (bloque: never walkable;
+    # lave: its crust rim and rock face, lit over the bakes by bake_map.py)
+    "forge-dalles": dict(i=7, bruit=0.8),
+    "forge-chemin": dict(i=8, bruit=0.8, interdit=True),
+    "forge-lave": dict(i=9, bruit=0.5, interdit=True, bloque=True, lave=True),
 }
 NOMS = {k["i"]: n for n, k in KINDS.items()}
 TEX = {}  # kind -> f(x, y, sx, sy, macro): RGB float, for kinds extras.ground_tex does not know
+TEX.update(forge.TEX)  # also look variants: a kind's LOOK["sol"] variant named here wins over the kind's texture
 GRASS = KINDS["grass"]["i"]
 
 
@@ -104,7 +111,7 @@ def sol(c):
     for name, k in KINDS.items():
         m = kind == k["i"]
         if m.any():
-            tex = TEX.get(name) or functools.partial(ground_tex, name)
+            tex = TEX.get(LOOK["sol"].get(name)) or TEX.get(name) or functools.partial(ground_tex, name)
             mac = mac_all[m]
             t1 = tex(x[m], y[m], u[m], v[m], macro=mac)
             t2 = tex(x[m] + 11, y[m] + 19, u[m], v[m], macro=mac)
@@ -124,6 +131,7 @@ def sol(c):
         out[fl] = cols[(hash3(u[fl], v[fl], v[fl] * 0, 3) * 4).astype(int) % 4]
     # edges: grass overhanging the other kinds (but water), its lit blade tips, banks, foam and shallows, field tops
     eaux = np.isin(kind, kinds_ou("eau"))
+    g = np.isin(kind, [GRASS] + kinds_ou("pousse"))  # grass and the kinds that grow like it: no edge between them
     border = ~g & (np.roll(g, 1, 0) | np.roll(g, 2, 0)) & ~eaux
     out[border] = out[border] * 0.82
     over_ = g & ~np.roll(g, -1, 0) & (hash3(u, v, u * 0, 5) > 0.5)
@@ -142,6 +150,8 @@ def sol(c):
     out[sh] = out[sh] * 0.72 + WR[5] * 0.28
     if mer.any():
         rivage_mer(out, mer, -eau, x, y, u, v)
+    for i in kinds_ou("lave"):
+        forge.lave_bords(out, kind == i, ~np.isin(kind, kinds_ou("lave")), u, v)
     for i in kinds_ou("sillon"):
         fe = (kind == i) & ~(np.roll(kind, 1, 0) == i)
         out[fe] = DR[1]
@@ -196,6 +206,27 @@ RK = ramp("#8a8890", hs=16, light=1.26)
 GV = ramp("#a89f90", hs=18, light=1.2)
 TR = ramp("#3a8aae", hs=12, light=1.4, dark=0.32)
 _P = 32
+# ---------------------------------------------------------------- Sylvaren Grove (maps/bosquet.json)
+# Its own kinds (indexes 70+): the forest floor's moss and its leaf litter (both grow like grass: scatter stands on them,
+# 'pousse', and grass takes no edge over them), the winding flagstone paths (nothing stands on them) and the square's
+# flagstones ('parvis', open ground for the stalls). Autumn leaves fall on them; in the spring look (theme.py sol grass
+# "bosquet-printemps") they are fresher, strewn with blossom instead.
+from engine import ramp  # noqa: E402
+
+KINDS["bosquet-mousse"] = dict(i=70, bruit=0.8, pousse=True)
+KINDS["bosquet-feuilles"] = dict(i=71, bruit=1.0, pousse=True)
+KINDS["bosquet-dalles"] = dict(i=72, bruit=0.6, interdit=True)
+KINDS["bosquet-parvis"] = dict(i=73, bruit=0.6)  # the same flagstones, open ground: a square stalls stand on
+NOMS.update({k["i"]: n for n, k in KINDS.items()})
+_PRINTEMPS = LOOK["sol"].get("grass") == "bosquet-printemps"
+_MO = ramp("#4f8c34" if _PRINTEMPS else "#4a7430", hs=28, light=1.3, dark=0.3)
+_MO2 = ramp("#3f7a3a" if _PRINTEMPS else "#3c6434", hs=28, light=1.3, dark=0.3)
+_SOIL = ramp("#6a5034", hs=22)
+_PIERRE = ramp("#a8a292", hs=18, light=1.22)
+_TOMBEES = np.stack([ramp(c, hs=22, light=1.3) for c in (("#f0a8c0", "#f6eef0", "#e88aa8", "#f8f0e8") if _PRINTEMPS
+                                                         else ("#a8402a", "#c8702a", "#d8a636", "#8a5a30"))])
+# leaf layers: cell size, share of empty cells, leaf half length and half width (iso units)
+_COUCHES = ((2.6, 0.75, 1.0, 0.7), (2.2, 0.85, 0.9, 0.6)) if _PRINTEMPS else ((2.6, 0.2, 1.6, 0.85), (2.2, 0.3, 1.4, 0.75))
 
 
 def _i(a):
@@ -273,3 +304,75 @@ def _torrent(x, y, sx, sy, macro=0):
 
 
 TEX.update({"col-roc": _roc, "col-eboulis": _eboulis, "col-gravier": _gravier, "col-torrent": _torrent})
+def _parsemer(col, x, y, sx, sy, seuil, graine):
+    """Single fallen leaves (autumn) or petals (spring) sprinkled over a ground, one iso unit each."""
+    on = hash3(_i(x), _i(y), _i(x) * 0, graine) > seuil
+    if on.any():
+        k = (hash3(_i(x[on]), _i(y[on]), _i(x[on]) * 0, graine + 1) * 4).astype(int) % 4
+        lv = np.clip(np.round(3.6 + BAYER[sy[on] % 4, sx[on] % 4] * 0.6), 0, 6).astype(int)
+        col[on] = _TOMBEES[k, lv]
+    return col
+
+
+def _mousse(x, y, sx, sy, macro=0):
+    """Moss: soft cushions (lit tops, shaded hollows) in two greens, a few leaves fallen on it."""
+    n = vnoise2(x, y, 9, 201) * 1.3 + vnoise2(x, y, 4, 202) * 0.8 + vnoise2(x, y, 2, 203) * 0.4
+    c = vnoise2(x, y, 3, 204)
+    lv = 1.9 + n + macro * 0.8 + (c > 0.62) * 0.9 - (c < 0.3) * 0.6 + BAYER[sy % 4, sx % 4] * 0.35
+    idx = np.clip(np.round(lv), 0, 6).astype(int)
+    col = np.where((vnoise2(x, y, 14, 205) > 0.55)[..., None], _MO2[idx], _MO[idx])
+    return _parsemer(col, x, y, sx, sy, 0.994 if _PRINTEMPS else 0.985, 206)
+
+
+def _feuilles(x, y, sx, sy, macro=0):
+    """Leaf litter: two layers of small leaves (each an ellipse, lit at one end) over dark soil; spring: moss with
+    petals fallen over it, sparser."""
+    if _PRINTEMPS:
+        col = _mousse(x, y, sx, sy, macro)
+    else:
+        lv = 1.8 + vnoise2(x, y, 6, 221) * 1.2 + macro * 0.5 + BAYER[sy % 4, sx % 4] * 0.3
+        col = _SOIL[np.clip(np.round(lv), 0, 6).astype(int)]
+    for s, (c, vide, la, lb) in enumerate(_COUCHES):
+        gx, gy = _i((x + s * 1.3) / c), _i((y + s * 0.7) / c)
+        z = gx * 0 + s
+        cx = (gx + 0.2 + 0.6 * hash3(gx, gy, z, 222)) * c - s * 1.3
+        cy = (gy + 0.2 + 0.6 * hash3(gx, gy, z, 223)) * c - s * 0.7
+        a = hash3(gx, gy, z, 224) * np.pi
+        dx, dy = x - cx, y - cy
+        p, q = dx * np.cos(a) + dy * np.sin(a), -dx * np.sin(a) + dy * np.cos(a)
+        on = ((p / la) ** 2 + (q / lb) ** 2 < 1) & (hash3(gx, gy, z, 225) > vide)
+        k = (hash3(gx, gy, z, 226) * 4).astype(int) % 4
+        lv = np.clip(np.round(3.2 + p * 0.7 - (q > 0.3) * 0.8 + BAYER[sy % 4, sx % 4] * 0.5), 0, 6).astype(int)
+        col = np.where(on[..., None], _TOMBEES[k, lv], col)
+    return col
+
+
+def _dalles(x, y, sx, sy, macro=0):
+    """Flagstones: irregular pale stones (the nearest of jittered points, 6 units apart), each its own shade, lit
+    towards the top left, dark joints with moss in them, a few leaves or petals on the stones."""
+    s = 6.0
+    gx, gy = _i(x / s), _i(y / s)
+    d1 = np.full(x.shape, np.inf); d2 = np.full(x.shape, np.inf)
+    ident = np.zeros(x.shape); ox = np.zeros(x.shape); oy = np.zeros(x.shape)
+    for i in (-1, 0, 1):
+        for j in (-1, 0, 1):
+            ax, ay = gx + i, gy + j
+            cx = (ax + 0.15 + 0.7 * hash3(ax, ay, ax * 0, 211)) * s
+            cy = (ay + 0.15 + 0.7 * hash3(ax, ay, ax * 0, 212)) * s
+            d = np.hypot(x - cx, y - cy)
+            neuf = d < d1
+            d2 = np.where(neuf, d1, np.minimum(d2, d))
+            ident = np.where(neuf, hash3(ax, ay, ax * 0, 213), ident)
+            ox = np.where(neuf, x - cx, ox); oy = np.where(neuf, y - cy, oy)
+            d1 = np.where(neuf, d, d1)
+    bord = d2 - d1
+    lv = 3.0 + (ident - 0.5) * 1.5 + macro * 0.5 + (vnoise2(x, y, 3, 214) - 0.5) * 0.7
+    lv = lv + np.where(bord < 1.8, np.where(ox + oy < 0, 0.7, -0.6), 0) + BAYER[sy % 4, sx % 4] * 0.3
+    joint = bord < 0.75
+    col = _PIERRE[np.clip(np.round(np.where(joint, 0.6, lv)), 0, 6).astype(int)]
+    moss = joint & (vnoise2(x, y, 5, 215) > 0.42)
+    col[moss] = _MO[np.clip(np.round(1.6 + BAYER[sy[moss] % 4, sx[moss] % 4] * 0.6), 0, 6).astype(int)]
+    return _parsemer(col, x, y, sx, sy, 0.993 if _PRINTEMPS else 0.988, 216)
+
+
+TEX.update({"bosquet-mousse": _mousse, "bosquet-feuilles": _feuilles, "bosquet-dalles": _dalles, "bosquet-parvis": _dalles})

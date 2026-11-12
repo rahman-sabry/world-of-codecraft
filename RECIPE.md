@@ -20,7 +20,7 @@ the clock. The art is original: it imitates no existing game.
     felled; tooltip: name with its tier, HP, the streak at stake, who slew it, time to the next boss, and "Click: reset
     today's boss to full HP"; a click turns the plaque in place into "Reset boss?" with Yes / No, « Relancer le boss ? »
     Oui / Non, which closes by itself after 5 s; no system dialog) and the trophies (a gold cup,
-    "3 slain", "streak 2 days"; tooltip). They show only when the bar has room beside everything else (a width
+    "3" over "raid bosses slain"; the daily streak is in its tooltip). They show only when the bar has room beside everything else (a width
     estimate): the trophies go first (their tooltip then joins the boss's), then the boss;
   - a parchment scroll in the middle with the shown district and quest;
   - on the right, an alert when a hero waits, then the sun or the moon, the canonical
@@ -218,6 +218,35 @@ the clock. The art is original: it imitates no existing game.
     teleport. A hero whose subagents all end leaves the raid and teleports back to the goal it left. When none is left
     the boss walks back onto its wander path, to where its wander will be when it gets there, then wanders on. There
     is no flight. The raid lives in memory: a reload holds the boss afresh where it wanders.
+    **Its attacks** (`secousse` in activite.js): while a raid holds it, every 60 to 90 s (in memory, as the stomps)
+    it attacks, half the time its stunning blow, half the time its summon (picked at random). Never over a stomp (one
+    running pushes the attack 3 s past its end), nor over each other; a stomp due meanwhile waits for the stun to end,
+    or for the summoned minions to be gone. While it winds up and until the attack lands (`arme`) it holds its attack
+    pose: no blow makes it flinch (no `touche`, no flash), the damage counting as ever.
+    **Its stunning blow:** it telegraphs for 1 s, holding its attack pose with a dashed red ring pulsing on
+    the ground round it (art/fx-aoe-alerte.svg stretched to its reach: its half width + a mage's gap + one ring out +
+    30 px, on the ground, `portee`), then its wave spreads from a fifth of that reach to all of it in 540 ms and fades
+    (`aoe`, by species: golem, a ring of dust, fx-aoe-golem.svg, and six rocks thrown out, fx-aoe-debris.svg; troll, a
+    pale shockwave, fx-aoe-troll.svg; spectre, a violet wailing ring, fx-aoe-spectre.svg; goblin, its bomb,
+    fx-aoe-bombe.svg, thrown up and down a short way in front of it during the wind-up, then a fiery ring there,
+    fx-aoe-gobelin.svg). At the hit, every party member standing within its reach (heroes not teleporting, and their
+    apprentices; `etourdir`, from Place's render) is stunned for 3 s (`etourdi`): its frame frozen as it was then
+    (and out of the frame timer), dimmed to 0.6, two dizzy-star frames (fx-etoiles-0/1.svg) swapping over its head, and
+    no blow effect (its blows still count as damage, nothing is held: `frappe` just shows nothing). A member arriving
+    meanwhile is not stunned; one whose subagents end teleports out as usual. Purely cosmetic. Its stages and the
+    stun's end are in the frame timer's signature (`fenetres`); all of it drawn only by the shown, live village,
+    dimmed at night as the blows' effects. Art by tools/effets.py.
+    **Its summon** (`renfort`): through a 1 s wind-up a rune circle (art/fx-rune.svg, a white mask drawn with `svg()`
+    in its species' colour, `TEINTE`) pulses on the ground where each minion will come; then they come in a burst of
+    that colour (fx-surgit.svg). N = round(party members / 2), 2 to 4, of its minion family (`sbire`: goblins for a
+    troll), at a fight creature's size. Chosen at its start from the members standing in their places (`preparer`, from
+    Place's render): each engages one, melee looks first, then the nearest to the boss, coming 60 px past it, away from
+    the boss (else 30 or 60 degrees round), on walkable ground in the strip, clear of the boss and of each other. Its
+    member turns to face it (`engage`, read by `face` and by the apprentices' facing) and its blows' effects land on it
+    (`frappe`; the effect keeps its minion, `ouRenfort`); 4 of them fell it (the felled puff), and its member turns
+    back to the boss. The others keep hitting the boss. 25 s after they came, the ones left flee. Purely cosmetic:
+    every real subagent call still damages the boss as ever. `pret` / `attaque`, `touche` and a flash after a blow,
+    pips of its blows left; its stages, blows, falls and flights in the frame timer's signature; none in the demo.
     **The ring:** the party (raiders and apprentices alike) stands on slots round the boss (`choisir`): a slot is an
     angle on the ground (0 = beside it, + = nearer the viewer), a ring (75 px further out each) and a side (1 = the
     village's), and a member stands at its own class gap (`ECART`) past the boss's half width along that angle, the
@@ -416,6 +445,49 @@ the clock. The art is original: it imitates no existing game.
   so a stomp finds its 120 to 220 px. Looks `ete` (`art/port-ete/`, `#1f5d8e`) and `hiver` (`art/port-hiver/`, snow,
   `#28506e`); fish leap in both (the sea stays open water in winter). `BASCULE` 4700 (300 px short of the east edge,
   Valbrume's rule).
+- **Emberdeep / Braisefonde (`carte-forge.js`, `maps/forge.json`, `tools/village-art/forge.py`):** a dwarven forge
+  city in a cavern hall under a mountain, the world x -1000 to 4000 (`origine` [1500, 200]). West to east: a flagstone
+  side hall (the west lair, x -650 to -200, y 300 to 330) with a smelter; the barn, a lava channel under a stone bridge
+  (`forge-pont`), the mage tower, the forge workshop, the tavern; the Great Forge (`forge-grandforge`: a stepped dais,
+  a brick furnace with a fire-rune band and an iron-banded flue, a bellows, a crucible hung from a gantry and fed by a
+  lava runnel from a third channel's pool, casting moulds, a great anvil) and the market square; the town hall, the
+  temple, a second channel and bridge, the barracks, the east side hall (the east lair, x 3240 to 3690, y 315 to 340)
+  with the other smelter. Basalt-column walls (`forge-falaise`, `forge-rochers`), carved rune pillars, stalagmites,
+  ore, ore carts and braziers; a crusted lava lake fills the south band. The village's models are the same, carved in
+  dark stone and iron by the looks' palette (`tex.MATERIAUX` `forge` / `braises`: plaster to dressed stone, timber to
+  iron, slate, copper and verdigris roofs, no moss, windows lit by firelight day and night). Ground kinds (sol.py):
+  the cavern floor is the `grass` kind in these looks (`sol: {grass: forge-basalte}`, a look variant found in `TEX`,
+  so the scatter stands on it), `forge-dalles` (flagstones with faint rune inlays), `forge-chemin` (the road,
+  `interdit`) and `forge-lave` (`bloque`: never walkable in the bake's checks; `lave`: a crust rim, plates crusting over
+  away from the shores, a rock face where the ground drops to it). `bake_map.py` lights the lava over both bakes where
+  nothing stands on it (`forge.lueur`: its ground colour kept, a posterised bloom and a warmed grade at night, the north
+  band darkening towards its top). No `DECK` (lieux.js has one deck line, there are two bridges): each channel's `EAU`
+  is left open where the deck crosses it, and the road walks the deck. Looks `forge` (`art/forge-forge/`, `#1c1618`) and
+  `braises` (`art/forge-braises/`, `#161214`: dimmer fires and lava, more crust, `braises: true` sparks rising over the
+  view: place.js `braises`, art/braise-{0,1,2}.svg wheels whose left sector shows, where the rim goes up, every 260 px;
+  glows with `looks: ["forge"]` drop). Glows with `jour` (0 to 1) glow by day too. No fish, hens, stag or sparrows
+  (`STAG` and `MOINEAUX` null skip them in ambiance.js). `BASCULE` 3700.
+
+- **Sylvaren Grove (`carte-bosquet.js`, `maps/bosquet.json`; « Bosquet de Sylvaren »):** an elven town among giant
+  trees, the world x -1000 to 4000 (origine [1500, 200]). West to east: a sunlit glade (the west lair), the barn and its
+  garden, the mage tower, the forge, the town hall, the market on a flagstone square, the tavern, the Moonlit Shrine
+  (`sanctuaire`, a building: six marble columns under a curved green dome with a moon crescent, a moonstone, a
+  reflecting pool at the foot of its steps; its moonstone, crescent and reflection are baked glows and its record has a
+  live `lueur`), the temple, the barracks, and a second glade (the east lair). The buildings are the village's models in
+  the grove's materials (`bosquet-<model>` in buildings.py: pale boards, green roofs and trim, pale stone, ivy; same
+  shapes, so Valbrume's offsets), the mage tower relabelled from its 1.3 scale (`elfe`). Giant ancient trees
+  (`bosquet-geant`, `bosquet-geant-b`, 1.35x: buttress roots, a silver trunk, red and gold crowns) stand behind the
+  buildings and in the north band's old forest, off every walk (no front cut-out needed). Lanterns, toadstools (two glow
+  faintly at night) and ferns. Ground kinds (sol.py, 70+): `bosquet-mousse` (moss: the forest floor), `bosquet-feuilles`
+  (leaf litter round the giants and along the forest's edge), both `pousse` (scatter grows on them and grass takes no
+  edge over them: the only hooks, in sol.py and objets.py, identical for other kinds), `bosquet-dalles` (the flagstone
+  road and paths, `interdit`) and `bosquet-parvis` (the square's flagstones, open ground). A lake fills the south band,
+  its shore along the strip's foot with a cove in each glade. Lairs: west x -650 to -200, east 3230 to 3680, y 295 to
+  325 (ring check 97 to 100% at a 176 px half width). `BASCULE` 3700. Looks (theme.py): `automne` (`art/bosquet-automne/`,
+  `materiaux` `automne`: oaks and ivy red with gold, bushes rust, bracken) and `printemps` (`art/bosquet-printemps/`,
+  base `automne`, `materiaux` `printemps`: fresh greens, the giants in pink and white blossom, cherry-pink trees, petals
+  on the paths), and the look flag `petales`: a few petals drift over the view (place.js `petales`, as the snow's wheels,
+  `art/petale-{0,1,2}.svg`, 3 petals each, 240 px apart, each window swaying 18 px on a native `left` loop).
 - **Map and look switches** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande`
   block), two rows of the same style: ‹ map name › cycles the maps (store key `wocc.map`, default `"valbrume"`) and
   ‹ look name › the shown map's looks (`wocc.look`, default its first); a row with a single choice shows only the

@@ -19,7 +19,7 @@ import { HEROES } from "./heros-data.js";
 import { lieux, market } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
-import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart } from "./activite.js";
+import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart, etoiles } from "./activite.js";
 import { effet, FX, FX_ETAPES } from "./effets.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
@@ -404,7 +404,8 @@ export default class Place {
     let body;
     if (an.frames) {
       const dir = `${ART}/heros/${u.key}/${an.name}`;
-      const k = animate ? Math.floor(((t + (hash(a.address) % 997)) / 1000) * an.info.fps) % an.info.n : 0;
+      const fige = this.act.etourdi(a.address, t); // stunned (Activites.secousse): its frame frozen as it was then
+      const k = animate || fige !== null ? Math.floor((((fige ?? t) + (hash(a.address) % 997)) / 1000) * an.info.fps) % an.info.n : 0;
       body = div().absolute().left(-ax).top(-ay).w(w).h(hh)
         .children(Array.from({ length: an.info.n }, (_, i) =>
           image(`${dir}/${String(i).padStart(2, "0")}${suffix}.png`).absolute().left(0).top(0).w(w).h(hh).opacity(i === k ? 1 : 0)));
@@ -417,8 +418,10 @@ export default class Place {
           .loop("top", u.leg ? { from: 0, to: -2, period: 380 } : { from: 0, to: -1, period: 2600 + (hash(a.address) % 900) }));
     }
     // its sidestep in a fight outside a raid (Activites.pasDeCote), carried natively
+    const stun = this.act.etourdi(a.address, t); // stunned by the raid boss: dimmed, dizzy stars over its head
     el = el.child(div().id(`pas-${a.address}`).absolute().left(this.act.pasDeCote(a.address, a.address, t, Boolean(u.leg) || Boolean(u.portail))).top(0).w(0).h(0)
-      .transition("left", { duration: 250, easing: "ease-out" }).child(body));
+      .transition("left", { duration: 250, easing: "ease-out" }).opacity(stun !== null ? 0.6 : 1).transition("opacity", { duration: 200, easing: "linear" }).child(body));
+    if (stun !== null) el = el.children(etoiles(-ay));
 
     // hit box, tooltip, click
     el = el.child(div().id(`clic-${a.address}`).absolute().left(-ax).top(-ay).w(w).h(hh).cursor_pointer()
@@ -535,7 +538,7 @@ export default class Place {
     for (const [k, e] of this.act.effetsVifs(t)) {
       const u = units.find((x) => x.a.address === e.addr), ap = e.id && apps.find((x) => x.key === k);
       if (!u || (e.id && !ap)) continue;
-      const foe = this.act.adversaire(u, e.id, t);
+      const foe = (e.sbire !== undefined && this.act.ouRenfort(e.sbire)) || this.act.adversaire(u, e.id, t); // a summoned minion it hit
       if (!foe) continue;
       const [x, y, fy] = poitrine(ap || u), cls = ap ? CLS_FR[ap.look.split("-")[1]] : u.h.cls;
       let soin = null;
@@ -639,13 +642,48 @@ export default class Place {
     return out;
   }
 
+  /** Spring blossom (look flag petales): a few petals drifting down over the view, as the snow (a wheel's falling
+   *  sector, petale-k.svg: 3 petals on its rim) but sparser and slower, each window swaying sideways on a native loop. */
+  petales(vw, vh) {
+    if (!look().petales) return [];
+    const out = [];
+    for (let y = -60, r = 0; y < vh; y += 330, r++) {
+      for (let x = -60 + (r % 2) * 120, k = 0; x < vw; x += 240, k++) {
+        const roue = (dx, color) => svg(`${ART}/petale-${(k + r) % 3}.svg`).absolute().left(dx - 380).top(dx - 45).size(480).text_color(color)
+          .spin(26000 + ((k * 7 + r * 5) % 9) * 1500);
+        out.push(div().absolute().left(x).top(y).w(100).h(390).overflow_hidden()
+          .loop("left", { from: x, to: x + 18, period: 3600 + ((k * 5 + r * 3) % 7) * 400 })
+          .child(roue(1, "#7a3a5a88")).child(roue(0, "#f6b8cc")));
+      }
+    }
+    return out;
+  }
+
+  /** Live glows at night; a glow with `jour` (0 to 1) glows by day too, at least that strong (a forge, lava under a
+   *  mountain); one with `looks` only in those looks (banked embers keep fewer). */
   glows(nightK) {
-    if (nightK <= 0) return [];
-    return lieux().GLOWS.map((g) => {
-      const s = g.size;
+    const id = look().id;
+    return lieux().GLOWS.filter((g) => (!g.looks || g.looks.includes(id)) && Math.max(nightK, g.jour ?? 0) > 0).map((g) => {
+      const s = g.size, k = Math.max(nightK, g.jour ?? 0);
       return div().absolute().left(g.at[0] - s / 2).top(g.at[1] - s / 2).size(s).rounded_full().bg(`${g.color}22`)
-        .opacity(nightK).loop("opacity", { from: 0.35 * nightK, to: nightK, period: g.period });
+        .opacity(k).loop("opacity", { from: 0.35 * k, to: k, period: g.period });
     });
+  }
+
+  /** Banked embers (a look's `braises`): a few sparks drifting up over the view, as the snow falls (neige): each wheel
+   *  (braise-k.svg, a few sparks on its rim) turns natively and shows only its left-hand sector, where the rim goes up,
+   *  so the sparks rise and never sink. Sparser than the snow: wheels every 260 px across and 330 px down. */
+  braises(vw, vh) {
+    if (!look().braises) return [];
+    const out = [];
+    for (let y = -40, r = 0; y < vh; y += 330, r++) {
+      for (let x = -20 + (r % 2) * 130, k = 0; x < vw; x += 260, k++) {
+        out.push(div().absolute().left(x).top(y).w(100).h(390).overflow_hidden()
+          .child(svg(`${ART}/braise-${(k + r) % 3}.svg`).absolute().left(0).top(-45).size(480).text_color("#ffa040")
+            .spin(26000 + ((k * 7 + r * 5) % 9) * 1700)));
+      }
+    }
+    return out;
   }
 
   hitboxes() {
@@ -847,7 +885,8 @@ export default class Place {
       const an = this.anim(u);
       const animate = !hidden && visible(u) && an.frames && (!ONLY_SELECTED || u === sel);
       u.animate = animate;
-      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997 });
+      const fige = this.act.etourdi(u.a.address, t) !== null; // a stunned hero's frame stays
+      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate && !fige ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997 });
     }
     // apprentices (one half-size hero per running subagent) by their heroes, on the side away from the creature;
     // their frames and their walks (in single file on the hero's path) run on the same frame timer
@@ -856,6 +895,8 @@ export default class Place {
       return u.a.guard ? [] : this.act.apprentis(u, m, (tr, at) => this.pos(tr, at), m.x > L.BASCULE ? -1 : 1, nightHeroes, t, !hidden && visible(u));
     });
     for (const ap of apps) if (ap.anim.fps || ap.anim.trail.legs.length) this.anims.push({ addr: ap.addr, ...ap.anim });
+    this.act.etourdir(units, apps, t); // the raid boss's stunning blow lands: whom it stuns (Activites.secousse)
+    this.act.preparer(units, apps, t); // its summon: where its minions come, whom they engage
 
     // depth: units by feet y (+3, like the compositor), front cut-outs above the units behind them
     const els = units.map((u) => this.unit(u, u === sel, nightHeroes, t, u.animate));
@@ -876,6 +917,8 @@ export default class Place {
     things.push(...life);
     things.push(...apps.map((ap) => ({ ...ap, el: this.blink(ap.key, ap.el, t) })));
     things.push(...this.effets(units, apps, t, nightK));
+    things.push(...this.act.aoe(t, 1 - 0.3 * nightK)); // the raid boss's stunning blow (its warning, its wave)
+    things.push(...this.act.renfortDe(t, nightHeroes, 1 - 0.3 * nightK)); // its summon (runes, its minions)
     const traces = this.traces(units, apps, t);
     things.push(...traces);
     for (const fr of FRONTS) {
@@ -943,6 +986,8 @@ export default class Place {
         .on_hover((over, cx) => { if (!over && this.drag) { this.drag = null; cx.notify(); } })
         .child(world)
         .children(this.neige(vw, this.h ?? WORLD.h))
+        .children(this.braises(vw, this.h ?? WORLD.h))
+        .children(this.petales(vw, this.h ?? WORLD.h))
         .child(this.chronicle()));
   }
 }
