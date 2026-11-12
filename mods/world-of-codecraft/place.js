@@ -19,7 +19,7 @@ import { HEROES } from "./heros-data.js";
 import { lieux, market } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
-import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart, etoiles } from "./activite.js";
+import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart, etoiles, cadence } from "./activite.js";
 import { effet, FX, FX_ETAPES } from "./effets.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
@@ -405,7 +405,10 @@ export default class Place {
     if (an.frames) {
       const dir = `${ART}/heros/${u.key}/${an.name}`;
       const fige = this.act.etourdi(a.address, t); // stunned (Activites.secousse): its frame frozen as it was then
-      const k = animate || fige !== null ? Math.floor((((fige ?? t) + (hash(a.address) % 997)) / 1000) * an.info.fps) % an.info.n : 0;
+      // fighting: a swing, then a pause (cadence); a working hero with no foe loops its `work` as ever
+      const bat = an.name.startsWith("work") && this.act.face(u) !== 0, ph = hash(a.address) % 997;
+      const k = !(animate || fige !== null) ? 0 : bat ? cadence(a.address, fige ?? t, an.info.fps, an.info.n, ph, this.act.effets.get(a.address)?.t0)
+        : Math.floor((((fige ?? t) + ph) / 1000) * an.info.fps) % an.info.n;
       body = div().absolute().left(-ax).top(-ay).w(w).h(hh)
         .children(Array.from({ length: an.info.n }, (_, i) =>
           image(`${dir}/${String(i).padStart(2, "0")}${suffix}.png`).absolute().left(0).top(0).w(w).h(hh).opacity(i === k ? 1 : 0)));
@@ -480,7 +483,8 @@ export default class Place {
       const m = this.mob.get(u.addr);
       if (!m) continue;
       const p = this.pos(u.trail ?? m, t); // an apprentice: its own walk
-      const k = u.fps ? Math.floor(((t + u.ph) / 1000) * u.fps) % u.n : 0;
+      // a fighter's frame by its cadence (a swing, then a pause: no change, no redraw), else its plain loop
+      const k = !u.fps ? 0 : u.k ? cadence(u.k, t, u.fps, u.n, u.ph, this.act.effets.get(u.k)?.t0) : Math.floor(((t + u.ph) / 1000) * u.fps) % u.n;
       s += `${u.addr}:${u.ph}:${k}:${p.leg ? p.leg.t0 : "-"};`;
     }
     // a blink in or out that ends: redraw once to drop it
@@ -886,7 +890,8 @@ export default class Place {
       const animate = !hidden && visible(u) && an.frames && (!ONLY_SELECTED || u === sel);
       u.animate = animate;
       const fige = this.act.etourdi(u.a.address, t) !== null; // a stunned hero's frame stays
-      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate && !fige ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997 });
+      const bat = an.name.startsWith("work") && this.act.face(u) !== 0; // fighting: its cadence (frameSig)
+      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate && !fige ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997, k: bat ? u.a.address : null });
     }
     // apprentices (one half-size hero per running subagent) by their heroes, on the side away from the creature;
     // their frames and their walks (in single file on the hero's path) run on the same frame timer
@@ -919,6 +924,7 @@ export default class Place {
     things.push(...this.effets(units, apps, t, nightK));
     things.push(...this.act.aoe(t, 1 - 0.3 * nightK)); // the raid boss's stunning blow (its warning, its wave)
     things.push(...this.act.renfortDe(t, nightHeroes, 1 - 0.3 * nightK)); // its summon (runes, its minions)
+    things.push(...this.act.coupDe(t, 1 - 0.3 * nightK)); // its basic blow on one party member
     const traces = this.traces(units, apps, t);
     things.push(...traces);
     for (const fr of FRONTS) {
@@ -984,7 +990,9 @@ export default class Place {
         })
         .on_mouse_up("left", (_e, cx) => { if (this.drag) { this.drag = null; cx.notify(); } })
         .on_hover((over, cx) => { if (!over && this.drag) { this.drag = null; cx.notify(); } })
-        .child(world)
+        // the world shakes a moment at the raid boss's stunning blow (Activites.tremble; still otherwise)
+        .child((({ dx, dy }) => div().id("secousse").absolute().left(dx).top(dy).size_full()
+          .transition("left", { duration: 60, easing: "linear" }).transition("top", { duration: 60, easing: "linear" }).child(world))(this.act.tremble(t)))
         .children(this.neige(vw, this.h ?? WORLD.h))
         .children(this.braises(vw, this.h ?? WORLD.h))
         .children(this.petales(vw, this.h ?? WORLD.h))

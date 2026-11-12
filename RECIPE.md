@@ -218,14 +218,30 @@ the clock. The art is original: it imitates no existing game.
     teleport. A hero whose subagents all end leaves the raid and teleports back to the goal it left. When none is left
     the boss walks back onto its wander path, to where its wander will be when it gets there, then wanders on. There
     is no flight. The raid lives in memory: a reload holds the boss afresh where it wanders.
-    **Its attacks** (`secousse` in activite.js): while a raid holds it, every 60 to 90 s (in memory, as the stomps)
+    **Its attacks** (`secousse` in activite.js): while a raid holds it, every 30 to 45 s (in memory, as the stomps)
     it attacks, half the time its stunning blow, half the time its summon (picked at random). Never over a stomp (one
     running pushes the attack 3 s past its end), nor over each other; a stomp due meanwhile waits for the stun to end,
     or for the summoned minions to be gone. While it winds up and until the attack lands (`arme`) it holds its attack
-    pose: no blow makes it flinch (no `touche`, no flash), the damage counting as ever.
+    pose: no blow makes it flinch (no `touche`, no flash), the damage counting as ever. Each pose sprite has an id of
+    its role (held, the alternating pair, walking, flinching): a switch makes a new element, never a half-faded one
+    carried over from the pair's opacity loops.
+    **Its basic blows** (`coupBoss`, `coupDe`): between the big ones, every 6 to 10 s (none while a big attack winds
+    up, lands or stuns, nor during a stomp) it strikes one party member, a melee look on the front ring (ring 0), else
+    the nearest: its attack pose (no flinch) for 550 ms, then golem a dust puff where its fist falls
+    (fx-coup-poussiere.svg), troll its club's sweep towards the target and a small shockwave there, spectre three
+    ghostly claw streaks (fx-coup-griffes.svg), goblin a thrown dagger (fx-coup-dague-d/g.svg); the target flashes and
+    is knocked back 6 to 10 px for 450 ms, then eases back (`pasDeCote`, its sidestep layer). Purely cosmetic.
+    **Fighters' cadence** (`cadence`): a hero or an apprentice fighting (a raid, minions, its creature or the dummy)
+    plays its `work` / `work-g` attack cycle once, then holds its first (ready) frame 0.8 to 2 s (its time in slots of a
+    cycle + 1.4 s shifted by its phase, each cycle 0 to 0.6 s into its slot, hashed from its key and the slot: reloads
+    agree, members swing out of step), and again; its blow's effect starting in a pause starts a swing at once. A
+    pause changes no frame, so the frame timer redraws nothing then. A working hero with no foe loops `work` as before.
     **Its stunning blow:** it telegraphs for 1 s, holding its attack pose with a dashed red ring pulsing on
     the ground round it (art/fx-aoe-alerte.svg stretched to its reach: its half width + a mage's gap + one ring out +
-    30 px, on the ground, `portee`), then its wave spreads from a fifth of that reach to all of it in 540 ms and fades
+    30 px, on the ground, `portee`), then its wave spreads from a fifth of that reach to all of it in 540 ms and fades,
+    a second one 250 ms later to 1.15 of its reach, seven marks left in the ground under them fading until the stun's
+    end (fx-marque-golem/troll/spectre/gobelin.svg: cracks, dust fans, ghost hands, scorches), six rocks or sparks
+    thrown out, and the world shakes 300 ms (`tremble`: 5, -4, 3, -2 px, 60 ms each, on a layer round the world)
     (`aoe`, by species: golem, a ring of dust, fx-aoe-golem.svg, and six rocks thrown out, fx-aoe-debris.svg; troll, a
     pale shockwave, fx-aoe-troll.svg; spectre, a violet wailing ring, fx-aoe-spectre.svg; goblin, its bomb,
     fx-aoe-bombe.svg, thrown up and down a short way in front of it during the wind-up, then a fiery ring there,
@@ -237,11 +253,12 @@ the clock. The art is original: it imitates no existing game.
     stun's end are in the frame timer's signature (`fenetres`); all of it drawn only by the shown, live village,
     dimmed at night as the blows' effects. Art by tools/effets.py.
     **Its summon** (`renfort`): through a 1 s wind-up a rune circle (art/fx-rune.svg, a white mask drawn with `svg()`
-    in its species' colour, `TEINTE`) pulses on the ground where each minion will come; then they come in a burst of
-    that colour (fx-surgit.svg). N = round(party members / 2), 2 to 4, of its minion family (`sbire`: goblins for a
+    in its species' colour, `TEINTE`, 120 x 42 over its thin dark outline fx-rune-bord.svg) pulses on the ground where
+    each minion will come, and the boss glows that colour a moment as they come in a burst of it (fx-surgit.svg). N = round(party members / 2), 2 to 4, of its minion family (`sbire`: goblins for a
     troll), at a fight creature's size. Chosen at its start from the members standing in their places (`preparer`, from
-    Place's render): each engages one, melee looks first, then the nearest to the boss, coming 60 px past it, away from
-    the boss (else 30 or 60 degrees round), on walkable ground in the strip, clear of the boss and of each other. Its
+    Place's render): each engages one, melee looks first, then the nearest to the boss, coming on open walkable ground
+    beside it (60 to 100 px round it, 30 px aside at least, the point most away from the boss first), clear of the boss,
+    an ellipse 56 x 30 px from every member and every other minion. Its
     member turns to face it (`engage`, read by `face` and by the apprentices' facing) and its blows' effects land on it
     (`frappe`; the effect keeps its minion, `ouRenfort`); 4 of them fell it (the felled puff), and its member turns
     back to the boss. The others keep hitting the boss. 25 s after they came, the ones left flee. Purely cosmetic:

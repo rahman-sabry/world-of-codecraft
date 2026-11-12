@@ -23,6 +23,15 @@ The raid boss's stunning blow (activite.js aoe), rings drawn flat (the ground's 
 Its summon (activite.js renfort), white masks tinted per species (drawn with svg() and a text colour):
   fx-rune.svg                         a rune circle on the ground where a minion will come (40 x 14)
   fx-surgit.svg                       the burst a minion comes out of (21 x 21)
+  fx-rune-bord.svg                    the rune's thin dark outline, drawn under it (40 x 14)
+Its basic blows on one party member (activite.js coup), and the marks its big wave leaves (aoe):
+  fx-coup-poussiere.svg               golem: the dust puff its fist raises on its target (16 x 10)
+  fx-coup-griffes.svg                 spectre: three ghostly claw streaks (14 x 14)
+  fx-coup-dague-d.svg, -g.svg         goblin: the dagger it throws, flying right / left (11 x 5)
+  fx-marque-golem.svg                 cracks in the ground (18 x 7)
+  fx-marque-troll.svg                 a fan of dust (18 x 7)
+  fx-marque-spectre.svg               a ghost hand reaching out of the ground (9 x 11)
+  fx-marque-gobelin.svg               a scorch mark (16 x 6)
 
   python3 tools/effets.py"""
 import math, os, sys
@@ -224,8 +233,68 @@ def surgit():
     s.svg("fx-surgit")
 
 
+def rune_bord():
+    s = gen.Px(40, 14)
+    for y in range(14):
+        for x in range(40):
+            d = math.hypot((x - 19.5) / 19.5, (y - 6.5) / 6.5)
+            if 0.76 < d <= 0.86 or 0.98 < d <= 1.1:
+                s.p(x, y, "#1b1420")
+    s.svg("fx-rune-bord")
+
+
+def coups():
+    s = gen.Px(16, 10)
+    for y in range(10):
+        for x in range(16):
+            d = math.hypot((x - 7.5) / 8, (y - 5) / 5)
+            if d < 1 and (x * 7 + y * 3) % 5:
+                s.p(x, y, "#e8dcc0d0" if d < 0.5 else "#b8a27aa0")
+    s.svg("fx-coup-poussiere")
+    s = gen.Px(14, 14)
+    for k in range(3):
+        for i in range(10):
+            x, y = 2 + k * 4 + i * 0.3, 1 + i * 1.2
+            s.p(round(x), round(y), "#ffffff" if 2 < i < 8 else "#c58bff")
+            s.p(round(x) + 1, round(y), "#b06bff")
+    s.svg("fx-coup-griffes")
+    s = gen.Px(11, 5)
+    s.r(0, 2, 3, 1, "#6e5236"); s.p(3, 1, "#8a8a96"); s.p(3, 3, "#8a8a96"); s.r(3, 2, 1, 1, "#8a8a96")
+    s.r(4, 2, 6, 1, "#e8edf4"); s.p(10, 2, "#ffffff"); s.r(4, 1, 5, 1, "#b8c2d0")
+    s.svg("fx-coup-dague-d")
+    flip(s).svg("fx-coup-dague-g")
+
+
+def marques():
+    s = gen.Px(18, 7)
+    for x0, y0, dx, dy in ((9, 3, 1, 0), (9, 3, -1, 0), (9, 3, 1, 1), (9, 3, -1, -1), (9, 3, 1, -1)):
+        x, y = x0, y0
+        for i in range(8):
+            s.p(x, y, "#2e2418"); x += dx; y += dy if i % 3 == 2 else 0
+    s.svg("fx-marque-golem")
+    s = gen.Px(18, 7)
+    for y in range(7):
+        for x in range(18):
+            if abs(y - 3) <= x / 6 and (x + y * 2) % 3:
+                s.p(x, y, "#d8ccb0%02x" % int(200 - x * 9))
+    s.svg("fx-marque-troll")
+    s = gen.Px(9, 11)
+    s.r(3, 5, 3, 6, "#b9a6e8"); s.r(2, 6, 1, 3, "#b9a6e8"); s.r(6, 6, 1, 3, "#b9a6e8")
+    for x in (2, 3, 4, 5, 6):
+        s.r(x, 1 + abs(x - 4), 1, 4, "#e6dcff")
+    s.outline("#3a1a6a")
+    s.svg("fx-marque-spectre")
+    s = gen.Px(16, 6)
+    for y in range(6):
+        for x in range(16):
+            d = math.hypot((x - 7.5) / 8, (y - 3) / 3)
+            if d < 1:
+                s.p(x, y, "#1b1420c0" if d < 0.6 else "#5a2a18a0")
+    s.svg("fx-marque-gobelin")
+
+
 if __name__ == "__main__":
-    rune(); surgit()
+    rune(); surgit(); rune_bord(); coups(); marques()
     aoe(); etoiles()
     taille(); dague(); etincelles(); eclair(); arcane(); fleche(); impact(); soin(); chatiment()
     print("fx-*.svg in", gen.OUT)

@@ -83,14 +83,21 @@ const ERRE = 12; // px/s the day's boss wanders its lair at (errance)
 const PAS = 50000; // ms per wander waypoint: it walks to the next, then stands there
 const PIETINE = 40; // px/s its stomps in a raid and its walk back onto its wander path
 const STOMP = [30000, 60000]; // ms between two stomps while a raid holds it
-const AOE = [60000, 90000]; // ms between two of its stunning blows while a raid holds it (secousse)
+const AOE = [30000, 45000]; // ms between two of its big attacks while a raid holds it (secousse)
+const COUP_BOSS = [6000, 10000]; // ms between two of its basic blows on one party member (coupBoss)
+// a basic blow's stages (ms from its start): its blow leaves, lands (its target flinches, knocked back), its target
+// comes back, the end
+const COUP_ETAPES = [250, 550, 1000, 1500];
 const ALERTE = 1000; // ms its blow is telegraphed (its wind-up, a warning ring)
 const ONDE = 600; // ms its blow's wave spreads, from the end of the warning
 const ETOURDI = 3000; // ms the party members it reaches stay stunned, from the end of the warning
 // its blow's stages (ms from its start): the bomb up (a goblin) and down, the hit, the wave out, its fade, the stun's end
 const RENFORT = 25000; // ms its summoned minions stay before the ones left flee, from their coming (renfort)
 const TEINTE = { golem: "#c9a26b", troll: "#8fd16a", spectre: "#b06bff", gobelin: "#ff9a2e" }; // its summon's runes and bursts
-const AOE_ETAPES = [600, 850, ALERTE, ALERTE + 60, ALERTE + ONDE, ALERTE + ONDE + 300, ALERTE + ETOURDI];
+// (the world's shake at the hit, its second ring 250 ms later, the marks left in the ground fading)
+const AOE_ETAPES = [600, 850, ALERTE, ALERTE + 60, ALERTE + 120, ALERTE + 180, ALERTE + 250, ALERTE + 310, ALERTE + ONDE,
+  ALERTE + ONDE + 300, ALERTE + ONDE + 550, ALERTE + ETOURDI];
+const SECOUE = [[5, 2], [-4, -2], [3, 1], [-2, 0], [0, 0]]; // the world's shake (x, y px), from the hit, 60 ms each
 const SAUT = [120, 220]; // px a stomp takes it (fewer when its lair has no such room: pietine)
 export const VOYAGE = [400, 700]; // a hero's teleport's stages (portail): fade into the portal, show at the far end
 export const PORTAIL = 1400; // and its end, both portals closed
@@ -205,6 +212,24 @@ export function etoiles(head) {
   const at = (k) => image(`${ART}/fx-etoiles-${k}.svg`).absolute().left(-17).top(head - 16).w(34).h(14);
   return [at(0).loop("opacity", { from: 7, to: -6, period: 360, easing: "linear" }), at(1).loop("opacity", { from: -6, to: 7, period: 360, easing: "linear" })];
 }
+
+/** The `work` frame fighter k shows at t (n frames at fps, ph its phase): its attack cycle once, then its ready
+ *  frame (0) held 0.8 to 2 s, again. Its time is cut in slots of a cycle + 1.4 s (shifted by ph), each cycle starting
+ *  0 to 0.6 s into its slot (hashed from k and the slot): reloads agree, members do not swing in step. A blow (its
+ *  effect starting at coup) in a pause starts a cycle at once, so the swing lines up with the effect. */
+export function cadence(k, t, fps, n, ph, coup) {
+  const C = (n / fps) * 1000, L = C + 1400;
+  const dans = (x) => { const tt = x + ph, i = Math.floor(tt / L), dt = tt - i * L - (hash(`${k}:cycle:${i}`) % 601); return dt >= 0 && dt < C ? dt : -1; };
+  if (coup !== undefined && t >= coup && t - coup < C && dans(coup) < 0) return Math.floor(((t - coup) / 1000) * fps) % n;
+  const dt = dans(t);
+  return dt < 0 ? 0 : Math.floor((dt / 1000) * fps) % n;
+}
+
+/** The wait before a raided boss's next basic blow (COUP_BOSS). */
+const coupAttente = () => COUP_BOSS[0] + Math.random() * (COUP_BOSS[1] - COUP_BOSS[0]);
+
+const RENFORT_ECART = [56, 30]; // a summoned minion's feet at least this ellipse (px across, deep) from every member and minion
+const libreDe = (q, pts) => pts.every((o) => ((q[0] - o[0]) / RENFORT_ECART[0]) ** 2 + ((q[1] - o[1]) / RENFORT_ECART[1]) ** 2 >= 1);
 
 /** The wait before a raided boss's next stunning blow (AOE). */
 const aoeAttente = () => AOE[0] + Math.random() * (AOE[1] - AOE[0]);
@@ -384,6 +409,8 @@ export class Activites {
    *  every PAS_COTE ms (by k) a 10-20 px step aside, out for 350 ms then back (ecart), not while it walks or teleports
    *  (busy) or its blow's effect runs. Its x offset now (native transitions carry it). */
   pasDeCote(k, addr, t, busy) {
+    const c = this.arene?.coup; // knocked back by the raid boss's basic blow, then easing back
+    if (c && c.cible === k && t - c.t0 >= COUP_ETAPES[1] && t - c.t0 < COUP_ETAPES[2]) return c.recul;
     if (!this.duels.has(addr) || busy || this.effets.has(k)) return 0;
     return ecart(k, t).dx;
   }
@@ -462,7 +489,7 @@ export class Activites {
     }
     if (!avant && vifs.length) { // the raid begins: it stops where it is
       const p = this.ici(now);
-      Object.assign(A, { x: Math.round(p.x), y: Math.round(p.y), pas: null, next: now + attente(), nextAoe: now + aoeAttente() });
+      Object.assign(A, { x: Math.round(p.x), y: Math.round(p.y), pas: null, next: now + attente(), nextAoe: now + aoeAttente(), nextCoup: now + coupAttente() });
     }
     for (const [addr, ids] of vifs) {
       const r = this.raids.get(addr);
@@ -474,6 +501,7 @@ export class Activites {
       changed = true;
     }
     if (this.raids.size) changed = this.secousse(now) || changed;
+    if (this.raids.size) changed = this.coupBoss(now) || changed;
     // a stomp waits for a stunning blow and its stun to end
     if (this.raids.size && now >= A.next && !(A.pas && now < A.pas.t1) && !this.secoue(now) && !this.renfortVif(now)) changed = this.pietine(now) || changed;
     return changed;
@@ -501,11 +529,72 @@ export class Activites {
     return true;
   }
 
+  /** A basic blow of the raid boss on one party member, every COUP_BOSS ms while a raid holds it (none while a big
+   *  attack winds up, lands or stuns, or while it stomps): on a melee look on the front ring (ring 0), else on the
+   *  member nearest to it. It winds up (its attack pose), its species' blow flies or falls on it (coupDe), the member
+   *  flinches (a flash) and is knocked back RECUL px, then eases back (pasDeCote). Purely cosmetic. True when it starts. */
+  coupBoss(now) {
+    const A = this.arene;
+    if (A.fin || now < (A.nextCoup ?? 0) || this.arme(now) || this.secoue(now) || (A.pas && now < A.pas.t1) || (A.coup && now - A.coup.t0 < COUP_ETAPES[3])) return false;
+    A.nextCoup = now + coupAttente();
+    const loin = (q) => Math.hypot(q[0] - A.x, (q[1] - (A.y - 16)) / APLAT);
+    const cls = (k) => { const a = this.list?.find((x) => x.address === k); return a ? clsOf(a) : "mage"; };
+    const membres = [...[...A.places].map(([k, P]) => ({ k, q: P.q, s: P.s, cls: cls(k) })), ...[...A.apps].map(([k, P]) => ({ k, q: P.q, s: P.s, cls: P.cls }))];
+    if (!membres.length) return false;
+    const front = membres.filter((m) => m.s?.[0] === 0 && MELEE.has(m.cls));
+    const c = (front.length ? front : membres).sort((p, q) => loin(p.q) - loin(q.q))[0];
+    A.coup = { t0: now, cible: c.k, q: c.q, recul: Math.sign(c.q[0] - A.x || 1) * (6 + Math.round(Math.random() * 4)) };
+    return true;
+  }
+
+  /** Its basic blow drawn (coup): golem, a dust puff where its fist falls; troll, its club's sweep towards the target
+   *  and a small shockwave there; spectre, three ghostly claw streaks raking it; goblin, a dagger thrown to it; and the
+   *  target's flash. al: dimmed at night. [{ z, el }]. */
+  coupDe(t, al) {
+    const A = this.arene, c = A?.coup;
+    if (!c || t - c.t0 >= COUP_ETAPES[3] || !this.ecrit) return [];
+    const e = COUP_ETAPES.filter((x) => t - c.t0 >= x).length, sp = espece(A.day), dir = c.q[0] < A.x ? -1 : 1;
+    const [tx, ty] = [c.q[0], c.q[1] - 40], id = `coup-${c.t0}`, out = [];
+    const piece = (k, nom, x, y, w, h, op, d = 200) => image(`${ART}/${nom}.svg`).id(`${id}-${k}`).absolute().left(Math.round(x - w / 2)).top(Math.round(y - h / 2)).w(Math.round(w)).h(Math.round(h))
+      .opacity(op * al).transition("left", { duration: d, easing: "ease-in" }).transition("top", { duration: d, easing: "ease-in" })
+      .transition("width", { duration: d, easing: "ease-out" }).transition("height", { duration: d, easing: "ease-out" }).transition("opacity", { duration: 220, easing: "linear" });
+    const haut = c.q[1] + 50000; // over the units
+    if (sp === "gobelin") { // a dagger from its hand to the target
+      const K = geantDe(sp).k, top = A.y - CREATURES[sp].pret.h * K * 0.55, [x, y] = e === 0 ? [A.x + dir * 30, top] : [tx, ty];
+      if (e <= 1) out.push({ z: haut, el: piece("dague", dir > 0 ? "fx-coup-dague-d" : "fx-coup-dague-g", x, y, 22, 10, e === 1 ? 1 : 0, COUP_ETAPES[1] - COUP_ETAPES[0]) });
+    }
+    if (sp === "troll" && e <= 1) { // its club's sweep, out of its side towards the target
+      const s = e ? 1.6 : 1;
+      out.push({ z: haut, el: piece("arc", dir > 0 ? "fx-taille-d" : "fx-taille-g", A.x + dir * (90 + 30 * e), A.y - 70, 48 * s, 40 * s, e ? 1 : 0.4, 280) });
+    }
+    if (e >= 2) { // the landing on its target
+      const f = e >= 3 ? 0 : 1, big = e >= 3 ? 1.4 : 1;
+      if (sp === "golem") out.push({ z: haut, el: piece("poussiere", "fx-coup-poussiere", c.q[0], c.q[1] - 6, 48 * big, 30 * big, f, 300) });
+      if (sp === "troll") out.push({ z: c.q[1] - 1, el: piece("onde", "fx-aoe-troll", c.q[0], c.q[1], 90 * big, 30 * big, f, 300) });
+      if (sp === "spectre") out.push({ z: haut, el: piece("griffes", "fx-coup-griffes", tx, ty, 40, 40, f, 120) });
+      if (sp === "gobelin") out.push({ z: haut, el: piece("impact", "fx-impact", tx, ty, 26 * big, 20 * big, f, 300) });
+      out.push({ z: haut + 1, el: div().id(`${id}-flash`).absolute().left(tx - 12).top(ty - 12).size(24).rounded_full().bg("#fff6d8")
+        .opacity(f * al).transition("opacity", { duration: 250, easing: "linear" }) });
+    }
+    return out;
+  }
+
+  /** The world's shake at its stunning blow's hit (SECOUE, 60 ms a step, then still): { dx, dy }. */
+  tremble(t) {
+    const a = this.arene?.aoe;
+    if (!a || !this.ecrit) return { dx: 0, dy: 0 };
+    const dt = t - a.t0 - ALERTE;
+    if (dt < 0 || dt >= SECOUE.length * 60) return { dx: 0, dy: 0 };
+    const [dx, dy] = SECOUE[Math.floor(dt / 60)];
+    return { dx, dy };
+  }
+
   /** True while the boss winds up or lands an attack (its stunning blow until its wave has spread, its summon until
    *  its minions come): it holds its attack pose, no blow makes it flinch (the damage still counts). */
   arme(t) {
     const A = this.arene;
-    return Boolean(A && ((A.aoe && t - A.aoe.t0 < ALERTE + ONDE) || (A.renfort && t - A.renfort.t0 < ALERTE)));
+    return Boolean(A && ((A.aoe && t - A.aoe.t0 < ALERTE + ONDE) || (A.renfort && t - A.renfort.t0 < ALERTE)
+      || (A.coup && t - A.coup.t0 < COUP_ETAPES[1])));
   }
 
   /** True while its summon runs: from its wind-up until its minions are all gone (felled or fled, their fall or flight
@@ -528,9 +617,11 @@ export class Activites {
   }
 
   /** Its summon's minions, chosen at its start from where the party stands (Place's render: units, apps; the members
-   *  in their places, not walking or teleporting): N = round(members / 2), 2 to 4, of its minion family (sbire). Each engages a party member, melee looks first, then the
-   *  nearest to the boss: it comes 60 px past that member, away from the boss (else 30 or 60 degrees round), on walkable
-   *  ground in the strip, clear of the boss and of the other minions; the member turns to face it. */
+   *  in their places, not walking or teleporting): N = round(members / 2), 2 to 4, of its minion family (sbire). Each
+   *  engages a party member, melee looks first, then the nearest to the boss: it comes on open walkable ground beside
+   *  that member (60 to 100 px round it, 30 px aside at least: never right above or under it; the point most away
+   *  from the boss first), in the strip, clear of the boss,
+   *  RENFORT_ECART from every member and every other minion; the member turns to face it. */
   preparer(units, apps, t) {
     const A = this.arene, R = A?.renfort;
     if (!R || R.list) return;
@@ -545,13 +636,15 @@ export class Activites {
     const list = [];
     for (const m of ordre) {
       if (list.length >= N) break;
-      const a0 = Math.atan2((m.y - (A.y - 16)) / APLAT, m.x - A.x);
-      for (const da of [0, 0.52, -0.52, 1.05, -1.05]) {
-        const q = [Math.round(m.x + Math.cos(a0 + da) * 60), Math.round(m.y + Math.sin(a0 + da) * 60 * APLAT)];
-        if (!walkable(q) || q[1] <= 60 || q[1] >= lieux().WORLD.h - 15 || !clair(A, q, demi, corps) || !list.every((o) => apart(o.q, q))) continue;
-        list.push({ id: list.length, q, cible: m.k, tx: m.x, coups: 0, at: 0, fin: 0 });
-        break;
-      }
+      // on open ground beside it: round it at 60 to 100 px, at least RENFORT_ECART from every member and every other
+      // minion, the point most away from the boss first (then the nearest)
+      const a0 = Math.atan2((m.y - (A.y - 16)) / APLAT, m.x - A.x), seul = (q) => libreDe(q, membres.map((o) => [o.x, o.y])) && libreDe(q, list.map((o) => o.q));
+      const q = [60, 80, 100].flatMap((r) => Array.from({ length: 12 }, (_, i) => {
+        const a = a0 + (i * Math.PI) / 6;
+        return { q: [Math.round(m.x + Math.cos(a) * r), Math.round(m.y + Math.sin(a) * r * 0.5)], cout: Math.abs(Math.atan2(Math.sin(a - a0), Math.cos(a - a0))) + r / 200 };
+      })).sort((p, o) => p.cout - o.cout) // the best first; walkable() (costly on a long shore) last, on the first ones only
+        .find(({ q }) => Math.abs(q[0] - m.x) >= 30 && q[1] > 60 && q[1] < lieux().WORLD.h - 15 && clair(A, q, demi, corps) && seul(q) && walkable(q))?.q;
+      if (q) list.push({ id: list.length, q, cible: m.k, tx: m.x, coups: 0, at: 0, fin: 0 });
     }
     R.list = list;
     R.sp = sbire();
@@ -581,13 +674,20 @@ export class Activites {
     const A = this.arene, R = A?.renfort;
     if (!R?.list || !this.ecrit) return [];
     const tint = TEINTE[espece(A.day)] ?? "#ffffff", sfx = night ? "-n" : "", D = CREATURES[R.sp], out = [], dt = t - R.t0;
+    if (dt >= ALERTE - 300 && dt < ALERTE + 500) { // a brief glow of its colour on the boss as they come
+      const w = Math.round(geantDe(espece(A.day)).demi * 2.2), h = Math.round(w / 2.4);
+      out.push({ z: A.y + 2, el: svg(`${ART}/halo.svg`).id(`renfort-${R.t0}-lueur`).absolute().left(A.x - w / 2).top(A.y - h / 2).w(w).h(h).text_color(tint)
+        .opacity(0.9 * al).loop("opacity", { from: 0.4 * al, to: 0.95 * al, period: 200 }) });
+    }
     for (const m of R.list) {
       const [x, y] = m.q, side = m.tx > x ? 1 : -1, g = side > 0 ? "-g" : ""; // the art faces left; -g faces right
       const sprite = (pose, extra) => { const p = D[pose]; return image(`${CRE}/${R.sp}/${pose}${g}${sfx}.png`).absolute().left(-p.ax * BETE).top(-p.ay * BETE + 4).w(p.w * BETE).h(p.h * BETE).when(Boolean(extra), extra); };
       const at = (id, kids) => ({ z: y + 3, el: div().id(`renfort-${R.t0}-${m.id}-${id}`).absolute().left(x).top(y).w(0).h(0).opacity(al).children(kids) });
       if (dt < ALERTE) {
-        out.push({ z: y - 200, el: svg(`${ART}/fx-rune.svg`).id(`renfort-${R.t0}-${m.id}-rune`).absolute().left(x - 40).top(y - 14).w(80).h(28).text_color(tint)
-          .opacity(al).loop("opacity", { from: 0.4 * al, to: al, period: 300 }) });
+        out.push({ z: y - 200, el: div().id(`renfort-${R.t0}-${m.id}-rune`).absolute().left(x - 60).top(y - 21).w(120).h(42)
+          .opacity(al).loop("opacity", { from: 0.75 * al, to: al, period: 300 })
+          .child(image(`${ART}/fx-rune-bord.svg`).absolute().left(0).top(0).w(120).h(42)) // its thin dark outline
+          .child(svg(`${ART}/fx-rune.svg`).absolute().left(0).top(0).w(120).h(42).text_color(tint)) });
         continue;
       }
       const venue = dt < ALERTE + 500, burst = (s) => svg(`${ART}/fx-surgit.svg`).id(`renfort-${R.t0}-${m.id}-surgit`).absolute().left(-21 * s).top(-30 - 21 * s).w(42 * s).h(42 * s)
@@ -601,7 +701,7 @@ export class Activites {
         continue;
       }
       const kids = [];
-      if (venue) kids.push(burst(dt < ALERTE + 60 ? 0.4 : 1.6));
+      if (venue) kids.push(burst(dt < ALERTE + 60 ? 0.5 : 2.4));
       if (t - m.at < COUP) {
         kids.push(sprite("touche"), div().absolute().left(-6).top((-D.pret.h * BETE) / 2 - 4).size(12).rounded_full().bg("#fff6d8").loop("opacity", { from: 1, to: 0, period: 450 }));
       } else {
@@ -643,7 +743,7 @@ export class Activites {
    *  each stage (AOE_ETAPES in fenetres). al: its opacity (dimmed at night). [{ z, el }]. */
   aoe(t, al) {
     const A = this.arene, a = A?.aoe;
-    if (!a || t >= a.t0 + ALERTE + ONDE + 300 || !this.ecrit) return [];
+    if (!a || t >= a.t0 + ALERTE + ETOURDI || !this.ecrit) return []; // its marks fade until the stun's end
     const dt = t - a.t0, e = AOE_ETAPES.filter((s) => dt >= s).length, sp = espece(A.day), R = portee(A.day);
     const W = Math.round(2 * R), H = Math.round(2 * R * APLAT), cy = A.y - 16, out = [];
     const tr = (el, d) => el.transition("left", d).transition("top", d).transition("width", d).transition("height", d);
@@ -657,14 +757,26 @@ export class Activites {
       const K = geantDe(sp).k, top = A.y - CREATURES[sp].pret.h * K * 0.6, [x, y] = e === 0 ? [A.x - dir * 20, top] : e === 1 ? [A.x + dir * 15, top - 60] : [bx, by - 7];
       out.push({ z: A.y + 50000, el: tr(image(`${ART}/fx-aoe-bombe.svg`).id(`aoe-${a.t0}-bombe`).absolute().left(x - 7).top(y - 8).w(14).h(16), { duration: e === 1 ? 250 : 150, easing: e === 1 ? "ease-out" : "ease-in" }).opacity(al) });
     }
-    if (e >= 3) { // the wave: from a fifth of its reach to all of it, then fading
-      const f = e >= 4 ? 1 : 0.2, w = Math.round(W * f), h = Math.round(H * f);
-      out.push({ z: cy - 300, el: tr(image(`${ART}/fx-aoe-${sp}.svg`).id(`aoe-${a.t0}-onde`).absolute().left(bx - w / 2).top(by - h / 2).w(w).h(h), { duration: ONDE - 60, easing: "ease-out" })
-        .opacity(e >= 5 ? 0 : al).transition("opacity", { duration: 300, easing: "linear" }) });
-      if (sp === "golem") for (let i = 0; i < 6; i++) { // rocks thrown out from its feet
-        const ang = (i / 6) * 2 * Math.PI + 0.4, r = f * R * 0.8, x = A.x + Math.cos(ang) * r, y = cy + Math.sin(ang) * r * APLAT - (e === 4 ? 30 : 0);
-        out.push({ z: A.y + 50000, el: tr(image(`${ART}/fx-aoe-debris.svg`).id(`aoe-${a.t0}-roc-${i}`).absolute().left(x - 5).top(y - 4).w(10).h(8), { duration: ONDE - 60, easing: "ease-out" })
-          .opacity(e >= 5 ? 0 : al).transition("opacity", { duration: 300, easing: "linear" }) });
+    if (e >= 3) { // the wave: from a fifth of its reach to all of it, then fading; a second one 250 ms later
+      const onde = (k, f, fade, reach) => { const w = Math.round(W * f * reach), h = Math.round(H * f * reach);
+        return { z: cy - 300, el: tr(image(`${ART}/fx-aoe-${sp}.svg`).id(`aoe-${a.t0}-${k}`).absolute().left(bx - w / 2).top(by - h / 2).w(w).h(h), { duration: ONDE - 60, easing: "ease-out" })
+          .opacity(fade ? 0 : al).transition("opacity", { duration: 300, easing: "linear" }) }; };
+      out.push(onde("onde", e >= 4 ? 1 : 0.2, e >= 9, 1));
+      if (e >= 7) out.push(onde("onde2", e >= 8 ? 1 : 0.2, e >= 10, 1.15));
+      // its marks in the ground under the ring (golem cracks, troll dust fans, spectre ghost hands, goblin scorches)
+      const M = { golem: [18, 7], troll: [18, 7], spectre: [9, 11], gobelin: [16, 6] }[sp];
+      for (let i = 0; i < 7; i++) {
+        const ang = (i / 7) * 2 * Math.PI + (hash(`${a.t0}:${i}`) % 100) / 100, r = R * (0.45 + ((hash(`${a.t0}:r${i}`) % 40) / 100));
+        const x = A.x + Math.cos(ang) * r, y = cy + Math.sin(ang) * r * APLAT;
+        out.push({ z: cy - 350, el: image(`${ART}/fx-marque-${sp}.svg`).id(`aoe-${a.t0}-marque-${i}`).absolute().left(Math.round(x - M[0] * 1.5)).top(Math.round(y - M[1] * 3)).w(M[0] * 3).h(M[1] * 3)
+          .opacity(e >= 11 ? 0 : 0.85 * al).transition("opacity", { duration: 1500, easing: "linear" }) });
+      }
+      // thrown out from its feet: rocks for a golem, sparks for the others
+      for (let i = 0; i < 6; i++) {
+        const f = e >= 4 ? 1 : 0.2, ang = (i / 6) * 2 * Math.PI + 0.4, r = f * R * 0.8, x = A.x + Math.cos(ang) * r, y = cy + Math.sin(ang) * r * APLAT - (e >= 4 && e < 9 ? 30 : 0);
+        const [nom, w, h] = sp === "golem" ? ["fx-aoe-debris", 10, 8] : ["etincelle", 12, 12];
+        out.push({ z: A.y + 50000, el: tr(image(`${ART}/${nom}.svg`).id(`aoe-${a.t0}-roc-${i}`).absolute().left(x - w / 2).top(y - h / 2).w(w).h(h), { duration: ONDE - 60, easing: "ease-out" })
+          .opacity(e >= 9 ? 0 : al).transition("opacity", { duration: 300, easing: "linear" }) });
       }
     }
     return out;
@@ -874,6 +986,7 @@ export class Activites {
       const fin = A.fin && t - A.fin < CHUTE;
       if (t - A.at < COUP || fin) s += `boss:${A.at}:${A.fin}:${fin ? etape(t - A.fin) : "-"};`;
       if (A.pas && t < A.pas.t1) s += `boss-pas:${A.pas.t0};`; // a stomp or its walk back: redraw at its end (its bob)
+      if (A.coup && t - A.coup.t0 < COUP_ETAPES[3]) s += `boss-coup:${A.coup.t0}:${COUP_ETAPES.filter((x) => t - A.coup.t0 >= x).length};`;
       const R = A.renfort; // its summon: the wind-up, the minions' coming, each one's blows, fall or flight
       if (R && this.renfortVif(t)) s += `renfort:${R.t0}:${[ALERTE, ALERTE + 60, ALERTE + 500].filter((x) => t - R.t0 >= x).length}:${(R.list ?? []).map((m) => `${t - m.at < COUP}${m.fin ? (t - m.fin < CHUTE ? etape(t - m.fin) : "x") : ""}`).join(",")};`;
       if (this.secoue(t)) s += `boss-aoe:${A.aoe.t0}:${AOE_ETAPES.filter((x) => t - A.aoe.t0 >= x).length};`; // its blow's stages and its stun's end
@@ -1247,7 +1360,10 @@ export class Activites {
       if (!A) return null;
       const ph = hash(x.id) % 997;
       const stun = this.etourdi(id, t); // stunned (secousse): its frame frozen as it was then
-      const f = animate || stun !== null ? Math.floor((((stun ?? t) + ph) / 1000) * A.fps) % A.n : 0;
+      // fighting (its own spot, its hero's raid or minions, its hero's creature): a swing, then a pause (cadence)
+      const bat = Boolean(!leg && name.startsWith("work") && (d || raid || cree));
+      const f = !(animate || stun !== null) ? 0 : bat ? cadence(id, stun ?? t, A.fps, A.n, ph, this.effets.get(id)?.t0)
+        : Math.floor((((stun ?? t) + ph) / 1000) * A.fps) % A.n;
       const { w, h, ax, ay } = A; // full hero size
       const dir = `${ART}/heros/${key}/${name}`;
       const [gx, gy] = p.leg ? p.leg.b : [p.x, p.y];
@@ -1266,7 +1382,7 @@ export class Activites {
         .when(stun !== null, (e) => e.children(etoiles(-ay)));
       // vu: what it shows now (its ghost when it leaves; Place.passages)
       const vu = { src: `${dir}/${String(f).padStart(2, "0")}${sfx}.png`, w, h, ax, ay, x: p.x, y: p.y, leg: p.leg };
-      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, key: `${addr}:${x.id}`, look: key, vu, anim: { fps: animate && stun === null ? A.fps : 0, n: A.n, ph, trail: tr } };
+      return { z: p.y + 3, el, box: { x: p.x - ax, y: p.y - ay, w, h, fy: p.y }, addr, key: `${addr}:${x.id}`, look: key, vu, anim: { fps: animate && stun === null ? A.fps : 0, n: A.n, ph, trail: tr, k: bat ? id : null } };
     }).filter(Boolean);
   }
 
@@ -1353,9 +1469,11 @@ export class Activites {
     const dir = leg && leg.b[0] !== leg.a[0] ? Math.sign(leg.b[0] - leg.a[0]) : this.raids.size && raids ? Math.sign(raids) : -r.side;
     const g = dir < 0 ? "" : "-g", sfx = night ? "-n" : ""; // its art faces left; -g faces right
     const e = r.fin ? etape(t - r.fin) : 0, chute = r.fin && t - r.fin < CHUTE;
-    const sprite = (pose, extra) => {
+    // each pose sprite has an id of its own role (a held pose, the alternating pair, walking, flinching), so a switch
+    // makes a new element instead of carrying over the old one's loop: no half-faded frame
+    const sprite = (pose, extra, role = "seul") => {
       const q = D[pose];
-      return image(`${CRE}/${sp}/${pose}${g}${sfx}.png`).absolute().left(-q.ax * K).top(-q.ay * K + 4).w(q.w * K).h(q.h * K).when(Boolean(extra), extra);
+      return image(`${CRE}/${sp}/${pose}${g}${sfx}.png`).id(`geant-${role}-${pose}`).absolute().left(-q.ax * K).top(-q.ay * K + 4).w(q.w * K).h(q.h * K).opacity(1).when(Boolean(extra), extra);
     };
     const out = [];
     if (r.fin) {
@@ -1384,8 +1502,8 @@ export class Activites {
       } else if (this.raids.size && this.arme(t)) {
         out.push(sprite("attaque")); // an attack's wind-up, held until it lands
       } else if (this.raids.size) {
-        out.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: 1700 + (hash(addr) % 400), easing: "linear" })));
-        out.push(sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: 1700 + (hash(addr) % 400), easing: "linear" })));
+        out.push(sprite("pret", (el) => el.loop("opacity", { from: 7, to: -6, period: 1700 + (hash(addr) % 400), easing: "linear" }), "alt"));
+        out.push(sprite("attaque", (el) => el.loop("opacity", { from: -6, to: 7, period: 1700 + (hash(addr) % 400), easing: "linear" }), "alt"));
       } else out.push(sprite("pret"));
       // today's HP over its head
       const W = 84;
