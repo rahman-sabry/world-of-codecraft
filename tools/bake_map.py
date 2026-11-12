@@ -40,7 +40,7 @@ import compose2 as C2  # noqa: E402
 import compose3 as C3  # noqa: E402
 import buildings  # noqa: E402
 from mapbake.carte import charger, Erreur  # noqa: E402
-from mapbake.sol import sol  # noqa: E402
+from mapbake.sol import sol, KINDS  # noqa: E402
 from mapbake.objets import objets, disperser  # noqa: E402
 from mapbake.verif import modeles, verifier, marchable  # noqa: E402
 
@@ -73,6 +73,17 @@ if theme.LOOK.get("teinte"):  # the look's daylight grade (theme.py): desaturate
     rgb = rgb * (1 - tg["mix"]) + np.array([int(tg["brume"][k:k + 2], 16) for k in (1, 3, 5)], np.float32) * tg["mix"]
     day = np.clip(rgb, 0, 255).astype(np.uint8)
 print(f"composited day and night in {time.time() - t1:.0f}s")
+lave = np.isin(kind, [k["i"] for k in KINDS.values() if k.get("lave")])
+if lave.any():  # lava glows (village-art/forge.py lueur): over both bakes, where no object stands on it
+    import forge
+    couvert = np.zeros(kind.shape, bool)
+    for name, u, v, dp, _x in objs:
+        a = C3.load(name)[..., 3] > 0
+        x0, y0 = u - C2.META[name]["ax"], v - C2.META[name]["ay"]
+        xs0, ys0, xs1, ys1 = max(0, x0), max(0, y0), min(W, x0 + a.shape[1]), min(kind.shape[0], y0 + a.shape[0])
+        if xs1 > xs0 and ys1 > ys0:
+            couvert[ys0:ys1, xs0:xs1] |= a[ys0 - y0:ys1 - y0, xs0 - x0:xs1 - x0]
+    forge.lueur(day, night, np.clip(ground, 0, 255).astype(np.uint8), lave & ~forge.FACE[0], couvert, N)
 
 OUT = os.path.join(RACINE, "art", f"{c['id']}-{theme.LOOK_ID}")
 os.makedirs(OUT, exist_ok=True)

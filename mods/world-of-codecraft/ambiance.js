@@ -242,8 +242,8 @@ export class Ambiance {
         out.push({ z: hy + 3, el: div().absolute().left(hx).top(hy).w(0).h(0)
           .child(unswap(img("poule", "debout", hx % 2 ? "-g" : ""), per)).child(swap(img("poule", "picore", hx % 2 ? "-g" : ""), per)) });
       }
-      // sparrows circling over the fields
-      for (let k = 0; k < 3; k++) {
+      // sparrows circling over the fields (none on a map without them: MOINEAUX null)
+      for (let k = 0; MOINEAUX && k < 3; k++) {
         const per = 6000 + k * 1300, cx0 = MOINEAUX[0] + k * 40, cy0 = MOINEAUX[1] + k * 18;
         out.push({ z: 0, el: div().absolute().left(cx0).top(cy0).w(0).h(0)
           .loop("left", { from: cx0 - 70, to: cx0 + 90, period: per })
@@ -266,8 +266,8 @@ export class Ambiance {
       const box = this.box("chat", m, now, pose);
       out.push({ z: box.fy + 3, el, box });
     });
-    // the stag at dawn and dusk
-    if (phase === "aube" || phase === "crepuscule") {
+    // the stag at dawn and dusk (none on a map without one: STAG null)
+    if (STAG && (phase === "aube" || phase === "crepuscule")) {
       out.push({ z: STAG[1] + 3, el: div().absolute().left(STAG[0]).top(STAG[1]).w(0).h(0)
         .child(unswap(img("cerf", "broute"), 9000)).child(swap(img("cerf", "alerte"), 9000)) });
     }
