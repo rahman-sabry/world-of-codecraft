@@ -90,6 +90,12 @@ if SOL.get('dirt') == 'neige':
     DR = ramp('#a69c96', hs=16, light=1.28, dark=0.5)
 if SOL.get('water') == 'glace':
     WR = ICE_RAMP
+if SOL.get('grass') == 'bosquet-automne':  # Sylvaren Grove: autumn grass, golden olive; spring, fresh and bright
+    GR = ramp('#7e973c', hs=28, light=1.3, dark=0.3)
+    GR2 = ramp('#8d8a3a', hs=28, light=1.3, dark=0.3)
+if SOL.get('grass') == 'bosquet-printemps':
+    GR = ramp('#62a83e', hs=30, light=1.3, dark=0.3)
+    GR2 = ramp('#4f9a46', hs=30, light=1.3, dark=0.3)
 # the port's sea (deeper than the river, its shallows turquoise, foam white) and sand (dry, and wet at the waterline);
 # winter: a colder, greyer sea (open water, ice only at its edges: mapbake/sol.py) and snow over the sand
 SE = ramp('#1f5d8e', hs=16, light=1.35, dark=0.35)
