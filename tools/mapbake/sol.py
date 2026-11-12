@@ -16,6 +16,7 @@ import numpy as np
 from compose import seg_dist
 from engine import vnoise2, hash3, BAYER, hx
 from extras import ground_tex, sable_mouille, DR, WR, SH, EC
+from extras import oasis_sable, oasis_dune, oasis_dur, oasis_dalles, oasis_piste
 from theme import LOOK
 import forge
 from .carte import s2w, Erreur
@@ -37,10 +38,21 @@ KINDS = {
     "forge-dalles": dict(i=7, bruit=0.8),
     "forge-chemin": dict(i=8, bruit=0.8, interdit=True),
     "forge-lave": dict(i=9, bruit=0.5, interdit=True, bloque=True, lave=True),
+    # the oasis (40-49): cracked hardpan, the dunes, the green bank round the pool (the summer grass's texture)
+    "oasis-dur": dict(i=40, bruit=0.8),
+    "oasis-dune": dict(i=41, bruit=0.0),
+    "oasis-herbe": dict(i=42, bruit=0.6),
 }
+# the marsh (maps/marais.json): murky still water with algae and lily pads, mud banks (its own indices, 30+)
+KINDS["marais-eau"] = dict(i=30, bruit=0.5, eau=True, interdit=True)
+KINDS["marais-boue"] = dict(i=31, bruit=0.8)
 NOMS = {k["i"]: n for n, k in KINDS.items()}
 TEX = {}  # kind -> f(x, y, sx, sy, macro): RGB float, for kinds extras.ground_tex does not know
+BORDS = []  # f(out, kind, eau, x, y, u, v): edge painters run last, for kinds with edges of their own
 TEX.update(forge.TEX)  # also look variants: a kind's LOOK["sol"] variant named here wins over the kind's texture
+# (also the look variants a look's sol names, when TEX knows them: the oasis's desert over the grass, its track, its flags)
+TEX.update({"oasis-dur": oasis_dur, "oasis-dune": oasis_dune, "oasis-herbe": functools.partial(ground_tex, "grass"),
+            "oasis-sable": oasis_sable, "oasis-piste": oasis_piste, "oasis-dalles": oasis_dalles})
 GRASS = KINDS["grass"]["i"]
 
 
@@ -155,6 +167,8 @@ def sol(c):
     for i in kinds_ou("sillon"):
         fe = (kind == i) & ~(np.roll(kind, 1, 0) == i)
         out[fe] = DR[1]
+    for f in BORDS:
+        f(out, kind, eau, x, y, u, v)
     return np.clip(out, 0, 255), kind, eau
 
 
@@ -206,6 +220,105 @@ RK = ramp("#8a8890", hs=16, light=1.26)
 GV = ramp("#a89f90", hs=18, light=1.2)
 TR = ramp("#3a8aae", hs=12, light=1.4, dark=0.32)
 _P = 32
+# ---------------------------------------------------------------- the marsh (maps/marais.json)
+# Murky water (algae flecks, lily pads with a few flowers), mud, and on the look 'brume' (autumn fog) a dun grass,
+# greyer water and rusty pads. Its edge (marais_bords) replaces the river's foam and shallows by a silty margin and
+# paints reeds standing in the water along the banks.
+from engine import ramp as _ramp
+_BRUME = LOOK["sol"].get("marais-eau") == "brume"
+ME = _ramp("#3a4648" if _BRUME else "#2c4442", hs=14, light=1.3, dark=0.4)
+MA = _ramp("#7a7c4e" if _BRUME else "#6a8a3a", hs=18, light=1.2)
+NE = _ramp("#8a6a36" if _BRUME else "#4f8a34", hs=24, light=1.3, dark=0.32)
+MB = _ramp("#5a4a3e" if _BRUME else "#5e4a34", hs=18, light=1.25, dark=0.4)
+RO = _ramp("#a88a4a" if _BRUME else "#6f8f36", hs=22, light=1.3)
+FLEURS_NE = np.array([hx("#f2e6ee"), hx("#e89ab8")], np.float32)
+
+
+def _eau_marais(x, y, sx, sy, macro=0):
+    P = 32
+    n = vnoise2(x, y, 14, 131, P) * 1.0 + vnoise2(x, y, 6, 132, P) * 0.5
+    lv = 1.8 + n + macro * 0.5
+    sheen = np.sin((x - y) * 0.42 + vnoise2(x, y, 9, 133, P) * 5.0)
+    lv = lv + (sheen > 1.0 - 0.2) * 0.9
+    lv = lv + BAYER[sy % 4, sx % 4] * 0.3
+    c = ME[np.clip(np.round(lv), 0, 6).astype(int)]
+    # algae: drifting scum in slow patches, flecks within
+    scum = vnoise2(x, y, 22, 134, P) * 0.7 + vnoise2(x, y, 7, 135, P) * 0.3
+    h = hash3(np.floor(x).astype(np.int64) % P, np.floor(y).astype(np.int64) % P, np.zeros_like(x, dtype=np.int64), 136)
+    al = (scum > 0.62) & (h > 0.35) | (h > 0.985)
+    c = np.where(al[..., None], MA[np.clip(np.round(2.6 + (scum - 0.6) * 6 + BAYER[sy % 4, sx % 4] * 0.5), 0, 6).astype(int)], c)
+    # lily pads: a disc on the ground (an ellipse on screen) per 12-unit cell, a notch, a lit rim; a few flowers
+    gx, gy = np.floor(x / 12), np.floor(y / 12)
+    hp = hash3(gx.astype(np.int64), gy.astype(np.int64), np.zeros_like(x, dtype=np.int64), 137)
+    cx = gx * 12 + 3 + hash3(gx.astype(np.int64), gy.astype(np.int64), np.ones_like(x, dtype=np.int64), 138) * 6
+    cy = gy * 12 + 3 + hash3(gx.astype(np.int64), gy.astype(np.int64), np.ones_like(x, dtype=np.int64) * 2, 138) * 6
+    r = 2.2 + hp * 1.6
+    dx, dy = x - cx, y - cy
+    d = np.hypot(dx, dy)
+    ang = np.arctan2(dy, dx) - hp * 40
+    pad = (hp > 0.62) & (d < r) & ~((np.cos(ang) > 0.93) & (d > r * 0.25))
+    lvp = 3.2 + (dx + dy < 0) * 0.8 - (d > r - 0.7) * 1.2 + BAYER[sy % 4, sx % 4] * 0.3
+    c = np.where(pad[..., None], NE[np.clip(np.round(lvp), 0, 6).astype(int)], c)
+    fl = pad & (hp > 0.93) & (d < 0.9)
+    return np.where(fl[..., None], FLEURS_NE[(hp * 100).astype(int) % 2], c)
+
+
+def _boue(x, y, sx, sy, macro=0):
+    P = 32
+    n = vnoise2(x, y, 10, 141, P) * 1.2 + vnoise2(x, y, 4, 142, P) * 0.6
+    lv = 2.4 + n + macro * 0.6
+    h = hash3(np.floor(x).astype(np.int64) % P, np.floor(y).astype(np.int64) % P, np.zeros_like(x, dtype=np.int64), 143)
+    flaque = vnoise2(x, y, 12, 144, P) > 0.7
+    lv = lv + (h > 0.94) * 1.4 - (h < 0.04) * 1.0 - flaque * 1.4
+    lv = lv + BAYER[sy % 4, sx % 4] * 0.3
+    c = MB[np.clip(np.round(lv), 0, 6).astype(int)]
+    return np.where((flaque & (vnoise2(x, y, 5, 145, P) > 0.6))[..., None], ME[np.clip(np.round(lv + 1.6), 0, 6).astype(int)], c)
+
+
+def _herbe_brume(x, y, sx, sy, macro=0):
+    """The summer grass, turned dun and russet (the look's autumn), its steps and dithering kept."""
+    c = ground_tex("grass", x, y, sx, sy, macro=macro)
+    lum = c @ np.array([0.3, 0.55, 0.15], np.float32)
+    rouille = vnoise2(x, y, 40, 146) > 0.55
+    teinte = np.where(rouille[..., None], np.array([1.32, 1.0, 0.62], np.float32), np.array([1.16, 1.06, 0.7], np.float32))
+    return lum[..., None] * teinte * 0.9 + c * 0.12
+
+
+TEX["marais-eau"] = _eau_marais
+TEX["marais-boue"] = _boue
+if LOOK["sol"].get("grass") == "brume":
+    TEX["grass"] = _herbe_brume
+
+
+def marais_bords(out, kind, eau, x, y, u, v):
+    """The marsh water's edge: a silty margin instead of the river's foam and shallows (sol() paints those first on
+    every water kind), and reeds standing in the water along the banks (vertical strokes, lit on their left)."""
+    m = kind == KINDS["marais-eau"]["i"]
+    if not m.any():
+        return
+    b = BAYER[v % 4, u % 4]
+    bord = m & (eau > -7)
+    t = _eau_marais(x[bord], y[bord], u[bord], v[bord])
+    k = np.clip(1 + eau[bord] / 7, 0, 1)
+    kq = np.floor(k * 3 + b[bord] * 0.9) / 3
+    out[bord] = t * (1 - 0.45 * kq[:, None]) + MB[2] * 0.45 * kq[:, None]
+    graine = m & (eau > -9) & (eau < -0.5) & (hash3(u, v, u * 0, 147) > 0.93) & (vnoise2(x, y, 18, 148) > 0.42)
+    rr, cc = np.nonzero(graine)
+    hh = 3 + (hash3(cc, rr, cc * 0, 149) * 6).astype(int)
+    tete = hash3(cc, rr, cc * 0, 150) > 0.8
+    for j in range(9):
+        s = hh > j
+        r2 = rr[s] - j
+        ok = r2 >= 0
+        out[r2[ok], cc[s][ok]] = RO[3 + (j * 2 > hh[s][ok])]  # lighter towards the tip
+        out[r2[ok], np.minimum(cc[s][ok] + 1, out.shape[1] - 1)] = RO[1]
+        top = s & tete & (hh - 2 == j)
+        r3 = rr[top] - j
+        o3 = r3 >= 0
+        out[r3[o3], cc[top][o3]] = MB[1]
+
+
+BORDS.append(marais_bords)
 # ---------------------------------------------------------------- Sylvaren Grove (maps/bosquet.json)
 # Its own kinds (indexes 70+): the forest floor's moss and its leaf litter (both grow like grass: scatter stands on them,
 # 'pousse', and grass takes no edge over them), the winding flagstone paths (nothing stands on them) and the square's

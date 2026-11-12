@@ -65,6 +65,16 @@ objs = [(o["nom"], o["u"] - X0, o["v"] + N, o["dp"], {}) for o in O]
 t1 = time.time()
 day = C3.compose_sol(ground, False, objs, [])
 night = C3.compose_sol(ground, True, objs, [])
+if theme.LOOK.get("teinte"):  # the look's daylight grade (theme.py): desaturated, colder, towards the fog's colour
+    tg = theme.LOOK["teinte"]
+    rgb = day.astype(np.float32)
+    lum = rgb @ np.array([0.3, 0.55, 0.15], np.float32)
+    rgb = (rgb * (1 - tg["gris"]) + lum[..., None] * tg["gris"]) * np.array(tg["froid"], np.float32)
+    rgb = rgb * (1 - tg["mix"]) + np.array([int(tg["brume"][k:k + 2], 16) for k in (1, 3, 5)], np.float32) * tg["mix"]
+    day = np.clip(rgb, 0, 255).astype(np.uint8)
+if theme.LOOK.get("voile"):  # a haze over the composite (the oasis's sandstorm): mapbake/voile.py
+    from mapbake.voile import voiler  # noqa: E402
+    day, night = voiler(day, False, theme.LOOK["voile"], X0, N), voiler(night, True, theme.LOOK["voile"], X0, N)
 print(f"composited day and night in {time.time() - t1:.0f}s")
 lave = np.isin(kind, [k["i"] for k in KINDS.values() if k.get("lave")])
 if lave.any():  # lava glows (village-art/forge.py lueur): over both bakes, where no object stands on it

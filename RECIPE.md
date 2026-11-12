@@ -218,14 +218,30 @@ the clock. The art is original: it imitates no existing game.
     teleport. A hero whose subagents all end leaves the raid and teleports back to the goal it left. When none is left
     the boss walks back onto its wander path, to where its wander will be when it gets there, then wanders on. There
     is no flight. The raid lives in memory: a reload holds the boss afresh where it wanders.
-    **Its attacks** (`secousse` in activite.js): while a raid holds it, every 60 to 90 s (in memory, as the stomps)
+    **Its attacks** (`secousse` in activite.js): while a raid holds it, every 30 to 45 s (in memory, as the stomps)
     it attacks, half the time its stunning blow, half the time its summon (picked at random). Never over a stomp (one
     running pushes the attack 3 s past its end), nor over each other; a stomp due meanwhile waits for the stun to end,
     or for the summoned minions to be gone. While it winds up and until the attack lands (`arme`) it holds its attack
-    pose: no blow makes it flinch (no `touche`, no flash), the damage counting as ever.
+    pose: no blow makes it flinch (no `touche`, no flash), the damage counting as ever. Each pose sprite has an id of
+    its role (held, the alternating pair, walking, flinching): a switch makes a new element, never a half-faded one
+    carried over from the pair's opacity loops.
+    **Its basic blows** (`coupBoss`, `coupDe`): between the big ones, every 6 to 10 s (none while a big attack winds
+    up, lands or stuns, nor during a stomp) it strikes one party member, a melee look on the front ring (ring 0), else
+    the nearest: its attack pose (no flinch) for 550 ms, then golem a dust puff where its fist falls
+    (fx-coup-poussiere.svg), troll its club's sweep towards the target and a small shockwave there, spectre three
+    ghostly claw streaks (fx-coup-griffes.svg), goblin a thrown dagger (fx-coup-dague-d/g.svg); the target flashes and
+    is knocked back 6 to 10 px for 450 ms, then eases back (`pasDeCote`, its sidestep layer). Purely cosmetic.
+    **Fighters' cadence** (`cadence`): a hero or an apprentice fighting (a raid, minions, its creature or the dummy)
+    plays its `work` / `work-g` attack cycle once, then holds its first (ready) frame 0.8 to 2 s (its time in slots of a
+    cycle + 1.4 s shifted by its phase, each cycle 0 to 0.6 s into its slot, hashed from its key and the slot: reloads
+    agree, members swing out of step), and again; its blow's effect starting in a pause starts a swing at once. A
+    pause changes no frame, so the frame timer redraws nothing then. A working hero with no foe loops `work` as before.
     **Its stunning blow:** it telegraphs for 1 s, holding its attack pose with a dashed red ring pulsing on
     the ground round it (art/fx-aoe-alerte.svg stretched to its reach: its half width + a mage's gap + one ring out +
-    30 px, on the ground, `portee`), then its wave spreads from a fifth of that reach to all of it in 540 ms and fades
+    30 px, on the ground, `portee`), then its wave spreads from a fifth of that reach to all of it in 540 ms and fades,
+    a second one 250 ms later to 1.15 of its reach, seven marks left in the ground under them fading until the stun's
+    end (fx-marque-golem/troll/spectre/gobelin.svg: cracks, dust fans, ghost hands, scorches), six rocks or sparks
+    thrown out, and the world shakes 300 ms (`tremble`: 5, -4, 3, -2 px, 60 ms each, on a layer round the world)
     (`aoe`, by species: golem, a ring of dust, fx-aoe-golem.svg, and six rocks thrown out, fx-aoe-debris.svg; troll, a
     pale shockwave, fx-aoe-troll.svg; spectre, a violet wailing ring, fx-aoe-spectre.svg; goblin, its bomb,
     fx-aoe-bombe.svg, thrown up and down a short way in front of it during the wind-up, then a fiery ring there,
@@ -237,11 +253,12 @@ the clock. The art is original: it imitates no existing game.
     stun's end are in the frame timer's signature (`fenetres`); all of it drawn only by the shown, live village,
     dimmed at night as the blows' effects. Art by tools/effets.py.
     **Its summon** (`renfort`): through a 1 s wind-up a rune circle (art/fx-rune.svg, a white mask drawn with `svg()`
-    in its species' colour, `TEINTE`) pulses on the ground where each minion will come; then they come in a burst of
-    that colour (fx-surgit.svg). N = round(party members / 2), 2 to 4, of its minion family (`sbire`: goblins for a
+    in its species' colour, `TEINTE`, 120 x 42 over its thin dark outline fx-rune-bord.svg) pulses on the ground where
+    each minion will come, and the boss glows that colour a moment as they come in a burst of it (fx-surgit.svg). N = round(party members / 2), 2 to 4, of its minion family (`sbire`: goblins for a
     troll), at a fight creature's size. Chosen at its start from the members standing in their places (`preparer`, from
-    Place's render): each engages one, melee looks first, then the nearest to the boss, coming 60 px past it, away from
-    the boss (else 30 or 60 degrees round), on walkable ground in the strip, clear of the boss and of each other. Its
+    Place's render): each engages one, melee looks first, then the nearest to the boss, coming on open walkable ground
+    beside it (60 to 100 px round it, 30 px aside at least, the point most away from the boss first), clear of the boss,
+    an ellipse 56 x 30 px from every member and every other minion. Its
     member turns to face it (`engage`, read by `face` and by the apprentices' facing) and its blows' effects land on it
     (`frappe`; the effect keeps its minion, `ouRenfort`); 4 of them fell it (the felled puff), and its member turns
     back to the boss. The others keep hitting the boss. 25 s after they came, the ones left flee. Purely cosmetic:
@@ -511,6 +528,54 @@ the clock. The art is original: it imitates no existing game.
   ice). Look flag `chute` (summer): the waterfall flows, two frames of foam streaks (`art/col-ete/chute-0-{0,1}.png`,
   `tools/col_chute.py`, drawn where the baked water shows) over it at the map's `CHUTES` box, swapped by a pair of
   native opacity loops (280 ms), dimmed at night (place.js `chutes`); trout leap in the pool and the stream in summer.
+- **Mirewick (`carte-marais.js`, `maps/marais.json`):** a marsh town, the world x -1000 to 4000 (origine [1500, 200]).
+  West to east: a meadow (the west lair), the barn and its plot, a zigzag boardwalk over a reedy inlet, the mage tower,
+  the forge, a boardwalk over the creek that runs through the town from the north band to the marsh, the town hall, the
+  market square, the tavern on stilts in its pond (`marais-tavern`: the tavern lifted 10 units onto a plank platform on
+  piles, a stair down; its chimneys 14 px higher), the temple, a boardwalk over a second inlet, the barracks, the
+  witch's hut on tall leaning stilts in a black pool (`sorciere`, a building: a hooked mossy hat of a roof, a round
+  window, lanterns and a cauldron of green swamp light, live `lueurs`), and a meadow (the east lair). Dense swamp forest
+  with pools in the north band (`marais-willow`, `marais-gnarled`), open marsh water with islets and fishers' stilt huts
+  (`marais-hut`) in the south band, reed clumps (`marais-reeds`) along the banks. Boardwalks: `clotures` runs of
+  `marais-boardwalk-x` / `-y` (as the port's quays: 32 units, `pas` 44, piles `PROF` 5 units down into the water), an x
+  run then a y run (a V or a Λ), their deck line `DECK` (one polyline through all three, lying over the road between
+  them) and part of `ROAD`. Ground kinds (sol.py, 30+): `marais-eau` (murky water, `eau`/`interdit`: algae, lily pads
+  and a few flowers; its edge `marais_bords` paints a silty margin and reeds standing in the water, through the optional
+  edge painters `BORDS`, run last in `sol()`) and `marais-boue` (mud: the banks and pond rims). `EAU` holds the same
+  polygons as the layout's water in the band (the marsh with its inlets, the creek, both ponds). Lairs: west x -690 to
+  -240, east 3240 to 3690, y 310 to 335 (ring check 100% at a 176 px half width). `BASCULE` 3700. Looks: `ete`
+  (`art/marais-ete/`) and `brume` (`art/marais-brume/`, base `ete`, `materiaux` `brume` in buildings.py: rust and
+  ochre foliage, dry reeds, brown moss; dun grass and greyer water in sol.py; a muted cold daylight: the optional look
+  field `teinte`, a grade of the day composite in bake_map.py), and the look flag `brume`: five broad fog bands drift
+  over the view (place.js `brume`, three nested translucent capsules each on a native `left` loop, thinner at night).
+  In both looks a map's `LUCIOLES` are fireflies blinking over the banks at night (place.js `lucioles`, two dots per
+  point on native loops).
+
+- **Sahrim Oasis (`carte-oasis.js`, `maps/oasis.json`):** a desert town round an oasis pool, the world x -1000 to 4000
+  (`origine` [1500, 200]). West to east: a flat of cracked hardpan, the barn and its irrigated plots, the mage tower, the
+  forge, the tavern as a caravanserai (an awning, jars); the pool in a green bank ringed with date palms, the market
+  (two stalls, two awnings, the well, the board) on a sandstone square at its east bank; the town hall, the temple, the
+  barracks; the ruined temple of the dunes (`ruine`: a building, its runes a violet glow at night) over the east
+  hardpan. Dunes fill the north band and the far south; scatter of palms near the town, shrubs, cacti and rocks further
+  out. The town's buildings are `oasis-<model>` in buildings.py: the same volumes, their materials swapped for
+  sandstone, adobe, terracotta and turquoise tiles (`oasis_swap`, material ids 200-229), so every offset (box, spots,
+  chimneys, glows, standards) is Valbrume's. New models: `oasis-palm`, `-palm-s`, `-palm-l`, `-cactus`, `-cactus-s`,
+  `-shrub`, `-awning-red`, `-awning-blue`, `-jars`, `-ruin` (drawn at 2 px a unit). Ground kinds (sol.py, indices
+  40-49): `oasis-dur` (hardpan), `oasis-dune`, `oasis-herbe` (the pool's bank); a look's `sol` may name a `TEX` entry,
+  so the looks bake the grass as desert sand (`oasis-sable`), the road as a caravan track (`oasis-piste`) and the
+  square as sandstone flags (`oasis-dalles`), and the scatter's grass rule holds on the sand. The raid lairs
+  (`ANTRE`: west x -680 to -230, east x 3260 to 3680, y 300 to 330) are the hardpan at each end, the road through them
+  at y 310 and stroll spots above and below it: ring 0 and ring 1 walkable on both sides for every species (west 100%,
+  east 96% at a 176 px half width, 100% for the four species). `BASCULE` 3700. Looks: `soleil` (`art/oasis-soleil/`,
+  `#c9a066`, a fish in the pool) and `tempete` (`art/oasis-tempete/`, `#a9845a`, no fish, `sable`): the sandstorm is the
+  look's `voile` (theme.py, tools/mapbake/voile.py: the composite's contrast lowered, a dust colour mixed in by slow
+  wind-stretched bands and streaks, posterised; lighter at night) and, in the mod, `sable` (below). Both looks use the
+  summer sprites (`assets/`).
+- **Sandstorm (look flag `sable`):** place.js `sable()` draws a faint dust veil over the view (it tints the units, whose
+  sprites are not hazed) and blown sand as the snow is drawn: each stream is a wheel (`art/sable-{0,1,2}.svg`, 34 thin
+  streaks tangent to its rim, 640 px; `tools/sable.py`) turned by `svg.spin` (9-14 s a turn) inside a 200×52 px
+  `overflow_hidden` window showing only its top, where the rim runs sideways: the streaks drift across and never come
+  back. Windows every 230 px across and 80 px down (about 40 in view), no timer, no redraw.
 - **Map and look switches** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande`
   block), two rows of the same style: ‹ map name › cycles the maps (store key `wocc.map`, default `"valbrume"`) and
   ‹ look name › the shown map's looks (`wocc.look`, default its first); a row with a single choice shows only the

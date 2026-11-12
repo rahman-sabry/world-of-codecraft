@@ -19,7 +19,7 @@ import { HEROES } from "./heros-data.js";
 import { lieux, market } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
-import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart, etoiles } from "./activite.js";
+import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart, etoiles, cadence } from "./activite.js";
 import { effet, FX, FX_ETAPES } from "./effets.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
@@ -405,7 +405,10 @@ export default class Place {
     if (an.frames) {
       const dir = `${ART}/heros/${u.key}/${an.name}`;
       const fige = this.act.etourdi(a.address, t); // stunned (Activites.secousse): its frame frozen as it was then
-      const k = animate || fige !== null ? Math.floor((((fige ?? t) + (hash(a.address) % 997)) / 1000) * an.info.fps) % an.info.n : 0;
+      // fighting: a swing, then a pause (cadence); a working hero with no foe loops its `work` as ever
+      const bat = an.name.startsWith("work") && this.act.face(u) !== 0, ph = hash(a.address) % 997;
+      const k = !(animate || fige !== null) ? 0 : bat ? cadence(a.address, fige ?? t, an.info.fps, an.info.n, ph, this.act.effets.get(a.address)?.t0)
+        : Math.floor((((fige ?? t) + ph) / 1000) * an.info.fps) % an.info.n;
       body = div().absolute().left(-ax).top(-ay).w(w).h(hh)
         .children(Array.from({ length: an.info.n }, (_, i) =>
           image(`${dir}/${String(i).padStart(2, "0")}${suffix}.png`).absolute().left(0).top(0).w(w).h(hh).opacity(i === k ? 1 : 0)));
@@ -480,7 +483,8 @@ export default class Place {
       const m = this.mob.get(u.addr);
       if (!m) continue;
       const p = this.pos(u.trail ?? m, t); // an apprentice: its own walk
-      const k = u.fps ? Math.floor(((t + u.ph) / 1000) * u.fps) % u.n : 0;
+      // a fighter's frame by its cadence (a swing, then a pause: no change, no redraw), else its plain loop
+      const k = !u.fps ? 0 : u.k ? cadence(u.k, t, u.fps, u.n, u.ph, this.act.effets.get(u.k)?.t0) : Math.floor(((t + u.ph) / 1000) * u.fps) % u.n;
       s += `${u.addr}:${u.ph}:${k}:${p.leg ? p.leg.t0 : "-"};`;
     }
     // a blink in or out that ends: redraw once to drop it
@@ -637,6 +641,54 @@ export default class Place {
           .spin(17000 + ((k * 7 + r * 5) % 9) * 1100);
         out.push(div().absolute().left(x).top(y).w(100).h(390).overflow_hidden()
           .child(roue(1, "#3a4a6a99")).child(roue(0, "#ffffff")));
+      }
+    }
+    return out;
+  }
+
+  /** Fog (a look's flag brume: Mirewick's autumn): a few broad translucent bands over the view (above the world,
+   *  under the chronicle), each three nested capsules for a soft edge, drifting there and back on native `left` loops
+   *  of 24 to 40 s; thinner at night. Fixed count, no timer, no redraw. */
+  brume(vw, vh, nightK) {
+    if (!look().brume) return [];
+    const a = 1 - 0.5 * nightK;
+    return [0, 1, 2, 3, 4].map((k) => {
+      const y = ((k * 0.23 + 0.08) % 1) * vh - 40, w = vw * (0.7 + 0.12 * (k % 3)), h = 70 + 22 * (k % 3), x0 = -vw * 0.25 + ((k * 0.37) % 1) * vw * 0.4;
+      let el = div().absolute().left(x0).top(y).w(w).h(h).opacity(a)
+        .loop("left", { from: x0, to: x0 + 120 + 40 * (k % 3), period: 24000 + k * 4100 });
+      for (const [i, f] of [[0, 0.11], [1, 0.1], [2, 0.12]]) {
+        const dx = w * 0.12 * i, dy = h * 0.18 * i;
+        el = el.child(div().absolute().left(dx).top(dy).w(w - 2 * dx).h(h - 2 * dy).rounded_full().bg("#d6dce2").opacity(f));
+      }
+      return el;
+    });
+  }
+
+  /** Fireflies over the banks at night (the map's LUCIOLES, if any): two dots by each place, blinking and bobbing on
+   *  native loops, a few px apart. */
+  lucioles(nightK) {
+    const L = lieux().LUCIOLES;
+    if (!L || nightK < 0.5) return [];
+    return L.flatMap(([x, y], n) => [0, 1].map((k) => {
+      const h = hash(`${n}:${k}`), px = x + (h % 31) - 15, py = y - 6 - ((h >> 5) % 14);
+      return div().absolute().left(px).top(py).size(3).rounded_full().bg("#e6ff7a")
+        .loop("opacity", { from: 0, to: nightK, period: 900 + (h % 900) })
+        .loop("top", { from: py, to: py - 6 - (h % 5), period: 2300 + ((h >> 3) % 1400) });
+    }));
+  }
+
+  /** A sandstorm (the look's `sable`): a dust veil over the view (it tints the units too: the ground's haze is baked)
+   *  and blown sand, as the snow: each wheel (sable-k.svg, streaks along its rim) turns natively in a 200 x 52 px
+   *  window showing only its top, where the rim runs sideways, so the streaks drift with the wind and never come
+   *  back. Windows every 230 px across and 80 px down (about 35 in view), no timer and no redraw. */
+  sable(vw, vh) {
+    if (!look().sable) return [];
+    const out = [div().absolute().left(0).top(0).w(vw).h(vh).bg("#c99c6a1f")];
+    for (let y = 6, r = 0; y < vh; y += 80, r++) {
+      for (let x = -60 + (r % 2) * 115, k = 0; x < vw; x += 230, k++) {
+        out.push(div().absolute().left(x).top(y).w(200).h(52).overflow_hidden()
+          .child(svg(`${ART}/sable-${(k + r) % 3}.svg`).absolute().left(-220).top(-2).size(640)
+            .text_color(r % 2 ? "#ead2a6aa" : "#d8b47ecc").spin(9000 + ((k * 5 + r * 3) % 7) * 900)));
       }
     }
     return out;
@@ -896,7 +948,8 @@ export default class Place {
       const animate = !hidden && visible(u) && an.frames && (!ONLY_SELECTED || u === sel);
       u.animate = animate;
       const fige = this.act.etourdi(u.a.address, t) !== null; // a stunned hero's frame stays
-      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate && !fige ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997 });
+      const bat = an.name.startsWith("work") && this.act.face(u) !== 0; // fighting: its cadence (frameSig)
+      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate && !fige ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997, k: bat ? u.a.address : null });
     }
     // apprentices (one half-size hero per running subagent) by their heroes, on the side away from the creature;
     // their frames and their walks (in single file on the hero's path) run on the same frame timer
@@ -929,6 +982,7 @@ export default class Place {
     things.push(...this.effets(units, apps, t, nightK));
     things.push(...this.act.aoe(t, 1 - 0.3 * nightK)); // the raid boss's stunning blow (its warning, its wave)
     things.push(...this.act.renfortDe(t, nightHeroes, 1 - 0.3 * nightK)); // its summon (runes, its minions)
+    things.push(...this.act.coupDe(t, 1 - 0.3 * nightK)); // its basic blow on one party member
     const traces = this.traces(units, apps, t);
     things.push(...traces);
     for (const fr of FRONTS) {
@@ -962,6 +1016,7 @@ export default class Place {
       .when(nightK > 0, (el) => el.children(TILES.map((tl) => image(`${M}/nuit-${tl.k}.png`).absolute().left(tl.x).top(0).w(tl.w).h(WORLD.h).opacity(nightK))))
       .children(this.glows(nightK))
       .children(this.chutes(nightK))
+      .children(this.lucioles(nightK))
       .children(this.hitboxes())
       .children(things.map((th) => th.el))
       .children(this.smoke());
@@ -995,10 +1050,14 @@ export default class Place {
         })
         .on_mouse_up("left", (_e, cx) => { if (this.drag) { this.drag = null; cx.notify(); } })
         .on_hover((over, cx) => { if (!over && this.drag) { this.drag = null; cx.notify(); } })
-        .child(world)
+        // the world shakes a moment at the raid boss's stunning blow (Activites.tremble; still otherwise)
+        .child((({ dx, dy }) => div().id("secousse").absolute().left(dx).top(dy).size_full()
+          .transition("left", { duration: 60, easing: "linear" }).transition("top", { duration: 60, easing: "linear" }).child(world))(this.act.tremble(t)))
         .children(this.neige(vw, this.h ?? WORLD.h))
+        .children(this.brume(vw, this.h ?? WORLD.h, nightK))
         .children(this.braises(vw, this.h ?? WORLD.h))
         .children(this.petales(vw, this.h ?? WORLD.h))
+        .children(this.sable(vw, this.h ?? WORLD.h))
         .child(this.chronicle()));
   }
 }

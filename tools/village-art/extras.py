@@ -218,6 +218,80 @@ def ground_tex(kind, x, y, sx, sy, variant=0, macro=0):
         return c
     raise KeyError(kind)
 
+# the oasis's desert grounds (mapbake/sol.py TEX, a look's sol variants): the open desert's sand, the dunes, the cracked
+# hardpan, the sandstone flags of the square and the packed caravan track
+OS_SA = ramp('#dcb878', hs=18, light=1.18, dark=0.4)
+OS_DU = ramp('#e2bd7a', hs=20, light=1.16, dark=0.58)
+OS_HP = ramp('#c9a87c', hs=16, light=1.2, dark=0.42)
+OS_FL = ramp('#c8a676', hs=18, light=1.2)
+OS_TR = ramp('#b48c5e', hs=18, light=1.2)
+
+def _q(rp, lv, sx, sy, amp=0.3):
+    return rp[np.clip(np.round(lv + BAYER[sy % 4, sx % 4] * amp), 0, 6).astype(int)]
+
+def oasis_sable(x, y, sx, sy, macro=0):
+    """Desert sand: fine grain, wind ripples across the wind (lit crest, shaded trough), a few pebbles."""
+    n = vnoise2(x, y, 10, 141) * 0.8 + vnoise2(x, y, 4, 142) * 0.4
+    lv = 3.0 + n + macro * 0.5
+    rip = np.sin(x * 0.55 + y * 0.22 + vnoise2(x, y, 14, 143) * 5.0)
+    h = hash3(np.floor(x).astype(np.int64), np.floor(y).astype(np.int64), np.zeros_like(x, dtype=np.int64), 144)
+    lv = lv + (rip > 0.8) * 0.8 - (rip < -0.8) * 0.6 + (h > 0.985) * 1.1 - (h < 0.012) * 1.7
+    return _q(OS_SA, lv, sx, sy)
+
+def _dune_h(x, y):
+    r = (x * 0.55 + y * 0.35) / 17 + vnoise2(x, y, 260, 145) * 4.0 + vnoise2(x, y, 70, 146) * 0.6
+    return 34 * (np.sin(r) + 0.35 * np.sin(2 * r + 1.2)) * (0.55 + 0.45 * vnoise2(x, y, 80, 148))
+
+def oasis_dune(x, y, sx, sy, macro=0):
+    """Dunes: long smooth ridges, one slope lit by the village's sun and the other in shade (banded in ramp steps),
+    wind ripples over them."""
+    hz = _dune_h(x, y)
+    gx, gy = (_dune_h(x + 0.5, y) - hz) / 0.5, (_dune_h(x, y + 0.5) - hz) / 0.5
+    lit = (0.30 * gx - 0.42 * gy + 0.86) / np.sqrt(gx * gx + gy * gy + 1)
+    lv = np.clip(0.6 + (lit - 0.3) * 6.0 + macro * 0.25, 1.9, 6)
+    rip = np.sin(x * 0.7 + y * 0.3 + hz * 0.3 + vnoise2(x, y, 12, 147) * 3.0)
+    lv = lv + (rip > 0.85) * 0.5 - (rip < -0.88) * 0.4
+    return _q(OS_DU, lv, sx, sy, 0.6)
+
+def oasis_dur(x, y, sx, sy, macro=0):
+    """Hardpan: pale cracked clay plates (cracks between hashed cell centres, lit on their far lip), grit and stones."""
+    c = 13.0
+    gx, gy = np.floor(x / c), np.floor(y / c)
+    d1 = np.full(x.shape, 1e9); d2 = np.full(x.shape, 1e9); idc = np.zeros(x.shape)
+    for i in (-1, 0, 1):
+        for j in (-1, 0, 1):
+            ax, ay = (gx + i).astype(np.int64), (gy + j).astype(np.int64)
+            px = (gx + i + 0.15 + hash3(ax, ay, np.zeros_like(ax), 151) * 0.7) * c
+            py = (gy + j + 0.15 + hash3(ax, ay, np.ones_like(ax), 151) * 0.7) * c
+            d = np.hypot(x - px, y - py)
+            closer = d < d1
+            d2 = np.where(closer, d1, np.minimum(d2, d)); idc = np.where(closer, hash3(ax, ay, np.zeros_like(ax), 152), idc); d1 = np.minimum(d1, d)
+    edge = d2 - d1
+    lv = 3.2 + (idc - 0.5) * 0.8 + vnoise2(x, y, 20, 153) * 0.6 + macro * 0.5
+    lv = np.where(edge < 0.55, 1.0, np.where(edge < 1.1, lv + 0.6, lv))
+    h = hash3(np.floor(x).astype(np.int64), np.floor(y).astype(np.int64), np.zeros_like(x, dtype=np.int64), 154)
+    lv = lv + (h > 0.988) * 1.4 - (h < 0.01) * 1.6
+    return _q(OS_HP, lv, sx, sy)
+
+def oasis_dalles(x, y, sx, sy, macro=0):
+    """Sandstone flags: large slabs in staggered rows, sand in the joints."""
+    s = 11.0
+    gx = np.floor(x / s); gy = np.floor((y + (gx % 2) * s / 2) / s)
+    fx = x - gx * s; fy = (y + (gx % 2) * s / 2) - gy * s
+    sid = hash3(gx.astype(np.int64), gy.astype(np.int64), np.zeros_like(x, dtype=np.int64), 155)
+    lv = 3.1 + (sid - 0.5) * 1.4 + macro * 0.5 + (vnoise2(x, y, 3, 156) - 0.5) * 0.6
+    lv = lv + (fx < 1.5) * 0.8 + (fy < 1.5) * 0.5 - (fx > s - 1.5) * 0.7 - (fy > s - 1.5) * 0.7
+    joint = (fx < 0.7) | (fy < 0.7)
+    return np.where(joint[..., None], OS_SA[3], _q(OS_FL, lv, sx, sy))
+
+def oasis_piste(x, y, sx, sy, macro=0):
+    """The caravan track: packed earth, darker ruts along it, hoof-scuffed grit."""
+    n = vnoise2(x, y, 8, 157) * 1.0 + vnoise2(x, y, 3, 158) * 0.5
+    lv = 2.6 + n + macro * 0.6
+    h = hash3(np.floor(x).astype(np.int64), np.floor(y).astype(np.int64), np.zeros_like(x, dtype=np.int64), 159)
+    lv = lv + (h > 0.95) * 1.2 - (h < 0.04) * 0.9
+    return _q(OS_TR, lv, sx, sy)
+
 def tile(kind, variant=0):
     H, W = 32, 64
     v, u = np.mgrid[0:H, 0:W]

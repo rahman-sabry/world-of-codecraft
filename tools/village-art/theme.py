@@ -14,7 +14,10 @@ art/<map>-<look>/. A look record:
   sol         ground-kind texture overrides, kind -> variant of extras.ground_tex ("neige", "glace"; the sea's "froide":
               colder, ice at its edges)
   herbe       grass tint: sec / dru (RGB factors on dry patches / lush hollows), brins (grass blades over edges)
-  fleurs      flowers sprinkled on the grass"""
+  fleurs      flowers sprinkled on the grass
+  teinte      optional: a daylight grade of the composite (bake_map.py): gris (desaturation), froid (RGB factors),
+              brume (a colour mixed in by mix)
+  voile       optional (tools/bake_map.py): a haze over the map's composite, {jour, nuit: its colours, force, contraste}"""
 import os
 
 LOOKS = {
@@ -24,6 +27,16 @@ LOOKS = {
                   sol={"grass": "neige", "dirt": "neige", "paved": "neige", "water": "glace", "crop": "neige",
                        "sand": "neige", "sea": "froide"},
                   herbe=dict(sec=(1.03, 1.03, 1.01), dru=(0.92, 0.96, 1.04), brins="#eef3f8"), fleurs=False),
+    # the oasis (maps/oasis.json): summer's sprites (its desert models are their own), the grass baked as desert sand,
+    # the road a caravan track, the square sandstone flags; the sandstorm adds the 'voile' (mapbake/voile.py): a warm
+    # dust haze over the composite, its contrast lowered, drifting streaks of blown sand
+    "soleil": dict(assets="assets/", monde="oasis-soleil", base=None, materiaux=None, arbres_nus=False,
+                   sol={"grass": "oasis-sable", "dirt": "oasis-piste", "paved": "oasis-dalles"},
+                   herbe=dict(sec=(1.04, 1.0, 0.94), dru=(0.97, 0.97, 1.0), brins="#efd6a2"), fleurs=False),
+    "tempete": dict(assets="assets/", monde="oasis-tempete", base=None, materiaux=None, arbres_nus=False,
+                    sol={"grass": "oasis-sable", "dirt": "oasis-piste", "paved": "oasis-dalles"},
+                    herbe=dict(sec=(1.04, 1.0, 0.94), dru=(0.97, 0.97, 1.0), brins="#efd6a2"), fleurs=False,
+                    voile=dict(jour="#c79a64", nuit="#3a2e3a", force=0.42, contraste=0.64)),
     # Emberdeep (maps/forge.json, forge.py): the cavern floor is basalt (the 'grass' kind), roaring forges and bright
     # lava; "braises", banked embers: the same sprites dimmed (cut to the forge boxes), crusted lava ('lave')
     "forge": dict(assets="assets-forge/", monde="forge", base=None, materiaux="forge", arbres_nus=False,
@@ -36,6 +49,14 @@ LOOKS = {
 # Highpass Hold's ground kinds (mapbake/sol.py col-*) in winter: snow over the rock, the scree and the gravel road, the
 # stream iced at its edges
 LOOKS["hiver"]["sol"].update({"col-roc": "neige", "col-eboulis": "neige", "col-gravier": "neige", "col-torrent": "glace"})
+
+# The marsh's autumn fog (maps/marais.json): rust and ochre foliage (tex.MATERIAUX "brume", in buildings.py), dun grass
+# and greyer water (mapbake/sol.py), and a muted cold daylight: 'teinte' grades the day composite in bake_map.py
+# (desaturation, a cold multiply, a mix towards the fog's colour). The mod drifts fog bands over it (look flag brume).
+LOOKS["brume"] = dict(assets="assets-brume/", monde="monde-brume", base="ete", materiaux="brume", arbres_nus=False,
+                      sol={"grass": "brume", "marais-eau": "brume"},
+                      herbe=dict(sec=(1.04, 0.98, 0.9), dru=(0.94, 0.97, 1.0), brins="#b49a5a"), fleurs=False,
+                      teinte=dict(gris=0.28, froid=(0.91, 0.95, 1.02), brume="#aeb6bc", mix=0.12))
 
 # Sylvaren Grove (maps/bosquet.json): red and gold autumn, and spring blossom cut to the autumn boxes. Their grass and
 # the grove's ground kinds (mapbake/sol.py: bosquet-mousse, bosquet-feuilles, bosquet-dalles) read the look's "sol"
