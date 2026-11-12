@@ -39,7 +39,7 @@ def marchable(c, kind, O, U, V):
     r, cc = V + m["nord"], U - m["x"]
     dedans = (r >= 0) & (r < kind.shape[0]) & (cc >= 0) & (cc < kind.shape[1])
     eau = np.ones(U.shape, bool)
-    eau[dedans] = np.isin(kind[r[dedans], cc[dedans]], kinds_ou("eau"))
+    eau[dedans] = np.isin(kind[r[dedans], cc[dedans]], kinds_ou("eau") + kinds_ou("bloque"))
     deck = dist_ligne(U, V, h["DECK"]) < DECK_R if len(h["DECK"]) >= 2 else np.zeros(U.shape, bool)
     route = dist_ligne(U, V, h["ROAD"]) < h["ROAD_R"] if len(h["ROAD"]) >= 2 else np.zeros(U.shape, bool)
     boite = np.zeros(U.shape, bool)

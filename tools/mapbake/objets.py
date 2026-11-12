@@ -6,7 +6,9 @@ import numpy as np
 from PIL import Image
 from theme import LOOK, LOOKS
 from .carte import w2s, s2w, point_cloture
-from .sol import GRASS
+from .sol import GRASS, kinds_ou
+
+POUSSE = [GRASS] + kinds_ou("pousse")  # where scatter may grow: grass, and the kinds that grow like it (sol.py)
 
 
 def _racine():
@@ -78,7 +80,7 @@ def disperser(c, kind, O):
     def herbe(u, v, r, up):
         cc, w = u - x0, v + N
         win = kind[max(0, w - max(up, r // 2)):w + r // 2 + 1, max(0, cc - r):cc + r + 1]
-        return win.size > 0 and bool((win == GRASS).all())
+        return win.size > 0 and bool(np.isin(win, POUSSE).all())
 
     out = []
     for i, d in enumerate(c["dispersions"]):
