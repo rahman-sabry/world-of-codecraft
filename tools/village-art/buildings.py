@@ -1122,7 +1122,7 @@ def caillebotis(axis):
     """A boardwalk segment, 32 units along its axis (44.8 px: a run at 'pas' 44 joins up), its deck at land level on
     piles standing PROF units down in the marsh water, a rope rail on its far side (-y for 'x', -x for 'y'). The
     anchor (0, 0, 0) is the deck's centre line, mid-segment."""
-    v = Vol(-18, 18, -12, 12, -PROF - 1, 12)
+    v = Vol(-18, 18, -18, 18, -PROF - 1, 12)  # square: a 'y' run's planks span its y axis
     def b(a0, a1, d0, d1, z0, z1, mat):  # a along the run, d across it
         if axis == 'x': v.box(a0, a1, d0, d1, z0, z1, mat)
         else: v.box(d0, d1, a0, a1, z0, z1, mat)
@@ -1144,6 +1144,17 @@ def caillebotis(axis):
 def caillebotis_x(): return caillebotis('x')
 @bld('marais-boardwalk-y')
 def caillebotis_y(): return caillebotis('y')
+
+@bld('marais-boardwalk-c')
+def caillebotis_coin():
+    """The landing where a boardwalk's x run meets its y run (the anchor: the corner of their centre lines): a square
+    of planks over the joint, so the deck turns without a notch, on a pile."""
+    v = Vol(-10, 10, -10, 10, -PROF - 1, 4)
+    for a in np.arange(-7.6, 7.6, 3.1):
+        v.box(a, a + 2.6, -7.6, 7.6, 0.2, 1.5, PLANK_M)
+    v.box(-0.9, 0.9, -0.9, 0.9, -PROF, 0.2, TIMBER)
+    v.box(-1.2, 1.2, -1.2, 1.2, -PROF, -PROF + 0.9, MOSS)
+    return v
 
 def pilotis(v, x0, x1, y0, y1, z, pas=13):
     """Piles under a platform from x0..x1, y0..y1 at height z, down PROF units into the water."""
