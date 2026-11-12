@@ -14,7 +14,8 @@ the clock. The art is original: it imitates no existing game.
   - the crest and the logo "WORLD OF CODECRAFT" in Cinzel Decorative, with
     "village of Valbrume" (the shown map's name) under it;
   - resource plaques, each an icon, a value and a caption: Gold (Claude account A),
-    Wood (account B), Heroes ("1/2", heroes at work out of all heroes) and Fair (time
+    Wood (account B), each the 5-hour window's % left on top and "7d: 65%" (the week's) under it (the week on top
+    when there is no 5-hour figure; red at 20% or less of the one on top), Heroes ("1/2", heroes at work out of all heroes) and Fair (time
     until the weekly quota reset); then the day's raid boss (the day's species, "934/1000" and its name, the HP in
     violet / orange and the name led by "Elite" / "Legendary" for a tiered boss; slain: "Slain!" in gold, the creature
     felled; tooltip: name with its tier, HP, the streak at stake, who slew it, time to the next boss, and "Click: reset

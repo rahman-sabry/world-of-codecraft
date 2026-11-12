@@ -59,7 +59,7 @@ const S = {
     // header
     accountNone: (label, acc) => `${label}: no reading for Claude account ${acc}`,
     account: (acc) => `account ${acc}`,
-    five: (p) => `5h: ${p}%`,
+    week: (p) => `7d: ${p}%`,
     quotaTip: (label, acc, rem, fair, five, fiveLeft, stale) =>
       `${label} = Claude account ${acc}\n${rem}% left this week (fair in ${fair})${five != null ? `\n5-hour window: ${five}% left${fiveLeft ? ` (${fiveLeft})` : ""}` : ""}${stale ? "\nReading older than 30 min" : ""}`,
     gold: "Gold", wood: "Wood",
@@ -168,7 +168,7 @@ const S = {
     district: (n, name) => `Quartier ${n} · ${name}`,
     accountNone: (label, acc) => `${label} : pas de relevé du compte Claude ${acc}`,
     account: (acc) => `compte ${acc}`,
-    five: (p) => `5 h : ${p} %`,
+    week: (p) => `7 j : ${p} %`,
     quotaTip: (label, acc, rem, fair, five, fiveLeft, stale) =>
       `${label} = compte Claude ${acc}\nIl reste ${rem} % cette semaine (foire dans ${fair})${five != null ? `\nFenêtre 5 h : ${five} % restants${fiveLeft ? ` (${fiveLeft})` : ""}` : ""}${stale ? "\nRelevé de plus de 30 min" : ""}`,
     gold: "Or", wood: "Bois",

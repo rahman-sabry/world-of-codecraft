@@ -64,9 +64,11 @@ export default class Fronton {
     const q = this.q.find((x) => x.acc === acc) ?? { missing: true };
     if (q.missing || !q.week) return null; // no quota file: no plaque at all
     const rem = Math.max(0, 100 - q.week.used);
-    const five = q.five ? t("five", 100 - q.five.used) : t("account", acc);
-    const tip = t("quotaTip", label, acc, rem, left(q.week.resets) || "?", q.five ? 100 - q.five.used : null, q.five?.resets ? left(q.five.resets) : "", q.stale);
-    return this.plaque(`res-${acc}`, icon, `${t("pct", rem)}${q.stale ? " ?" : ""}`, five, tip, rem <= 20);
+    const remFive = q.five ? Math.max(0, 100 - q.five.used) : null;
+    const tip = t("quotaTip", label, acc, rem, left(q.week.resets) || "?", remFive, q.five?.resets ? left(q.five.resets) : "", q.stale);
+    // the 5-hour window on top (the one that runs out first), the week below; without a 5-hour figure, the week on top
+    const main = remFive ?? rem, sub = remFive != null ? t("week", rem) : t("account", acc);
+    return this.plaque(`res-${acc}`, icon, `${t("pct", main)}${q.stale ? " ?" : ""}`, sub, tip, main <= 20);
   }
 
   /** The selected hero's context window: a mana gauge filling up, the %, and the model. Hidden without a fresh
