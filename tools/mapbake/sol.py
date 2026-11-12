@@ -16,6 +16,7 @@ import numpy as np
 from compose import seg_dist
 from engine import vnoise2, hash3, BAYER, hx
 from extras import ground_tex, sable_mouille, DR, WR, SH, EC
+from extras import oasis_sable, oasis_dune, oasis_dur, oasis_dalles, oasis_piste
 from theme import LOOK
 import forge
 from .carte import s2w, Erreur
@@ -37,6 +38,10 @@ KINDS = {
     "forge-dalles": dict(i=7, bruit=0.8),
     "forge-chemin": dict(i=8, bruit=0.8, interdit=True),
     "forge-lave": dict(i=9, bruit=0.5, interdit=True, bloque=True, lave=True),
+    # the oasis (40-49): cracked hardpan, the dunes, the green bank round the pool (the summer grass's texture)
+    "oasis-dur": dict(i=40, bruit=0.8),
+    "oasis-dune": dict(i=41, bruit=0.0),
+    "oasis-herbe": dict(i=42, bruit=0.6),
 }
 # the marsh (maps/marais.json): murky still water with algae and lily pads, mud banks (its own indices, 30+)
 KINDS["marais-eau"] = dict(i=30, bruit=0.5, eau=True, interdit=True)
@@ -45,6 +50,9 @@ NOMS = {k["i"]: n for n, k in KINDS.items()}
 TEX = {}  # kind -> f(x, y, sx, sy, macro): RGB float, for kinds extras.ground_tex does not know
 BORDS = []  # f(out, kind, eau, x, y, u, v): edge painters run last, for kinds with edges of their own
 TEX.update(forge.TEX)  # also look variants: a kind's LOOK["sol"] variant named here wins over the kind's texture
+# (also the look variants a look's sol names, when TEX knows them: the oasis's desert over the grass, its track, its flags)
+TEX.update({"oasis-dur": oasis_dur, "oasis-dune": oasis_dune, "oasis-herbe": functools.partial(ground_tex, "grass"),
+            "oasis-sable": oasis_sable, "oasis-piste": oasis_piste, "oasis-dalles": oasis_dalles})
 GRASS = KINDS["grass"]["i"]
 
 
