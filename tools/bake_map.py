@@ -65,6 +65,9 @@ objs = [(o["nom"], o["u"] - X0, o["v"] + N, o["dp"], {}) for o in O]
 t1 = time.time()
 day = C3.compose_sol(ground, False, objs, [])
 night = C3.compose_sol(ground, True, objs, [])
+if theme.LOOK.get("voile"):  # a haze over the composite (the oasis's sandstorm): mapbake/voile.py
+    from mapbake.voile import voiler  # noqa: E402
+    day, night = voiler(day, False, theme.LOOK["voile"], X0, N), voiler(night, True, theme.LOOK["voile"], X0, N)
 print(f"composited day and night in {time.time() - t1:.0f}s")
 
 OUT = os.path.join(RACINE, "art", f"{c['id']}-{theme.LOOK_ID}")

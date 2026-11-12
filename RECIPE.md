@@ -416,6 +416,31 @@ the clock. The art is original: it imitates no existing game.
   so a stomp finds its 120 to 220 px. Looks `ete` (`art/port-ete/`, `#1f5d8e`) and `hiver` (`art/port-hiver/`, snow,
   `#28506e`); fish leap in both (the sea stays open water in winter). `BASCULE` 4700 (300 px short of the east edge,
   Valbrume's rule).
+- **Sahrim Oasis (`carte-oasis.js`, `maps/oasis.json`):** a desert town round an oasis pool, the world x -1000 to 4000
+  (`origine` [1500, 200]). West to east: a flat of cracked hardpan, the barn and its irrigated plots, the mage tower, the
+  forge, the tavern as a caravanserai (an awning, jars); the pool in a green bank ringed with date palms, the market
+  (two stalls, two awnings, the well, the board) on a sandstone square at its east bank; the town hall, the temple, the
+  barracks; the ruined temple of the dunes (`ruine`: a building, its runes a violet glow at night) over the east
+  hardpan. Dunes fill the north band and the far south; scatter of palms near the town, shrubs, cacti and rocks further
+  out. The town's buildings are `oasis-<model>` in buildings.py: the same volumes, their materials swapped for
+  sandstone, adobe, terracotta and turquoise tiles (`oasis_swap`, material ids 160-189), so every offset (box, spots,
+  chimneys, glows, standards) is Valbrume's. New models: `oasis-palm`, `-palm-s`, `-palm-l`, `-cactus`, `-cactus-s`,
+  `-shrub`, `-awning-red`, `-awning-blue`, `-jars`, `-ruin` (drawn at 2 px a unit). Ground kinds (sol.py, indices
+  40-49): `oasis-dur` (hardpan), `oasis-dune`, `oasis-herbe` (the pool's bank); a look's `sol` may name a `TEX` entry,
+  so the looks bake the grass as desert sand (`oasis-sable`), the road as a caravan track (`oasis-piste`) and the
+  square as sandstone flags (`oasis-dalles`), and the scatter's grass rule holds on the sand. The raid lairs
+  (`ANTRE`: west x -680 to -230, east x 3260 to 3680, y 300 to 330) are the hardpan at each end, the road through them
+  at y 310 and stroll spots above and below it: ring 0 and ring 1 walkable on both sides for every species (west 100%,
+  east 96% at a 176 px half width, 100% for the four species). `BASCULE` 3700. Looks: `soleil` (`art/oasis-soleil/`,
+  `#c9a066`, a fish in the pool) and `tempete` (`art/oasis-tempete/`, `#a9845a`, no fish, `sable`): the sandstorm is the
+  look's `voile` (theme.py, tools/mapbake/voile.py: the composite's contrast lowered, a dust colour mixed in by slow
+  wind-stretched bands and streaks, posterised; lighter at night) and, in the mod, `sable` (below). Both looks use the
+  summer sprites (`assets/`).
+- **Sandstorm (look flag `sable`):** place.js `sable()` draws a faint dust veil over the view (it tints the units, whose
+  sprites are not hazed) and blown sand as the snow is drawn: each stream is a wheel (`art/sable-{0,1,2}.svg`, 34 thin
+  streaks tangent to its rim, 640 px; `tools/sable.py`) turned by `svg.spin` (9-14 s a turn) inside a 200×52 px
+  `overflow_hidden` window showing only its top, where the rim runs sideways: the streaks drift across and never come
+  back. Windows every 230 px across and 80 px down (about 40 in view), no timer, no redraw.
 - **Map and look switches** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande`
   block), two rows of the same style: ‹ map name › cycles the maps (store key `wocc.map`, default `"valbrume"`) and
   ‹ look name › the shown map's looks (`wocc.look`, default its first); a row with a single choice shows only the

@@ -910,6 +910,210 @@ def nets():
         v.ell(xx, 6.8, 2.2, 1, 0.8, 0.9, CLOTH_Y)
     return v
 
+# ---------------------------------------------------------------- the oasis (maps/oasis.json)
+# Desert models, every look: sandstone and adobe variants of the town's buildings (the same volumes, their materials
+# swapped: oasis-<model>), date palms, cacti, dry shrubs, market awnings, jars and the ruined temple. Material ids
+# 160-189 are the oasis's own.
+def t_palm(P, n, p, lv):
+    """A palm trunk: stacked leaf-base rings, each lit on its lip and shaded under the one above, a diamond scar."""
+    z = P[:, 2] + (blob3(P, 1.5, 111) - 0.5) * 0.6
+    f = (z % 2.6) / 2.6
+    off = np.where(f > 0.75, -1.2, np.where(f < 0.25, 0.6, 0.0))
+    s, ax = tangent_coords(P, n, p)
+    return off + (np.sin(s * 1.9 + np.floor(z / 2.6) * 1.7) > 0.7) * -0.6
+
+def t_cactus(P, n, p, lv):
+    """Cactus ribs: vertical ridges lit on one side, spine dots along them."""
+    s, ax = tangent_coords(P, n, p)
+    rib = np.sin(s * 1.7)
+    return np.where(rib > 0.55, 0.8, np.where(rib < -0.6, -0.9, 0.0)) + (blob3(P, 0.9, 112) > 0.94) * 1.4
+
+SANDST   = M(160, '#cfa874', t_stone, hs=22)                                  # sandstone ashlar (stone)
+SANDST_D = M(161, '#a8805a', t_stone, params={'ch': 7, 'bl': 12}, hs=22)      # darker courses (dark stone)
+ADOBE    = M(162, '#e2c69a', t_plaster, params={'texamp': 0.6, 'detail': 0.6}, light=1.1, hs=18)  # adobe (plaster)
+TERRA    = M(163, '#c2683e', t_shingle, hs=26, light=1.25)                    # terracotta tiles (red roof)
+TURQ     = M(164, '#2f8f96', t_shingle, params={'round': True}, hs=20, light=1.3)  # glazed tiles (blue roof)
+ROOF_SD  = M(165, '#9a7656', t_shingle, params={'rh': 3.0, 'w': 6}, hs=18)    # sun-baked tiles (slate)
+PAL[166] = Mat('#c9a678', t_stone, params={'c': (0, 0), 'r': 22, 'ch': 6, 'bl': 9}, hs=22)   # the tower's sandstone
+PAL[167] = Mat('#c9a678', t_stone, params={'c': (0, 0), 'r': 12, 'ch': 4.5, 'bl': 6}, hs=22)  # the well's
+OCHRE_PL = M(168, '#b5803e', t_plank, params={'w': 4}, hs=24)                 # sun-faded planks (the barn's red)
+LIMEST   = M(170, '#efe2c4', t_stone, params={'ch': 8, 'bl': 14}, light=1.1, hs=14)  # limestone (marble)
+FROND    = M(171, '#5d8f34', t_leaf, hs=30, light=1.35, dark=0.3)
+PTRUNK   = M(172, '#7a5a3a', t_palm, hs=22)
+DEADF    = M(173, '#a07a46', t_leaf, hs=20)
+DATES    = M(174, '#b8561e', t_noise, params={'amp': 0.6}, hs=22)
+CACTUS   = M(175, '#4f8a4a', t_cactus, hs=26, light=1.3)
+TWIG     = M(176, '#8a7a62', t_wood, hs=16)
+DRYLEAF  = M(177, '#8f8f4e', t_leaf, hs=22, light=1.25)
+DRIFT    = M(178, '#dcb878', t_noise, params={'amp': 0.5, 'sc': 2.0}, hs=18, light=1.15)  # sand drifted on a model
+RUG      = M(179, '#a8342c', t_cloth, params={'stripe': 32, 'sw': 3}, hs=24)
+CLAY     = M(180, '#c27a46', t_noise, params={'amp': 0.5}, hs=22, light=1.2)  # jars
+FLOWER   = M(181, '#e86a9a', t_noise, params={'amp': 0.4}, hs=20)
+OASIS_SWAP = {STONE: SANDST, STONE_D: SANDST_D, PLASTER: ADOBE, ROOF_R: TERRA, ROOF_B: TURQ, ROOF_S: ROOF_SD,
+              48: 166, 52: 167, 51: OCHRE_PL, MARBLE: LIMEST}
+
+def oasis_swap(v, table=OASIS_SWAP):
+    lut = np.arange(256, dtype=np.uint8)
+    for a, b in table.items():
+        lut[a] = b
+    v.m = lut[v.m]
+    return v
+
+for _n in ('townhall', 'magetower', 'forge', 'barracks', 'temple', 'tavern', 'barn', 'well', 'noticeboard', 'rocks'):
+    bld('oasis-' + _n)(lambda _n=_n: oasis_swap(B[_n]()))
+
+def palm(h, lean, seed, n=9):
+    """A date palm h units tall, its trunk bowed 'lean' units towards +x+y (the viewer's right), a crown of n arching
+    fronds with drooping leaflets, a skirt of dead fronds and date clusters under it."""
+    rng = np.random.default_rng(seed)
+    v = Vol(-44, 44 + lean, -44, 44 + lean, 0, h + 26)
+    pts = [(lean * (t ** 2) * 0.7, lean * (t ** 2) * 0.7, h * t) for t in np.linspace(0, 1, 9)]
+    for k, (a, b) in enumerate(zip(pts[:-1], pts[1:])):
+        v.capsule(a, b, 3.4 - k * 0.18 + (k == 0) * 1.0, PTRUNK)
+    top = np.array(pts[-1])
+    v.ell(*top, 4.2, 4.2, 3.6, PTRUNK)
+    for k in range(7):  # dead fronds hanging under the crown
+        a = k / 7 * 2 * np.pi + rng.uniform(-0.3, 0.3)
+        d = np.array([np.cos(a), np.sin(a), 0])
+        v.capsule(top - (0, 0, 2), top + d * 7 - (0, 0, 14 + rng.uniform(0, 5)), 1.1, DEADF)
+    for k in range(4):  # dates
+        a = k / 4 * 2 * np.pi + 0.7
+        c = top + np.array([np.cos(a) * 4, np.sin(a) * 4, -6])
+        v.ell(*c, 2.6, 2.6, 3.4, DATES)
+    for k in range(n):
+        a = k / n * 2 * np.pi + rng.uniform(-0.3, 0.3)
+        d = np.array([np.cos(a), np.sin(a)])
+        L = rng.uniform(25, 32) * (0.85 + h / 400)
+        e = np.tan(rng.uniform(0.35, 1.0)) if k % 3 else np.tan(rng.uniform(1.0, 1.25))
+        prev = top
+        for j, t in enumerate(np.linspace(0.05, 1, 18)):
+            p = top + np.array([d[0] * L * t, d[1] * L * t, L * (e * t * 0.6 - (e * 0.6 + 0.55) * t ** 2)])
+            v.capsule(prev, p, 0.8, FROND)
+            w = 5.5 * np.sin(np.pi * min(1, 0.15 + t * 0.95)) + 0.8
+            if j > 1:
+                for sg in (-1, 1):
+                    q = p + np.array([-d[1] * sg * w + d[0] * 2.2, d[0] * sg * w + d[1] * 2.2, -w * 0.9])
+                    v.capsule(p, q, 0.5, FROND)
+            prev = p
+    return v
+
+@bld('oasis-palm')
+def palm_m(): return palm(92, 10, 1)
+@bld('oasis-palm-s')
+def palm_s(): return palm(62, 6, 2, n=8)
+@bld('oasis-palm-l')
+def palm_l(): return palm(124, 16, 3, n=10)
+
+@bld('oasis-cactus')
+def cactus():
+    """A tall ribbed cactus with two arms and a pink flower on top."""
+    v = Vol(-18, 18, -18, 18, 0, 60)
+    v.cyl(0, 0, 4.2, 0, 44, CACTUS); v.ell(0, 0, 44, 4.2, 4.2, 3.2, CACTUS)
+    for (sx, sy, z0, z1, arm) in ((1, 0, 16, 34, 9), (0, 1, 22, 38, 8)):
+        v.capsule((0, 0, z0), (sx * arm, sy * arm, z0), 2.8, CACTUS)
+        v.capsule((sx * arm, sy * arm, z0), (sx * arm, sy * arm, z1), 2.8, CACTUS)
+    v.ell(0, 0, 47.5, 1.6, 1.6, 1.2, FLOWER)
+    return v
+
+@bld('oasis-cactus-s')
+def cactus_s():
+    """A cluster of round barrel cacti."""
+    v = Vol(-14, 14, -14, 14, 0, 18)
+    for (x, y, r, h) in ((0, 0, 5, 9), (6, 4, 3.6, 6.5), (-5, 5, 3, 5)):
+        v.ell(x, y, h * 0.55, r, r, h * 0.6, CACTUS)
+    v.ell(0, 0, 10, 1.4, 1.4, 1, FLOWER)
+    return v
+
+@bld('oasis-shrub')
+def shrub():
+    """A dry desert shrub: a tangle of grey twigs with a few olive leaf clumps."""
+    v = Vol(-18, 18, -18, 18, 0, 22)
+    rng = np.random.default_rng(13)
+    for k in range(16):
+        a = rng.uniform(0, 2 * np.pi); r = rng.uniform(5, 13); z = rng.uniform(9, 17)
+        m = (r * 0.45 * np.cos(a), r * 0.45 * np.sin(a), z * 0.5)
+        v.capsule((0, 0, 0), m, 0.8, TWIG); v.capsule(m, (r * np.cos(a), r * np.sin(a), z), 0.55, TWIG)
+    for k in range(6):
+        a = k / 6 * 2 * np.pi + 0.4
+        v.ell(8 * np.cos(a), 8 * np.sin(a), 11 + (k % 2) * 3, 3.6, 3.6, 2.6, DRYLEAF)
+    v.ell(0, 0, 14, 4.5, 4.5, 3, DRYLEAF)
+    return v
+
+def awning(cloth, seed):
+    """A market awning: a striped cloth shade on four poles sloping to the viewer, a rug under it, jars and a
+    basket of dates."""
+    v = Vol(-30, 30, -26, 30, 0, 48)
+    x0, x1, y0, y1 = -22, 22, -16, 18
+    for (px, py) in ((x0, y0), (x1 - 2, y0), (x0, y1 - 2), (x1 - 2, y1 - 2)):
+        v.box(px, px + 2, py, py + 2, 0, 38 if py < 0 else 30, TIMBER)
+    v.put((x0 - 3, x1 + 3, y0 - 3, y1 + 3, 26, 42),
+          lambda X, Y, Z: (np.abs(Z - (37 - (Y - y0) * 0.24 - 0.0015 * (X ** 2))) < 0.9) & (Y < y1 + 1 - (np.sin((X - x0) * 0.8) > 0) * 1.5), cloth)
+    v.box(x0 + 3, x1 - 3, y0 + 4, y1 - 4, 0, 0.8, RUG)
+    rng = np.random.default_rng(seed)
+    for k in range(3):
+        jx, jy = x0 + 6 + k * 5, y1 - 7 + rng.uniform(-1, 1)
+        v.ell(jx, jy, 4, 2.4, 2.4, 4, CLAY); v.cyl(jx, jy, 1.2, 7, 9, CLAY)
+    v.cyl(12, 6, 4, 0.8, 4.5, ROPE, rin=3)
+    for j in range(9):
+        v.ell(12 + (j % 3 - 1) * 2, 6 + (j // 3 - 1) * 2, 5, 1.3, 1.3, 1.1, DATES)
+    v.box(-3, 7, -6, 2, 0.8, 4, CLOTH_W)
+    return v
+
+@bld('oasis-awning-red')
+def awning_r(): return awning(RED_AWN, 1)
+@bld('oasis-awning-blue')
+def awning_b(): return awning(BLU_AWN, 2)
+
+@bld('oasis-jars')
+def jars():
+    v = Vol(-14, 14, -14, 14, 0, 22)
+    for (x, y, r, h) in ((-4, -2, 3.8, 10), (3, -4, 3.2, 8), (0, 4, 3.4, 9), (6, 3, 2.6, 6)):
+        v.ell(x, y, h * 0.5, r, r, h * 0.5, CLAY)
+        v.cyl(x, y, r * 0.45, h * 0.9, h * 1.15, CLAY)
+    return v
+
+@bld('oasis-ruin')
+def desert_ruin():
+    """The ruined temple of the dunes: a stepped sandstone platform, a gate between two battered pylons (its lintel
+    fallen, runes glowing in the jambs), two rows of columns standing at broken heights, one still carrying its
+    architrave, fallen drums, a toppled obelisk and sand drifted against everything."""
+    v = Vol(-78, 78, -62, 66, 0, 130)
+    for k in range(3):
+        v.box(-62 + 4 * k, 62 - 4 * k, -46 + 4 * k, 46 - 4 * k, 3 * k, 3 * k + 3, SANDST_D if k == 0 else SANDST)
+    z0 = 9
+    # the pylons: battered towers either side of the gate, at the back
+    for s in (-1, 1):
+        cx = s * 26
+        v.put((cx - 18, cx + 18, -44, -22, z0, 96), lambda X, Y, Z, cx=cx, s=s: (np.abs(X - cx) <= 17 - (Z - z0) * 0.09) & (np.abs(Y + 33) <= 10 - (Z - z0) * 0.05) & (Z < 92 - 22 * (s > 0) * np.clip((X - cx + 10) / 20, 0, 1)), SANDST)
+        v.box(cx - 15, cx + 15, -43, -23, 86 - 22 * (s > 0), 89 - 22 * (s > 0), SANDST_D)
+        v.box(s * 9 - 1, s * 9 + 1, -22.6, -21.8, z0 + 6, z0 + 34, MAGIC)
+    v.box(-10, 10, -42, -24, z0, z0 + 1, SANDST_D)
+    v.capsule((-14, -12, z0 + 3), (12, -2, z0 + 3), 3.4, SANDST_D)   # the fallen lintel
+    # columns: back row whole and joined, front row broken
+    hts = ((-40, -6, 62), (-20, -6, 62), (20, -6, 40), (40, -6, 18), (-40, 26, 30), (-20, 26, 12), (20, 26, 48), (40, 26, 24))
+    for (x, y, h) in hts:
+        v.cyl(x, y, 5.5, z0, z0 + 3, SANDST_D)
+        v.cyl(x, y, 4.2, z0 + 3, z0 + h, SANDST)
+        for zz in np.arange(z0 + 10, z0 + h - 2, 10):
+            v.cyl(x, y, 4.5, zz, zz + 1, SANDST_D)
+        if h >= 60:
+            v.box(x - 6, x + 6, y - 6, y + 6, z0 + h, z0 + h + 4, SANDST_D)
+    v.box(-46, -14, -12, 0, z0 + 66, z0 + 72, SANDST)
+    # fallen drums and a toppled obelisk off the platform's front
+    v.capsule((-8, 40, z0 + 4), (6, 46, z0 + 4), 4.2, SANDST)
+    v.capsule((30, 50, 4), (36, 58, 4), 4.2, SANDST)
+    v.put((44, 76, 30, 48, 0, 10), lambda X, Y, Z: (np.abs(Y - 40) <= 4.5 - (X - 44) * 0.09) & (Z < 9 - (X - 44) * 0.14) & (X < 74), SANDST_D)
+    # sand drifted against the pylons, the platform and the columns
+    rng = np.random.default_rng(23)
+    for k in range(16):
+        a = rng.uniform(-np.pi, np.pi); d = rng.uniform(40, 66)
+        x, y = d * np.cos(a) * 1.1, d * np.sin(a) * 0.75
+        v.ell(x, y, 0, rng.uniform(8, 15), rng.uniform(6, 11), rng.uniform(3, 7), DRIFT)
+    for (x, y) in ((-26, -18), (26, -18), (-40, 30), (40, 30)):
+        v.ell(x, y, z0, 9, 6, 5, DRIFT)
+    v.ell(-60, 10, 0, 18, 22, 10, DRIFT)
+    return v
+
 def fit(r, name):
     """A look with a base (winter): the sprite cut to the base look's box (same size and anchor, from its meta.json),
     so the map's layout data (fronts, anchors) stays the same; a bare tree fits inside its summer crown's box."""
@@ -925,7 +1129,7 @@ def fit(r, name):
 
 def build(name):
     t = time.time()
-    s = {'magetower': 1.3, 'boat-large': 1.75}.get(name, S_B)  # the cog drawn larger: a ship, not a house's length
+    s = {'magetower': 1.3, 'boat-large': 1.75, 'oasis-magetower': 1.3, 'oasis-ruin': 2.0}.get(name, S_B)  # the cog drawn larger: a ship, not a house's length
     engine.VS_DEFAULT[0] = 1 / s
     v = B[name]()
     if LOOK['materiaux']: MATERIAUX[LOOK['materiaux']](PAL)

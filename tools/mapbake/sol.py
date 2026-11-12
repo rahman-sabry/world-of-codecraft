@@ -16,6 +16,7 @@ import numpy as np
 from compose import seg_dist
 from engine import vnoise2, hash3, BAYER, hx
 from extras import ground_tex, sable_mouille, DR, WR, SH, EC
+from extras import oasis_sable, oasis_dune, oasis_dur, oasis_dalles, oasis_piste
 from theme import LOOK
 from .carte import s2w, Erreur
 
@@ -31,9 +32,16 @@ KINDS = {
     "crop": dict(i=4, bruit=0.0, sillon=True),
     "sand": dict(i=5, bruit=0.6, plage=True),
     "sea": dict(i=6, bruit=0.3, eau=True, interdit=True, mer=True),
+    # the oasis (40-49): cracked hardpan, the dunes, the green bank round the pool (the summer grass's texture)
+    "oasis-dur": dict(i=40, bruit=0.8),
+    "oasis-dune": dict(i=41, bruit=0.0),
+    "oasis-herbe": dict(i=42, bruit=0.6),
 }
 NOMS = {k["i"]: n for n, k in KINDS.items()}
 TEX = {}  # kind -> f(x, y, sx, sy, macro): RGB float, for kinds extras.ground_tex does not know
+# (also the look variants a look's sol names, when TEX knows them: the oasis's desert over the grass, its track, its flags)
+TEX.update({"oasis-dur": oasis_dur, "oasis-dune": oasis_dune, "oasis-herbe": functools.partial(ground_tex, "grass"),
+            "oasis-sable": oasis_sable, "oasis-piste": oasis_piste, "oasis-dalles": oasis_dalles})
 GRASS = KINDS["grass"]["i"]
 
 
@@ -104,7 +112,7 @@ def sol(c):
     for name, k in KINDS.items():
         m = kind == k["i"]
         if m.any():
-            tex = TEX.get(name) or functools.partial(ground_tex, name)
+            tex = TEX.get(LOOK["sol"].get(name)) or TEX.get(name) or functools.partial(ground_tex, name)
             mac = mac_all[m]
             t1 = tex(x[m], y[m], u[m], v[m], macro=mac)
             t2 = tex(x[m] + 11, y[m] + 19, u[m], v[m], macro=mac)

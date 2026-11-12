@@ -639,6 +639,23 @@ export default class Place {
     return out;
   }
 
+  /** A sandstorm (the look's `sable`): a dust veil over the view (it tints the units too: the ground's haze is baked)
+   *  and blown sand, as the snow: each wheel (sable-k.svg, streaks along its rim) turns natively in a 200 x 52 px
+   *  window showing only its top, where the rim runs sideways, so the streaks drift with the wind and never come
+   *  back. Windows every 230 px across and 80 px down (about 35 in view), no timer and no redraw. */
+  sable(vw, vh) {
+    if (!look().sable) return [];
+    const out = [div().absolute().left(0).top(0).w(vw).h(vh).bg("#c99c6a1f")];
+    for (let y = 6, r = 0; y < vh; y += 80, r++) {
+      for (let x = -60 + (r % 2) * 115, k = 0; x < vw; x += 230, k++) {
+        out.push(div().absolute().left(x).top(y).w(200).h(52).overflow_hidden()
+          .child(svg(`${ART}/sable-${(k + r) % 3}.svg`).absolute().left(-220).top(-2).size(640)
+            .text_color(r % 2 ? "#ead2a6aa" : "#d8b47ecc").spin(9000 + ((k * 5 + r * 3) % 7) * 900)));
+      }
+    }
+    return out;
+  }
+
   glows(nightK) {
     if (nightK <= 0) return [];
     return lieux().GLOWS.map((g) => {
@@ -943,6 +960,7 @@ export default class Place {
         .on_hover((over, cx) => { if (!over && this.drag) { this.drag = null; cx.notify(); } })
         .child(world)
         .children(this.neige(vw, this.h ?? WORLD.h))
+        .children(this.sable(vw, this.h ?? WORLD.h))
         .child(this.chronicle()));
   }
 }

@@ -14,7 +14,8 @@ art/<map>-<look>/. A look record:
   sol         ground-kind texture overrides, kind -> variant of extras.ground_tex ("neige", "glace"; the sea's "froide":
               colder, ice at its edges)
   herbe       grass tint: sec / dru (RGB factors on dry patches / lush hollows), brins (grass blades over edges)
-  fleurs      flowers sprinkled on the grass"""
+  fleurs      flowers sprinkled on the grass
+  voile       optional (tools/bake_map.py): a haze over the map's composite, {jour, nuit: its colours, force, contraste}"""
 import os
 
 LOOKS = {
@@ -24,6 +25,16 @@ LOOKS = {
                   sol={"grass": "neige", "dirt": "neige", "paved": "neige", "water": "glace", "crop": "neige",
                        "sand": "neige", "sea": "froide"},
                   herbe=dict(sec=(1.03, 1.03, 1.01), dru=(0.92, 0.96, 1.04), brins="#eef3f8"), fleurs=False),
+    # the oasis (maps/oasis.json): summer's sprites (its desert models are their own), the grass baked as desert sand,
+    # the road a caravan track, the square sandstone flags; the sandstorm adds the 'voile' (mapbake/voile.py): a warm
+    # dust haze over the composite, its contrast lowered, drifting streaks of blown sand
+    "soleil": dict(assets="assets/", monde="oasis-soleil", base=None, materiaux=None, arbres_nus=False,
+                   sol={"grass": "oasis-sable", "dirt": "oasis-piste", "paved": "oasis-dalles"},
+                   herbe=dict(sec=(1.04, 1.0, 0.94), dru=(0.97, 0.97, 1.0), brins="#efd6a2"), fleurs=False),
+    "tempete": dict(assets="assets/", monde="oasis-tempete", base=None, materiaux=None, arbres_nus=False,
+                    sol={"grass": "oasis-sable", "dirt": "oasis-piste", "paved": "oasis-dalles"},
+                    herbe=dict(sec=(1.04, 1.0, 0.94), dru=(0.97, 0.97, 1.0), brins="#efd6a2"), fleurs=False,
+                    voile=dict(jour="#c79a64", nuit="#3a2e3a", force=0.42, contraste=0.64)),
 }
 
 THEME = os.environ.get("THEME", "")
