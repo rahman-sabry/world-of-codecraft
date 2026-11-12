@@ -34,6 +34,16 @@ LOOKS = {
                     herbe=dict(sec=(1.0, 0.98, 0.96), dru=(0.94, 0.95, 1.03), brins="#463c42"), fleurs=False),
 }
 
+# Sylvaren Grove (maps/bosquet.json): red and gold autumn, and spring blossom cut to the autumn boxes. Their grass and
+# the grove's ground kinds (mapbake/sol.py: bosquet-mousse, bosquet-feuilles, bosquet-dalles) read the look's "sol"
+# variant; the leaves are a palette transform (tex.MATERIAUX).
+LOOKS["automne"] = dict(assets="assets-automne/", monde="bosquet-automne", base=None, materiaux="automne",
+                        arbres_nus=False, sol={"grass": "bosquet-automne"},
+                        herbe=dict(sec=(1.1, 1.0, 0.8), dru=(0.9, 0.98, 1.0), brins="#b0a44a"), fleurs=False)
+LOOKS["printemps"] = dict(assets="assets-printemps/", monde="bosquet-printemps", base="automne", materiaux="printemps",
+                          arbres_nus=False, sol={"grass": "bosquet-printemps"},
+                          herbe=dict(sec=(1.04, 1.03, 0.9), dru=(0.9, 1.02, 1.04), brins="#8fd060"), fleurs=True)
+
 THEME = os.environ.get("THEME", "")
 assert THEME == "" or THEME in LOOKS, f"unknown THEME {THEME!r} (unset for summer, or one of {', '.join(LOOKS)})"
 LOOK_ID = THEME or "ete"

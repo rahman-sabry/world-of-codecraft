@@ -244,3 +244,62 @@ def hiver(pal):
             mt.tex = snowy(mt.tex, 0.5)
 
 MATERIAUX = {'hiver': hiver}  # palette transforms a look may name (theme.py materiaux)
+
+# ---------------------------------------------------------------- Sylvaren Grove (maps/bosquet.json; ids 160+)
+BQ_PALE    = M(160, '#e2d6b8', t_plank, params={'w': 4.5}, light=1.1, hs=16)     # pale birch boards (walls)
+BQ_BOIS    = M(161, '#557a4a', t_wood, hs=22)                                    # green-stained trim
+BQ_TOIT    = M(162, '#3f8068', t_shingle, params={'round': True, 'moss': 40, 'mossamt': 0.97}, hs=22, light=1.3)
+BQ_TOIT_D  = M(163, '#2f5f52', t_shingle, params={'rh': 3.0, 'w': 6}, hs=20, light=1.3)
+BQ_PIERRE  = M(164, '#b2ac9a', t_stone, params={'moss': 40}, hs=22)
+BQ_PIERRE_D = M(165, '#80837a', t_stone, params={'ch': 7, 'bl': 12, 'moss': 40}, hs=22)
+BQ_TOUR    = M(166, '#bdb8a8', t_stone, params={'c': (0, 0), 'r': 22, 'ch': 6, 'bl': 9, 'moss': 40, 'mossh': 24}, hs=22)
+BQ_ECORCE  = M(167, '#8a7f6c', t_wood, hs=20)                                    # the giants' silvery bark
+BQ_CIME_R  = M(168, '#b8432a', t_leaf, hs=26, light=1.34, dark=0.28)             # the giants' crowns: red...
+BQ_CIME_O  = M(169, '#dca032', t_leaf, hs=22, light=1.3, dark=0.3)               # ...and gold
+BQ_LUNE    = M(170, '#bfe0ff', t_noise, params={'amp': 1.0, 'sc': 2}, emissive=3.2, night='#bfe0ff', rim=False,
+               rp=np.array([hx(c) for c in ('#1c2c5a', '#2f4f8f', '#4f7fc4', '#7fb0e8', '#b4d6f6', '#e2f0ff', '#ffffff')], np.float32))
+BQ_FOUGERE = M(171, '#4f8a3a', t_leaf, hs=26, light=1.3)
+BQ_ROSE    = M(172, '#f0a8c0', t_noise, params={'amp': 0.5}, light=1.15, hs=14)  # blossom
+BQ_BLANC   = M(173, '#f6eef0', t_noise, params={'amp': 0.4}, light=1.06, hs=10)
+BQ_CHAMP   = M(174, '#c8342a', t_noise, params={'amp': 0.6}, hs=20)              # toadstool caps
+BQ_CHAMP_L = M(175, '#8fd8f0', t_noise, params={'amp': 0.6}, emissive=2.4, night='#8fe0ff', rim=False,
+               rp=np.array([hx(c) for c in ('#1c3a5a', '#2a5f86', '#3f8fb4', '#6fc0de', '#a8e2f2', '#dcf6fc', '#ffffff')], np.float32))
+BQ_OR      = M(176, '#e0a832', t_leaf, hs=22, light=1.3)                         # gold leaves among the red
+
+def parseme(tex, mat, amt, sc=2.2, seed=111):
+    """tex, with patches of another material (blob cells of sc units, amt of them): gold among red leaves, blossom."""
+    def f(P, n, p, lv):
+        r = tex(P, n, p, lv)
+        off, swap = r if isinstance(r, tuple) else (r, np.zeros(len(P), np.int64))
+        return off, np.where(blob3(P, sc, seed) < amt, mat, swap)
+    return f
+
+def _saison(pal, regles):
+    """Recolour the materials named in regles {id: (base colour, ramp kwargs, patch (mat, amt, sc) or None)}, once."""
+    for k, (col, kw, tache) in regles.items():
+        mt = pal[k]
+        if getattr(mt, 'saison', False):
+            continue
+        mt.saison = True
+        mt.ramp = ramp(col, **kw); mt.outline = outline_of(mt.ramp)
+        if tache:
+            mt.tex = parseme(mt.tex, *tache)
+
+def automne(pal):
+    """The grove's autumn: oaks and ivy red with gold patches, bushes rust, the autumn trees gold, bracken ferns."""
+    _saison(pal, {LEAF: ('#b23a26', dict(hs=26, light=1.36, dark=0.28), (BQ_OR, 0.4, 2.6)),
+                  LEAF_F: ('#b85a2a', dict(hs=26, light=1.34), (BQ_OR, 0.3, 2.2)),
+                  LEAF_A: ('#e0a42e', dict(hs=22, light=1.3), None),
+                  BQ_FOUGERE: ('#b4702c', dict(hs=24, light=1.3), None)})
+
+def printemps(pal):
+    """The grove's spring: fresh greens, the giants and the oaks in pink and white blossom, cherry-pink autumn trees."""
+    _saison(pal, {LEAF: ('#68a844', dict(hs=28, light=1.36, dark=0.28), (BQ_ROSE, 0.08, 1.6)),
+                  LEAF_F: ('#5c9c3c', dict(hs=28, light=1.34), (BQ_BLANC, 0.14, 1.4)),
+                  LEAF_A: ('#e8a0b8', dict(hs=16, light=1.15), (BQ_BLANC, 0.3, 1.8)),
+                  BQ_CIME_R: ('#e89ab4', dict(hs=16, light=1.18, dark=0.4), (BQ_BLANC, 0.3, 2.6)),
+                  BQ_CIME_O: ('#64a842', dict(hs=28, light=1.32, dark=0.28), (BQ_ROSE, 0.22, 3.0)),
+                  BQ_FOUGERE: ('#5a9c3a', dict(hs=26, light=1.3), None)})
+
+MATERIAUX['automne'] = automne
+MATERIAUX['printemps'] = printemps

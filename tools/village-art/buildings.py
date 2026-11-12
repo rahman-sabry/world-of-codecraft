@@ -1175,6 +1175,198 @@ def minerai():
               ((X - x) / rx) ** 2 + ((Y - y) / ry) ** 2 + (Z / rz) ** 2 <= 1 - 0.3 * hash3(np.floor(X / 2).astype(np.int64), np.floor(Y / 2).astype(np.int64), np.floor(Z / 2).astype(np.int64), 31), m)
     for (gx, gy, gz) in ((5, 3, 4.4), (8, -4, 2.6), (-2, -4, 6.2)):
         v.box(gx, gx + 1, gy, gy + 1, gz, gz + 1, GOLD)
+
+# ---------------------------------------------------------------- Sylvaren Grove (maps/bosquet.json)
+# The elven forest town: giant ancient trees, a moonlit shrine with its reflecting pool, lanterns, toadstools and
+# ferns, and the village's buildings in the grove's materials (bosquet-<model>: pale boards, green roofs and trim, pale
+# stone, ivy; the same shapes, so the same boxes, spots, chimneys and glows). Leaves and blossom per look: tex.automne,
+# tex.printemps.
+
+def lierre(v, face, c, a, z, w=7, h=16, seed=1):
+    """Ivy over a wall (face 'x': the plane x = c, a along y; 'y': y = c, a along x): a ragged patch of leaves round
+    (a, z), w by h, on the wall's outer skin."""
+    def m(X, Y, Z):
+        A, D = (Y, X) if face == 'x' else (X, Y)
+        k = hash3(np.floor(X / 1.4).astype(np.int64), np.floor(Y / 1.4).astype(np.int64), np.floor(Z / 1.4).astype(np.int64), seed)
+        forme = ((A - a) / w) ** 2 + ((Z - z) / h) ** 2 + (k - 0.5) * 0.9
+        return (D - c > -0.6) & (D - c < 1.4) & (forme < 1) & (k > 0.22)
+    bb = (c - 1, c + 2, a - w - 2, a + w + 2) if face == 'x' else (a - w - 2, a + w + 2, c - 1, c + 2)
+    v.put(bb + (max(0, z - h - 2), z + h + 2), m, LEAF)
+
+BQ_ELFE = {PLASTER: BQ_PALE, TIMBER: BQ_BOIS, ROOF_R: BQ_TOIT, ROOF_B: BQ_TOIT, ROOF_S: BQ_TOIT_D, STONE: BQ_PIERRE,
+           STONE_D: BQ_PIERRE_D, BRICK: BQ_PIERRE, CLOTH_B: CLOTH_G, CLOTH_R: CLOTH_G, 51: BQ_PALE, 48: BQ_TOUR}
+
+def elfe(nom, lierres=(), echelle=None):
+    """A village model in the grove's materials (BQ_ELFE), with ivy (lierre's arguments). echelle: the scale the model
+    is drawn at (build(): the mage tower's 1.3); its voxels are relabelled to the default scale's units so it renders
+    at the same size."""
+    def f():
+        if echelle:
+            engine.VS_DEFAULT[0] = 1 / echelle
+        v = B[nom]()
+        if echelle:
+            k = echelle / S_B
+            v.o = v.o * k; v.vs = v.vs * k; v.hi = v.o + np.array(v.shape) * v.vs
+            engine.VS_DEFAULT[0] = 1 / S_B
+        m = v.m.copy()
+        for a, b in BQ_ELFE.items():
+            v.m[m == a] = b
+        for l in lierres:
+            lierre(v, *l)
+        return v
+    return f
+
+for _nom, _lierres, _ech in (
+        ('tavern', (('y', 28, -26, 18, 8, 16, 1), ('x', 34, -18, 16, 6, 14, 2)), None),
+        ('townhall', (('y', 40, -50, 26, 7, 22, 3), ('x', 58, -30, 24, 6, 20, 4)), None),
+        ('magetower', (('y', 18, 6, 30, 5, 26, 5),), 1.3),
+        ('forge', (('y', 26, -32, 16, 5, 14, 6),), None),
+        ('barracks', (('y', 30, -50, 22, 7, 20, 7), ('x', 48, 0, 30, 6, 26, 8)), None),
+        ('temple', (('x', 40, 30, 20, 5, 16, 9),), None),
+        ('barn', (('y', 26, -34, 16, 6, 14, 10), ('x', 40, 20, 14, 5, 12, 11)), None),
+        ('well', (), None), ('noticeboard', (), None),
+        ('stall-red', (), None), ('stall-blue', (), None), ('stall-green', (), None)):
+    B['bosquet-' + _nom] = elfe(_nom, _lierres, _ech)
+
+def geant(seed, lean=(0.0, 0.0), r=22, d=31, g=1.35):
+    """A giant ancient tree: a flared silver trunk on buttress roots, mossy at the foot, limbs reaching out, and a
+    broad crown of red and gold clusters (spring: green, pink and white blossom). lean shifts the crown; g scales the
+    whole tree (units) so it stands over the town hall."""
+    v = Vol(-66 * g, 66 * g, -66 * g, 66 * g, 0, 226 * g)
+    rng = np.random.default_rng(seed)
+    lx, ly = lean[0] * g, lean[1] * g
+    r, d = r * g, d * g
+    def tronc(X, Y, Z):
+        t = np.clip(Z / (130 * g), 0, 1)
+        cx, cy = lx * t ** 1.6, ly * t ** 1.6
+        rr = g * (10.5 + 11 * np.clip(1 - Z / (26 * g), 0, 1) ** 2 - 3.0 * t + 1.1 * np.sin(np.arctan2(Y - cy, X - cx) * 5 + Z / g * 0.06))
+        return (X - cx) ** 2 + (Y - cy) ** 2 <= rr * rr
+    v.put((-26 * g + min(0, lx), 26 * g + max(0, lx), -26 * g + min(0, ly), 26 * g + max(0, ly), 0, 130 * g), tronc, BQ_ECORCE)
+    for k in range(7):  # buttress roots
+        a = k / 7 * 2 * np.pi + rng.uniform(-0.3, 0.3); L_ = rng.uniform(26, 34) * g
+        v.capsule((8 * g * np.cos(a), 8 * g * np.sin(a), 18 * g), (L_ * 0.6 * np.cos(a), L_ * 0.6 * np.sin(a), 5 * g), 4.2 * g, BQ_ECORCE)
+        v.capsule((L_ * 0.6 * np.cos(a), L_ * 0.6 * np.sin(a), 5 * g), (L_ * np.cos(a + 0.15), L_ * np.sin(a + 0.15), 0.5), 2.2 * g, BQ_ECORCE)
+    for k in range(11):  # moss on the roots' tops
+        a = rng.uniform(0, 2 * np.pi); dd = rng.uniform(8, 18) * g
+        v.ell(dd * np.cos(a), dd * np.sin(a), rng.uniform(5, 9) * g, rng.uniform(2.5, 4) * g, rng.uniform(2.5, 4) * g, 1.6 * g, MOSS)
+    tops = []
+    for k in range(6):  # limbs
+        a = k / 6 * 2 * np.pi + rng.uniform(-0.15, 0.15)
+        z0 = rng.uniform(78, 100) * g; out = rng.uniform(28, 34) * g
+        a0 = (lx * (z0 / (130 * g)) ** 1.6, ly * (z0 / (130 * g)) ** 1.6, z0)
+        b = (lx + out * np.cos(a), ly + out * np.sin(a), z0 + rng.uniform(22, 32) * g)
+        v.capsule(a0, b, 4.0 * g, BQ_ECORCE)
+        tops.append(b)
+    # the crown: a high centre cluster, the limbs' clusters round it, a few drooping lower ones
+    canopy(v, lx, ly, 158 * g, r + 10 * g, BQ_CIME_R, seed=seed, n=12)
+    for k, (bx, by, bz) in enumerate(tops):
+        a = np.arctan2(by - ly, bx - lx)
+        canopy(v, lx + d * np.cos(a), ly + d * np.sin(a), bz + 6 * g, r, BQ_CIME_O if k % 2 else BQ_CIME_R, seed=seed + k + 1, n=9)
+    for k in range(3):
+        a = rng.uniform(0, 2 * np.pi)
+        canopy(v, lx + d * 0.87 * np.cos(a), ly + d * 0.87 * np.sin(a), 112 * g, r * 0.72, BQ_CIME_O if k % 2 else BQ_CIME_R, seed=seed + 20 + k, n=6)
+    return v
+
+@bld('bosquet-geant')
+def bosquet_geant(): return geant(21, (2.0, -3.0))
+@bld('bosquet-geant-b')
+def bosquet_geant_b(): return geant(37, (-4.0, 3.0), r=20, d=33)
+
+def agrandi(f, k):
+    """Model f drawn k times larger: built on a voxel grid k times finer, then relabelled to the default scale's
+    units (the same pixels per voxel)."""
+    engine.VS_DEFAULT[0] = 1 / (S_B * k)
+    v = f()
+    v.o = v.o * k; v.vs = v.vs * k; v.hi = v.o + np.array(v.shape) * v.vs
+    engine.VS_DEFAULT[0] = 1 / S_B
+    return v
+
+@bld('bosquet-sanctuaire')
+def bosquet_sanctuaire(): return agrandi(sanctuaire, 1.3)
+
+def sanctuaire():
+    """The moonlit shrine: a round stepped platform of pale stone, six slender marble columns under a curved green dome
+    with gold ribs and a moon crescent, a moonstone on a pedestal; at the foot of the steps (towards the viewer) a
+    still reflecting pool with the moon's reflection, lily pads, and two lanterns. The moonstone, the crescent and the
+    reflection glow at night (BQ_LUNE)."""
+    v = Vol(-48, 64, -48, 64, 0, 130)
+    for k, (rr, z) in enumerate(((32, 2), (29, 4), (26, 6))):
+        v.cyl(0, 0, rr, z - 2, z, BQ_PIERRE_D if k == 0 else BQ_PIERRE)
+    for k in range(6):
+        a = k / 6 * 2 * np.pi + np.pi / 6
+        cx, cy = 19 * np.cos(a), 19 * np.sin(a)
+        v.cyl(cx, cy, 2.8, 6, 9, MARBLE); v.cyl(cx, cy, 1.7, 9, 58, MARBLE); v.cyl(cx, cy, 2.6, 56, 59, GOLD)
+    v.cyl(0, 0, 23, 59, 63, MARBLE, rin=16)
+    v.cyl(0, 0, 23.8, 62.5, 64, GOLD, rin=16)
+    def prof(Z):
+        t = np.clip((Z - 63) / 44, 0, 1)
+        return (23 + 5 * np.sin(t * np.pi * 0.9)) * (1 - t) ** 0.75
+    v.put((-30, 30, -30, 30, 63, 108), lambda X, Y, Z: X ** 2 + Y ** 2 <= prof(Z) ** 2, BQ_TOIT)
+    v.put((-31, 31, -31, 31, 63, 106), lambda X, Y, Z: (X ** 2 + Y ** 2 <= (prof(Z) + 0.8) ** 2) & (X ** 2 + Y ** 2 > (prof(Z) - 0.6) ** 2)
+          & (np.abs(np.sin(3 * (np.arctan2(Y, X) - np.pi / 6))) < 0.09), GOLD)
+    v.cyl(0, 0, 0.9, 104, 116, GOLD)
+    def croissant(X, Y, Z):
+        s, t, w = (X - Y) / np.sqrt(2), Z - 120, (X + Y) / np.sqrt(2)
+        return (s ** 2 + t ** 2 <= 30) & ((s - 2.4) ** 2 + (t - 1.2) ** 2 > 20) & (np.abs(w) < 1.0)
+    v.put((-8, 8, -8, 8, 112, 127), croissant, BQ_LUNE)
+    v.cyl(0, 0, 3.6, 6, 10, MARBLE); v.cyl(0, 0, 2.1, 10, 19, MARBLE); v.cyl(0, 0, 3.4, 19, 21, GOLD)
+    v.ell(0, 0, 26, 4.4, 4.4, 5.4, BQ_LUNE)
+    px, py, pr = 36, 36, 18  # the pool
+    v.cyl(px, py, pr, 0, 2.4, BQ_PIERRE)
+    v.cyl(px, py, pr - 1.8, 1.0, 2.4, 0)
+    v.cyl(px, py, pr - 1.8, 0, 1.0, WATER)
+    v.put((px - 10, px + 4, py - 10, py + 4, 0.4, 1.0), lambda X, Y, Z: ((X - px + 3) / 5.2) ** 2 + ((Y - py + 3) / 5.2) ** 2 <= 1, BQ_LUNE)
+    for (lx_, ly_, rr) in ((px + 5, py - 4, 2.2), (px - 2, py + 6, 1.8), (px + 6, py + 4, 1.5)):
+        v.cyl(lx_, ly_, rr, 0.8, 1.4, BQ_FOUGERE)
+    v.ell(px + 5.5, py - 3.5, 2.0, 1.0, 1.0, 0.9, BQ_BLANC)
+    for (qx, qy) in ((px + 14, py - 18), (px - 18, py + 14)):
+        v.box(qx - 1.6, qx + 1.6, qy - 1.6, qy + 1.6, 0, 3, BQ_PIERRE)
+        v.box(qx - 0.8, qx + 0.8, qy - 0.8, qy + 0.8, 3, 26, BQ_BOIS)
+        lantern(v, qx, qy, 30, glow=HOLY); flamme(v, qx, qy, 30)
+        v.cyl(qx, qy, 0.6, 33, 36, GOLD)
+    return v
+
+@bld('bosquet-lanterne')
+def bosquet_lanterne():
+    """A grove lantern: a slender green post on a stone foot, its arm curling over a hanging lantern."""
+    v = Vol(-8, 12, -12, 8, 0, 40)
+    v.box(-2, 2, -2, 2, 0, 2.5, BQ_PIERRE)
+    v.cyl(0, 0, 0.9, 2.5, 34, BQ_BOIS)
+    v.capsule((0, 0, 33), (2.5, -2.5, 36), 0.7, BQ_BOIS); v.capsule((2.5, -2.5, 36), (5.5, -5.5, 35), 0.7, BQ_BOIS)
+    v.capsule((5.5, -5.5, 35), (6.4, -6.4, 33.5), 0.6, BQ_BOIS)
+    v.ell(0, 0, 35, 1.2, 1.2, 1.2, GOLD)
+    v.box(6.1, 6.7, -6.7, -6.1, 30, 33.5, METAL)
+    lantern(v, 6.4, -6.4, 27, glow=HOLY); flamme(v, 6.4, -6.4, 27)
+    return v
+
+@bld('bosquet-champignons')
+def bosquet_champignons():
+    """Toadstools: red caps with white spots, two small pale ones that glow faintly at night."""
+    v = Vol(-12, 12, -12, 12, 0, 14)
+    for (x, y, h, r) in ((-3, -2, 6, 3.4), (3, 1, 4.5, 2.6), (-1, 5, 3.4, 2.1), (5, -4, 3, 1.8)):
+        v.cyl(x, y, 0.9 if r > 2.5 else 0.7, 0, h, CREAM)
+        v.put((x - r - 1, x + r + 1, y - r - 1, y + r + 1, h - 1, h + r), lambda X, Y, Z, x=x, y=y, h=h, r=r:
+              ((X - x) / r) ** 2 + ((Y - y) / r) ** 2 + ((Z - h + 0.6) / (r * 0.6)) ** 2 <= 1, BQ_CHAMP)
+        for k in range(3):
+            a = k * 2.1 + x
+            v.ell(x + r * 0.5 * np.cos(a), y + r * 0.5 * np.sin(a), h + r * 0.42, 0.55, 0.55, 0.5, CREAM)
+    for (x, y, h, r) in ((-7, 4, 2.4, 1.3), (-6, 7, 1.8, 1.0)):
+        v.cyl(x, y, 0.45, 0, h, CREAM)
+        v.ell(x, y, h, r, r, r * 0.6, BQ_CHAMP_L)
+    return v
+
+@bld('bosquet-fougere')
+def bosquet_fougere():
+    """A clump of ferns: tapering fronds rising from the centre and arching over (each a blade of leaf along its curve,
+    widest past its middle)."""
+    v = Vol(-16, 16, -16, 16, 0, 16)
+    rng = np.random.default_rng(4)
+    for k in range(11):
+        a = k / 11 * 2 * np.pi + rng.uniform(-0.2, 0.2); L_ = rng.uniform(9, 13); hz = rng.uniform(7, 11)
+        for s_ in np.linspace(0.08, 1, 16):
+            x, y, z = L_ * s_ * np.cos(a), L_ * s_ * np.sin(a), 0.5 + hz * np.sin(s_ * np.pi * 0.8)
+            w = 0.5 + 2.4 * np.sin(s_ * np.pi) ** 0.8
+            v.ell(x, y, z, w, w, 0.8, BQ_FOUGERE)
     return v
 
 def fit(r, name):

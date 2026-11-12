@@ -642,6 +642,23 @@ export default class Place {
     return out;
   }
 
+  /** Spring blossom (look flag petales): a few petals drifting down over the view, as the snow (a wheel's falling
+   *  sector, petale-k.svg: 3 petals on its rim) but sparser and slower, each window swaying sideways on a native loop. */
+  petales(vw, vh) {
+    if (!look().petales) return [];
+    const out = [];
+    for (let y = -60, r = 0; y < vh; y += 330, r++) {
+      for (let x = -60 + (r % 2) * 120, k = 0; x < vw; x += 240, k++) {
+        const roue = (dx, color) => svg(`${ART}/petale-${(k + r) % 3}.svg`).absolute().left(dx - 380).top(dx - 45).size(480).text_color(color)
+          .spin(26000 + ((k * 7 + r * 5) % 9) * 1500);
+        out.push(div().absolute().left(x).top(y).w(100).h(390).overflow_hidden()
+          .loop("left", { from: x, to: x + 18, period: 3600 + ((k * 5 + r * 3) % 7) * 400 })
+          .child(roue(1, "#7a3a5a88")).child(roue(0, "#f6b8cc")));
+      }
+    }
+    return out;
+  }
+
   /** Live glows at night; a glow with `jour` (0 to 1) glows by day too, at least that strong (a forge, lava under a
    *  mountain); one with `looks` only in those looks (banked embers keep fewer). */
   glows(nightK) {
@@ -970,6 +987,7 @@ export default class Place {
         .child(world)
         .children(this.neige(vw, this.h ?? WORLD.h))
         .children(this.braises(vw, this.h ?? WORLD.h))
+        .children(this.petales(vw, this.h ?? WORLD.h))
         .child(this.chronicle()));
   }
 }

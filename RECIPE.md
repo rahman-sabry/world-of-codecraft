@@ -467,6 +467,27 @@ the clock. The art is original: it imitates no existing game.
   view: place.js `braises`, art/braise-{0,1,2}.svg wheels whose left sector shows, where the rim goes up, every 260 px;
   glows with `looks: ["forge"]` drop). Glows with `jour` (0 to 1) glow by day too. No fish, hens, stag or sparrows
   (`STAG` and `MOINEAUX` null skip them in ambiance.js). `BASCULE` 3700.
+
+- **Sylvaren Grove (`carte-bosquet.js`, `maps/bosquet.json`; « Bosquet de Sylvaren »):** an elven town among giant
+  trees, the world x -1000 to 4000 (origine [1500, 200]). West to east: a sunlit glade (the west lair), the barn and its
+  garden, the mage tower, the forge, the town hall, the market on a flagstone square, the tavern, the Moonlit Shrine
+  (`sanctuaire`, a building: six marble columns under a curved green dome with a moon crescent, a moonstone, a
+  reflecting pool at the foot of its steps; its moonstone, crescent and reflection are baked glows and its record has a
+  live `lueur`), the temple, the barracks, and a second glade (the east lair). The buildings are the village's models in
+  the grove's materials (`bosquet-<model>` in buildings.py: pale boards, green roofs and trim, pale stone, ivy; same
+  shapes, so Valbrume's offsets), the mage tower relabelled from its 1.3 scale (`elfe`). Giant ancient trees
+  (`bosquet-geant`, `bosquet-geant-b`, 1.35x: buttress roots, a silver trunk, red and gold crowns) stand behind the
+  buildings and in the north band's old forest, off every walk (no front cut-out needed). Lanterns, toadstools (two glow
+  faintly at night) and ferns. Ground kinds (sol.py, 70+): `bosquet-mousse` (moss: the forest floor), `bosquet-feuilles`
+  (leaf litter round the giants and along the forest's edge), both `pousse` (scatter grows on them and grass takes no
+  edge over them: the only hooks, in sol.py and objets.py, identical for other kinds), `bosquet-dalles` (the flagstone
+  road and paths, `interdit`) and `bosquet-parvis` (the square's flagstones, open ground). A lake fills the south band,
+  its shore along the strip's foot with a cove in each glade. Lairs: west x -650 to -200, east 3230 to 3680, y 295 to
+  325 (ring check 97 to 100% at a 176 px half width). `BASCULE` 3700. Looks (theme.py): `automne` (`art/bosquet-automne/`,
+  `materiaux` `automne`: oaks and ivy red with gold, bushes rust, bracken) and `printemps` (`art/bosquet-printemps/`,
+  base `automne`, `materiaux` `printemps`: fresh greens, the giants in pink and white blossom, cherry-pink trees, petals
+  on the paths), and the look flag `petales`: a few petals drift over the view (place.js `petales`, as the snow's wheels,
+  `art/petale-{0,1,2}.svg`, 3 petals each, 240 px apart, each window swaying 18 px on a native `left` loop).
 - **Map and look switches** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande`
   block), two rows of the same style: ‹ map name › cycles the maps (store key `wocc.map`, default `"valbrume"`) and
   ‹ look name › the shown map's looks (`wocc.look`, default its first); a row with a single choice shows only the
