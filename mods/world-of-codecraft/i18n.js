@@ -142,7 +142,7 @@ const S = {
     bossSlain: (name, by) => `${name} is slain by ${by}!`,
     bossesSlain: "raid bosses slain",
     trophyTip: (total, streak) => `Raid bosses slain: ${total}\nDaily streak: ${streak} ${streak === 1 ? "day" : "days"} (consecutive days with a kill)`,
-    resetTip: "Click: reset today's boss to full HP",
+    resetTip: "Click: reset today's boss to full HP and the slain count to 0",
     resetBoss: "Reset boss?", yes: "Yes", no: "No",
     // village life
     treasury: (p, v) => `${v} treasury: ${p}% of account A left this week`,
@@ -244,7 +244,7 @@ const S = {
     bossSlain: (name, by) => `${name} est terrassé par ${by} !`,
     bossesSlain: "boss de raid vaincus",
     trophyTip: (total, streak) => `Boss de raid terrassés : ${total}\nSérie : ${streak} jour${streak > 1 ? "s" : ""} d'affilée avec une victoire`,
-    resetTip: "Clic : rendre au boss du jour tous ses PV",
+    resetTip: "Clic : rendre au boss du jour tous ses PV et remettre les victoires à 0",
     resetBoss: "Relancer le boss ?", yes: "Oui", no: "Non",
     treasury: (p, v) => `Trésor de ${v} : ${p} % du compte A cette semaine`,
     fair: (t) => `La foire : réinitialisation dans ${t}`,

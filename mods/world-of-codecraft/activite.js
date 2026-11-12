@@ -963,7 +963,7 @@ export class Activites {
       boss.hp = Math.max(0, boss.hp - d);
       if (!boss.hp) {
         const h = heroOf(addr, (this.list ?? []).find((a) => a.address === addr)?.program);
-        Object.assign(boss, { slain: true, slainAt: now, by: addr, heros: { name: h.name, race: h.race, cls: h.cls }, avant }); // avant: the reset's undo
+        Object.assign(boss, { slain: true, slainAt: now, by: addr, heros: { name: h.name, race: h.race, cls: h.cls } });
         break;
       }
     }
