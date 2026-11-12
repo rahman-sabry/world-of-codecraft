@@ -505,6 +505,28 @@ the clock. The art is original: it imitates no existing game.
   base `automne`, `materiaux` `printemps`: fresh greens, the giants in pink and white blossom, cherry-pink trees, petals
   on the paths), and the look flag `petales`: a few petals drift over the view (place.js `petales`, as the snow's wheels,
   `art/petale-{0,1,2}.svg`, 3 petals each, 240 px apart, each window swaying 18 px on a native `left` loop).
+- **Mirewick (`carte-marais.js`, `maps/marais.json`):** a marsh town, the world x -1000 to 4000 (origine [1500, 200]).
+  West to east: a meadow (the west lair), the barn and its plot, a zigzag boardwalk over a reedy inlet, the mage tower,
+  the forge, a boardwalk over the creek that runs through the town from the north band to the marsh, the town hall, the
+  market square, the tavern on stilts in its pond (`marais-tavern`: the tavern lifted 10 units onto a plank platform on
+  piles, a stair down; its chimneys 14 px higher), the temple, a boardwalk over a second inlet, the barracks, the
+  witch's hut on tall leaning stilts in a black pool (`sorciere`, a building: a hooked mossy hat of a roof, a round
+  window, lanterns and a cauldron of green swamp light, live `lueurs`), and a meadow (the east lair). Dense swamp forest
+  with pools in the north band (`marais-willow`, `marais-gnarled`), open marsh water with islets and fishers' stilt huts
+  (`marais-hut`) in the south band, reed clumps (`marais-reeds`) along the banks. Boardwalks: `clotures` runs of
+  `marais-boardwalk-x` / `-y` (as the port's quays: 32 units, `pas` 44, piles `PROF` 5 units down into the water), an x
+  run then a y run (a V or a Λ), their deck line `DECK` (one polyline through all three, lying over the road between
+  them) and part of `ROAD`. Ground kinds (sol.py, 30+): `marais-eau` (murky water, `eau`/`interdit`: algae, lily pads
+  and a few flowers; its edge `marais_bords` paints a silty margin and reeds standing in the water, through the optional
+  edge painters `BORDS`, run last in `sol()`) and `marais-boue` (mud: the banks and pond rims). `EAU` holds the same
+  polygons as the layout's water in the band (the marsh with its inlets, the creek, both ponds). Lairs: west x -690 to
+  -240, east 3240 to 3690, y 310 to 335 (ring check 100% at a 176 px half width). `BASCULE` 3700. Looks: `ete`
+  (`art/marais-ete/`) and `brume` (`art/marais-brume/`, base `ete`, `materiaux` `brume` in buildings.py: rust and
+  ochre foliage, dry reeds, brown moss; dun grass and greyer water in sol.py; a muted cold daylight: the optional look
+  field `teinte`, a grade of the day composite in bake_map.py), and the look flag `brume`: five broad fog bands drift
+  over the view (place.js `brume`, three nested translucent capsules each on a native `left` loop, thinner at night).
+  In both looks a map's `LUCIOLES` are fireflies blinking over the banks at night (place.js `lucioles`, two dots per
+  point on native loops).
 - **Map and look switches** under the minimap, in both panels (the Workshop one drawn by place.js and the `commande`
   block), two rows of the same style: ‹ map name › cycles the maps (store key `wocc.map`, default `"valbrume"`) and
   ‹ look name › the shown map's looks (`wocc.look`, default its first); a row with a single choice shows only the
