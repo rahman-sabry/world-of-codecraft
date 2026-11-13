@@ -16,7 +16,7 @@ import { h_flex, v_flex } from "gpui-base";
 import { agents, spaces, run, setAgentOrder, props, layout, shared, setShared } from "herdr";
 import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss, champion, bannieres, bossDuJour, look, monde } from "./kit.js";
 import { HEROES } from "./heros-data.js";
-import { lieux, market } from "./lieux.js";
+import { lieux, market, walkable } from "./lieux.js";
 import { art } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
 import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart, etoiles, cycleDe, jauge, BLESSE, BLESSE_LENT, BLESSE_PAS } from "./activite.js";
@@ -24,6 +24,7 @@ import { effet, FX, FX_ETAPES } from "./effets.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
 import { commandPanel, MINI_INSET, watchStat, bossDot } from "./commande.js";
+import { suivre, agenda, sonnerie, cle, rejoindre, meetSur } from "./agenda.js";
 
 const ART = "mods/world-of-codecraft/art";
 const MONDE = `${ART}/monde`; // rings and quest marks, only in the summer folder (the world's own images: monde(), the shown look's)
@@ -51,6 +52,12 @@ const ADIEU = [100, 300]; // a leaving apprentice's sparkles: rise, then fade, w
 const FERME = 1000;
 const FX_DESSUS = 100000; // a blow's effect sorts over every world element (their order among themselves kept)
 const ETOFFES = [0, 3, 2]; // the trophy banners' cloth (ui.js banner colours: red, violet, green), each with the cup
+// The town bell (agenda.js): its frame's feet as an offset from the town hall's bake point (right of the steps), its
+// swing when it rings, and the meetings it already rang for (by key: a reload rings none again).
+const CLOCHE = [95, 52];
+const BRANLE = 6000;
+const SONNEES = "wocc.cloche";
+const REFUS = "wocc.agenda.refus"; // the chronicle said once that calendar access is denied
 /** How many of these thresholds (ms) dt has passed. */
 const etape = (dt, seuils) => seuils.filter((s) => dt >= s).length;
 
@@ -134,6 +141,31 @@ function libre(p, taken) {
   return lieux().POSTES.filter((s) => !taken.has(s.join())).sort((a, b) => dist(a, p) - dist(b, p))[0] ?? p;
 }
 
+/** The town hall square of the shown map (once per map): free walkable points in front of the town hall, off its
+ *  standards and its bell, nearest its door first, 44 px apart (the depth counted 1.6x), PARVIS_MAX at most. [] without
+ *  a town hall. */
+const PARVIS = new Map();
+const PARVIS_MAX = 16; // spots at most (more idle heroes keep strolling)
+function parvis() {
+  const L = lieux();
+  let out = PARVIS.get(L.id);
+  if (out) return out;
+  out = [];
+  const h = L.batiments.hotel;
+  if (h) {
+    const [ax, ay] = h.at, porte = [ax, ay + 40], gene = [...L.BANNIERES, [ax + CLOCHE[0], ay + CLOCHE[1]]], pts = [];
+    for (let y = ay + 20; y <= Math.min(L.WORLD.h - 12, ay + 110); y += 10) for (let x = ax - 240; x <= ax + 240; x += 20) pts.push([x, y]);
+    pts.sort((a, b) => dist(a, porte) - dist(b, porte));
+    // walkable() last, on the points left: it is the costly test (a long sea polygon)
+    for (const p of pts) {
+      if (out.length >= PARVIS_MAX) break;
+      if (out.every((q) => Math.hypot(q[0] - p[0], (q[1] - p[1]) * 1.6) >= 44) && gene.every(([gx, gy]) => Math.hypot(gx - p[0], (gy - p[1]) * 2) >= 30) && walkable(p)) out.push(p);
+    }
+  }
+  PARVIS.set(L.id, out);
+  return out;
+}
+
 /** The chronicle tag for a feet point: the nearest building (or the market) within 200 px, else the village. */
 function quartier(x, y) {
   const { BUILDINGS, MARCHE } = lieux();
@@ -174,6 +206,65 @@ export default class Place {
     this.amb = new Ambiance(route); // village life: walkers, animals, treasury, fair
     try { this.log = JSON.parse(localStorage.getItem(LOG_KEY) ?? "[]"); } catch { this.log = []; }
     cx.timer.every(60_000, (cx) => { this.now = new Date(); cx.notify(); });
+    // the calendar (agenda.js): the bell and the gathering checked every 15 s, redrawn only when they change
+    suivre(cx);
+    this.rassemble = null; // { k (meeting and map), m (meeting), e, libres, spots: address -> its point on the square } while the bell's meeting comes
+    this.branle = null; // { k, t0 }: the bell swinging
+    cx.timer.every(15_000, (cx) => { const e = sonnerie(); if ((e ? cle(e) : "") !== (this.rassemble?.m ?? "")) cx.notify(); });
+  }
+
+  /** The meetings the bell already rang for (keys, the last 20). */
+  sonnees() {
+    try { return JSON.parse(localStorage.getItem(SONNEES) ?? "[]"); } catch { return []; }
+  }
+
+  /** The bell's meeting (agenda.js sonnerie) in the shown, live village: the idle heroes' spots on the town hall square
+   *  (assigned as they come, nearest the door first; parvis, once per map), kept until it starts. */
+  rassembler(live, t) {
+    const e = live ? sonnerie(t) : null, k = e && parvis().length ? `${cle(e)}:${lieux().id}` : null;
+    if (!k) { this.rassemble = null; return null; }
+    if (this.rassemble?.k !== k) this.rassemble = { k, m: cle(e), e, libres: [...parvis()], spots: new Map() };
+    return this.rassemble;
+  }
+
+  /** Rings the town bell once per meeting (the first live render that sees its PREAVIS): a chronicle line, the bell
+   *  swings BRANLE ms, and the camera glides to it (a deliberate move: a later selection or a pan takes over). */
+  sonner(R, vw, t) {
+    const k = cle(R.e), vues = this.sonnees();
+    if (vues.includes(k)) return;
+    try { localStorage.setItem(SONNEES, JSON.stringify([...vues, k].slice(-20))); } catch {}
+    const [bx, by] = this.clocheAt();
+    this.say(`[${tr("building").hotel}] ${tr("bell", R.e.title)}`, "blocked", null);
+    this.branle = { k, t0: t };
+    this.camX = bx - vw / 2;
+    if (props()?.immersion) this.camY = by - 60 - (this.h ?? lieux().WORLD.h) / 2;
+    this.manual = true;
+  }
+
+  /** The bell's feet point on the shown map. */
+  clocheAt() {
+    const [ax, ay] = lieux().batiments.hotel.at;
+    return [ax + CLOCHE[0], ay + CLOCHE[1]];
+  }
+
+  /** The town bell while its meeting comes: a bell under a small wooden gallows right of the town hall's steps,
+   *  swinging BRANLE ms when it rings (a bounded native loop: the ambient timer redraws at its end), dimmed at night.
+   *  Its meeting's Google Meet, if any, is a click away. A world element at depth = its feet. */
+  cloche(R, nightK, t) {
+    const [x, y] = this.clocheAt(), meet = meetSur(R.e.meet);
+    const bat = this.branle?.k === cle(R.e) && t - this.branle.t0 < BRANLE;
+    if (bat) this.wake = Math.min(this.wake ?? Infinity, this.branle.t0 + BRANLE);
+    const poteau = (dx) => div().absolute().left(dx).top(-58).w(4).h(58).bg("#4a2f1e").border_1().border_color("#1e120c");
+    let el = div().id("cloche").absolute().left(x).top(y).w(0).h(0).opacity(1 - 0.45 * nightK)
+      .child(poteau(-18)).child(poteau(14))
+      .child(div().absolute().left(-22).top(-62).w(44).h(5).bg("#6b3f26").border_1().border_color("#1e120c"))
+      .child(div().id("cloche-bronze").absolute().left(-14).top(-58).w(28).h(34)
+        .child(image(`${ART}/cloche.svg`).absolute().left(0).top(0).w(28).h(34))
+        .when(bat, (e) => e.loop("left", { from: -18, to: -10, period: 700 })))
+      .child(div().id("cloche-clic").absolute().left(-22).top(-62).w(44).h(62).tooltip(tr("bellTip", R.e.title, meet))
+        .on_mouse_down("left", stop)
+        .when(Boolean(meet), (e) => e.cursor_pointer().on_click(() => rejoindre(R.e))));
+    return { z: y, el };
   }
 
   // ---------------------------------------------------------------- chronicle
@@ -208,6 +299,18 @@ export default class Place {
       this.say(`[${tr("crier")}] ${tr("hearYe", list.length, b)}`, "idle", null);
     }
     this.prev = new Map(list.map((a) => [a.address, { status: a.status, program: a.program }]));
+  }
+
+  /** Calendar access denied (agenda.js): one chronicle line saying how to allow it, again only after access came back. */
+  refus() {
+    const { evts, err } = agenda();
+    try {
+      if (evts) localStorage.removeItem(REFUS);
+      else if (err === "denied" && !localStorage.getItem(REFUS)) {
+        localStorage.setItem(REFUS, "1");
+        this.say(`[${tr("building").hotel}] ${tr("agendaDenied")}`, "idle", null);
+      }
+    } catch {}
   }
 
   // ---------------------------------------------------------------- units and movement
@@ -271,7 +374,19 @@ export default class Place {
       // shells stroll like idle heroes; a working, blocked or done hero, or one in a raid, stays where it is (demo
       // heroes: at their class building; a raider other than the boss's first hero: at its place by the boss, below)
       const group = (a.status === "idle" && !this.act.melee(a.address)) || a.guard ? "flane" : a.demoHero ? WORK[h.cls] : "poste";
-      if (group === "flane") {
+      // the bell's meeting comes: an idle hero (not a guard) teleports to its spot on the town hall square (sauter: its
+      // portal, with its apprentices) and stays; when it starts, it strolls on from there
+      const R = group === "flane" && !a.guard && !a.demoHero ? this.rassemble : null;
+      let sq = R?.spots.get(a.address);
+      if (R && !sq && R.libres.length) {
+        sq = R.libres.shift();
+        R.spots.set(a.address, sq);
+        if (this.mob.has(a.address) && this.mob.get(a.address).goal.join() !== sq.join()) this.sauter(a.address);
+      }
+      if (sq) {
+        goals.set(a.address, sq);
+        taken.add(sq.join());
+      } else if (group === "flane") {
         const w = this.flane(a.address, t);
         goals.set(a.address, FLANE[w.i]);
         taken.add(FLANE[w.i].join());
@@ -377,6 +492,12 @@ export default class Place {
     else if (this.act.melee(u.a.address)) name = "work"; // fighting the raid boss or its minions
     else name = (u.a.status === "working" && this.act.anim(u.a.address)) || (u.a.status === "working" ? "work" : "idle");
     if (name === "work") name = travail(u.key, this.act.face(u)); // facing the foe it fights (the raid boss, minions, a creature)
+    // gathered on the town hall square: its back to the viewer, facing the town hall (a walk's first frame, held)
+    const sq = !u.leg && this.rassemble?.spots.get(u.a.address);
+    if (sq && sq[0] === Math.round(u.x) && sq[1] === Math.round(u.y)) {
+      const up = u.x < lieux().batiments.hotel.at[0] ? "walk_ur" : "walk_ul", info = H?.anims?.[up];
+      if (info) return { name: up, info, frames: true, tient: true };
+    }
     const info = H?.anims?.[name];
     if (info) return { name, info, frames: true };
     return { name: "stand", info: H?.stand ?? { w: 50, h: 85, ax: 25, ay: 83 }, frames: false };
@@ -411,7 +532,7 @@ export default class Place {
       const bat = an.name.startsWith("work") && this.act.face(u) !== 0, ph = hash(a.address) % 997;
       const blesse = (this.act.vie(a.address) ?? 100) < BLESSE; // wounded: slower swings, a hurt pose in its pauses
       const cy = bat ? cycleDe(a.address, fige ?? t, an.info.fps, an.info.n, ph, this.act.effets.get(a.address)?.t0, blesse ? BLESSE_LENT : 1) : null;
-      const k = !(animate || fige !== null) ? 0 : cy ? cy.f : Math.floor((((fige ?? t) + ph) / 1000) * an.info.fps) % an.info.n;
+      const k = !(animate || fige !== null) || an.tient ? 0 : cy ? cy.f : Math.floor((((fige ?? t) + ph) / 1000) * an.info.fps) % an.info.n;
       const R = cy && blesse && cy.pause && HEROES[u.key]?.anims?.rest; // its hurt pose: the first rest frame, held
       if (R) {
         const rd = `${ART}/heros/${u.key}/rest`;
@@ -935,6 +1056,8 @@ export default class Place {
     if (!props()?.demo) setAgentOrder(order.map((a) => a.address));
     const gs = guards().slice(0, 4).map((p) => ({ address: p.terminal, pane: p.pane, guard: true, status: "garde", program: p.program, tab_name: p.title, focused: p.focused }));
     this.act.watch(cx, order, this.hidden(), !props()?.demo);
+    const live = !this.hidden() && !props()?.demo;
+    const R = this.rassembler(live, t); // the bell's meeting: the idle heroes gather on the town hall square
     const units = this.units([...order, ...gs], t);
 
     // the selected unit = the focused shell when it is a guard, else the focused agent
@@ -943,6 +1066,8 @@ export default class Place {
     // immersive layout: the command panel is its own block (role "commande"), the village takes the full width
     const imm = Boolean(props()?.immersion);
     const vw = Math.max(200, this.w - (imm ? 0 : PANEL));
+    if (R) this.sonner(R, vw, t); // once per meeting
+    if (live) this.refus();
     if (imm) this.bridge(units, vw);
     const rc = shared("wocc.recentre")?.at;
     if (rc !== this.recentreAt) { this.recentreAt = rc; this.lastFocus = null; } // a board click (tableau.js): glide again
@@ -964,7 +1089,7 @@ export default class Place {
       u.animate = animate;
       const fige = this.act.etourdi(u.a.address, t) !== null; // a stunned hero's frame stays
       const bat = an.name.startsWith("work") && this.act.face(u) !== 0; // fighting: its cadence (frameSig)
-      if (animate || u.leg) this.anims.push({ addr: u.a.address, fps: animate && !fige ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997, k: bat ? u.a.address : null,
+      if ((animate && !an.tient) || u.leg) this.anims.push({ addr: u.a.address, fps: animate && !fige && !an.tient ? an.info.fps : 0, n: an.info.n ?? 1, ph: hash(u.a.address) % 997, k: bat ? u.a.address : null,
         lent: (this.act.vie(u.a.address) ?? 100) < BLESSE });
     }
     // apprentices (one half-size hero per running subagent) by their heroes, on the side away from the creature;
@@ -988,6 +1113,7 @@ export default class Place {
     for (const u of units) { const c = this.act.creature(u, nightHeroes); if (c) things.push(c); things.push(...this.act.sbiresDe(u, nightHeroes)); }
     const geant = this.act.geant(nightHeroes, t); // the day's boss, one for every raider
     if (geant) things.push(geant);
+    if (R) things.push(this.cloche(R, nightK, t));
     const rv = this.act.reveil(t); // the wandering boss's next leg: the ambient timer redraws then
     if (rv) this.wake = Math.min(this.wake ?? Infinity, rv);
     const working = list.filter((a) => a.status === "working").length;

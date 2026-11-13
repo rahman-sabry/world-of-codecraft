@@ -38,6 +38,20 @@ done
 rm -f "$DEST/layouts/World-of-Codecraft-Immersion.json" "$DEST/layouts/World-of-Codecraft-Immersion.png" "$DEST/layouts/.state/World-of-Codecraft-Immersion.json"
 say "World of Codecraft installed in $DEST"
 
+# the calendar helper (macOS, needs swiftc): built when its source changed, copied where the mod runs it (agenda.js)
+AGENDA="$HOME/.local/share/world-of-codecraft/agenda"
+if [ "$(uname)" = Darwin ] && command -v swiftc >/dev/null 2>&1; then
+  B="$REPO/tools/agenda/build/agenda"
+  if [ ! -x "$B" ] || [ "$REPO/tools/agenda/agenda.swift" -nt "$B" ] || [ "$REPO/tools/agenda/Info.plist" -nt "$B" ]; then
+    sh "$REPO/tools/agenda/build.sh"
+  fi
+  if ! cmp -s "$B" "$AGENDA"; then
+    mkdir -p "$(dirname "$AGENDA")"
+    cp "$B" "$AGENDA.tmp" && mv -f "$AGENDA.tmp" "$AGENDA"
+  fi
+  say "Calendar helper: $AGENDA (macOS asks once for calendar access)"
+fi
+
 if [ "$INTEGRATIONS" = 1 ]; then
   # Claude Code: link the hook, then register it in ~/.claude/settings.json (see README)
   mkdir -p "$HOME/.claude/hooks"

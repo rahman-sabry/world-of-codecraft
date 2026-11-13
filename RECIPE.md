@@ -21,8 +21,10 @@ the clock. The art is original: it imitates no existing game.
     felled; tooltip: name with its tier, HP, the streak at stake, who slew it, time to the next boss, and "Click: reset
     today's boss to full HP"; a click turns the plaque in place into "Reset boss?" with Yes / No, « Relancer le boss ? »
     Oui / Non, which closes by itself after 5 s; no system dialog) and the trophies (a gold cup,
-    "3" over "raid bosses slain"; the daily streak is in its tooltip). They show only when the bar has room beside everything else (a width
-    estimate): the trophies go first (their tooltip then joins the boss's), then the boss;
+    "3" over "raid bosses slain"; the daily streak is in its tooltip). Before the boss, the next meeting (see "Calendar"
+    below): a bronze bell, "in 25m" / "1h 10m" (« dans 25 min » / « 1 h 10 ») over its title. They show only when the bar
+    has room beside everything else (a width estimate): the trophies go first (their tooltip then joins the boss's), then
+    the boss, then the meeting;
   - a parchment scroll in the middle with the shown district and quest;
   - on the right, an alert when a hero waits, then the sun or the moon, the canonical
     hour (Matins, Lauds, Terce, Sext, None, Vespers, Compline) and the clock.
@@ -442,6 +444,59 @@ the clock. The art is original: it imitates no existing game.
       day's boss. Calls made before a terminal's first sight are not counted.
   - **Anti-zapping:** a scene changes only when asked for 8 s and the current one is 15 s
     old (20 s / 40 s to or from the forest edge); meditation, tests and the end switch at once.
+- **Calendar (`agenda.js`, `tools/agenda/`):** your meetings from the macOS Calendar app (every calendar in it, a
+  Google account synced into it included), read by a small Swift EventKit helper, `agenda`, installed at
+  `~/.local/share/world-of-codecraft/agenda`. It prints the events from now to 24 h ahead, by start, as JSON:
+  `[{title, start, end (epoch ms), allDay, calendar, meet}]`; `meet` is the first `https://meet.google.com/<code>` link in
+  the event's url, location or notes (Google's sync puts it in the notes), else null. No access (denied, restricted,
+  write-only): `{"error": "denied"}`; the permission dialog still open after 20 s: `{"error": "pending"}`; it always exits
+  0. `agenda --stats` prints counts only (events, all-day ones, where the Meet links were found), never a title or a
+  link.
+  - **Reading:** the top bar and the village each run it once at start and every 3 min (`suivre`; two readers in the
+    same minute share one run), never per frame, through herdr-core: `hc(["exec", "--timeout", "30", <helper>])`, not
+    `exec` (see Permission); the answer stays in memory (titles are never stored). Missing
+    helper, denied access, a non-zero exit or bad JSON: no meetings, so the plaque, the bell and the gathering are
+    hidden; denied also writes one chronicle line, "[Town Hall] The town bell is silent: Herdr Core has no calendar
+    access (System Settings › Privacy & Security › Calendars)", again only after access came back and went
+    (localStorage `wocc.agenda.refus`). All-day events are ignored.
+  - **The plaque** (fronton.js `reunion`): the next meeting (the first timed one starting after now; none, but one going
+    on: that one, "now" / « maintenant »): the countdown in minutes rounded up, its title (clipped), red from 2 min
+    before (`PREAVIS`) until it starts. Tooltip: "Next meeting: <title>", "10:25 - 10:40 · <calendar>", "Now: <title>
+    until 10:30" when one is going on, and "Click: join Google Meet" when the meeting it would join has a Meet link (the
+    next one from its 2 min, else the one going on, else the next one). A 15 s timer redraws it only when its text or
+    urgency changes. Hidden with no meeting in the next 24 h or no data, and by the bar's room rule.
+  - **The town bell:** from 2 min before a meeting until it starts, in the shown, live village (never the demo or a
+    hidden village), a bronze bell (art/cloche.svg, 14 x 17 at 2x) hangs under a small wooden gallows right of the town
+    hall's steps (`CLOCHE`: [95, 52] from the town hall's bake point, the same on every map); dimmed at night, a world
+    element at depth = its feet. It rings once per meeting: it swings 6 s (a native `left` loop declared only in that
+    window, the ambient timer's `wake` redrawing at its end), the chronicle says "[Town Hall] The bell tolls: <title> in
+    2 minutes" (« La cloche sonne : … dans 2 minutes »), and the camera glides to it (`camX`, `camY` in immersion, as a
+    selection does, marked `manual` so the follow does not snap back; a later selection or a pan takes over). The
+    meetings rung are kept by key (start and a hash of the title) in localStorage `wocc.cloche` (last 20), so a reload
+    or the other village block rings nothing again and moves no camera. Its tooltip names the meeting; with a Meet link
+    it is clickable.
+  - **Joining:** a click on the plaque or the bell runs `open <url>` (exec, the URL one argv element, no shell), only
+    for a URL matching `^https://meet\.google\.com/[a-z0-9-]+(\?[^\s"']*)?$` (`meetSur`; the helper's output is
+    checked again on reading: anything else is dropped).
+  - **The gathering:** while the bell's meeting comes (its 2 min), every idle hero (status idle, not a guard, not in a
+    raid; working, blocked and done heroes keep their scenes) teleports to a spot on the town hall square with its
+    apprentices (`sauter`: the raid's portals, 1.4 s; one standing there already, or seen first meanwhile, is placed
+    there) and stays,
+    standing with its back to the viewer facing the town hall (the first frame of `walk_ur` left of it, `walk_ul`
+    right of it, held: no frame timer), until the meeting starts; then they walk off to their strolls. The square (`parvis`, once per
+    map): grid points 20 x 10 px in front of the town hall (x ± 240 of its bake point, y + 20 to + 110, inside the
+    strip), nearest its door first, kept 44 px apart (the depth counted 1.6x) and off its standards and the bell,
+    walkable (tested last, on the points left), 16 at most. Heroes take the free spots as they come, nearest the door
+    first; one turning idle meanwhile joins (by teleport too); more than 16 keep strolling.
+  - **Permission:** macOS asks the app responsible for the helper. A mod's `exec` runs from Herdr.app, whose
+    Info.plist has no calendar usage description, so macOS refuses it without asking (`denied`); `hc exec` has the
+    herdr-core service start it, and Herdr Core does declare one ("Programs running in Herdr terminals can access your
+    calendars"), so macOS asks once for Herdr Core (or not at all when a terminal program already got it). The
+    helper's own Info.plist (embedded: `NSCalendarsFullAccessUsageDescription`, `NSCalendarsUsageDescription`) is what
+    a CLI needs to ask at all. Until the dialog is answered the helper says `pending` (no meetings). Change it in System
+    Settings › Privacy & Security › Calendars (Herdr Core).
+  - **Privacy:** titles, times and calendar names stay on the Mac and in memory; the only thing stored is the chronicle
+    line of a bell (the chronicle, localStorage) and the rung meetings' keys; no network.
 - **Village life** (`ambiance.js`): walkers with pauses on the road (a peasant woman and a
   farmer by day, a merchant when 2+ heroes work, a guard with a lantern at night), hens by the
   barn, the tavern cat, a stag at dawn and dusk, sparrows over the fields, fish leaping in the
@@ -802,13 +857,15 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
     look of the map;
   - `lieux.js`: the shown map's layout (`lieux()`), resolved once per map id and cached: the building-relative
     values made absolute (`SPOTS`, `BUILDINGS`, `MARCHE`, `BANNIERES`, `SMOKE`, `GLOWS`), the road's arc lengths
-    (`ROAD_S`) and every known walkable point (`POSTES`); `walkable()`. Every reader goes through it, so a map
+    (`ROAD_S`), every known walkable point (`POSTES`) and what `walkable()` tests (`BOITES`, `PIEDS`, each water shape's
+    bounding box `EAU_B`, tested before the shape); `walkable()`, memoized per point. Every reader goes through it, so a map
     switch needs no reload;
   - `heros-data.js` and `monde-data.js`: animation frame tables and world tiles,
     generated;
   - `activite.js`: the activity scenes; `ambiance.js`: village life;
     `creatures-data.js`: creature and villager sprites, generated;
-  - `i18n.js`: every visible string in French and English, and the language detection.
+  - `i18n.js`: every visible string in French and English, and the language detection;
+  - `agenda.js`: the calendar helper's runs and answer, the next meeting, the Meet link check.
 - **Herdr API:**
   - data: `spaces()`, `agents()`, `panes()`, `focused()` and the store;
   - commands: `agent.focus`, `agent.next`, `pane.focus`, `space.select`, `tab.select`,
@@ -818,13 +875,17 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   (its signature changes at each stage of the fall and the flight, and drops each window's end: `Activites.fenetres`);
   the idle boss's wander legs ride the 1 s ambient timer (`reveil`),
   and stops when its village block (`place` or `place-immersion`) is hidden. The clock ticks every 30 s; the sky and quotas
-  update every 60 s.
+  update every 60 s; the meeting plaque and the bell are checked every 15 s (a redraw only when they change).
 - **Files read and programs run:** the activity files in `~/.local/state/world-of-codecraft/`
   (if the integrations are installed) and `~/.local/state/claude-duo/quota-{A,B}.json`
   (cduo, if present). Once per start it runs `sh` to read the system language
-  (`defaults read -g AppleLanguages`, `$LANG`). No network calls.
+  (`defaults read -g AppleLanguages`, `$LANG`). At start and every 3 min it runs the calendar helper
+  `~/.local/share/world-of-codecraft/agenda` through `hc exec` (see "Calendar"), and on a click on the meeting plaque or the bell,
+  `open <Google Meet link>`. No network calls of its own (the browser opens the meeting).
 - **Repo tooling** (`tools/`, not installed): `install.sh` copies the mod, layout and theme
-  into the Herdr home (`--integrations` links the hook and plugin); `sync_creatures.py`,
+  into the Herdr home (`--integrations` links the hook and plugin), and on macOS with `swiftc` builds the calendar helper
+  when its source changed (`agenda/build.sh`: `swiftc` with `agenda/Info.plist` embedded as `__TEXT,__info_plist`, ad hoc
+  signed, into `agenda/build/`, which git ignores) and copies it to `~/.local/share/world-of-codecraft/agenda`; `sync_creatures.py`,
   `sync_heroes.py`, `bake_world.py`, `bake_lands.py`, `bake_wide.py`, `ui.py` rebuild the art from `tools/sources/`;
   `bake_map.py` (with `mapbake/`) bakes a map from its layout in `maps/`.
 - **Art** (`art/`):
@@ -869,6 +930,10 @@ a hidden one keeps no timers. The layout sets no terminal text size, so Herdr's 
   width/height under the same easing.
 - **Walkers' depth** comes from where they really are on their leg; the 1 s ambient timer
   redraws when one passes behind or out from behind a front cut-out.
+- **First render:** `herdr-app check` loads and renders the mod once under a deadline and fails with "interrupted"
+  wherever it is when time runs out (seen under a load average near 30). Keep work computed from static map data
+  out of render, or done once per map (lieux.js, `parvis`, the boss's waypoints) and memoized, and built paths
+  shared (kit.js `RECT`). Elements are consumed by their parent, so a subtree cannot be reused across renders.
 - **Many hot reloads** (dozens) can exhaust the mod's JS heap ("out of memory", then
   "Null"): restart the Herdr window.
 

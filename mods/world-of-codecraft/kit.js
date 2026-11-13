@@ -56,7 +56,9 @@ export const C = {
   cream: "#fbf6e8", night: "#0b1030",
 };
 
-const RECT = () => PathBuilder.fill().move_to("0%", "0%").line_to("100%", "0%").line_to("100%", "100%").line_to("0%", "100%").close().build();
+// a built path is immutable (gpui-kit): built once, on first use (the host is ready then), shared by every gradient
+let rect = null;
+const RECT = () => (rect ??= PathBuilder.fill().move_to("0%", "0%").line_to("100%", "0%").line_to("100%", "100%").line_to("0%", "100%").close().build());
 /** A layer filling its relative parent with a linear gradient (180 = top to bottom). */
 export function gradient(from, to, angle = 180) {
   return globalThis.window.paint_path(RECT(), Background.linear_gradient(angle, from, to)).absolute().top(0).left(0).size_full();

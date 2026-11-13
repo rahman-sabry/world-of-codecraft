@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>dev.world-of-codecraft.agenda</string>
+	<key>CFBundleName</key>
+	<string>World of Codecraft agenda</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>World of Codecraft reads your next meetings to show a countdown in its top bar and ring the town bell before they start. Nothing leaves your Mac.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>World of Codecraft reads your next meetings to show a countdown in its top bar and ring the town bell before they start. Nothing leaves your Mac.</string>
+</dict>
+</plist>

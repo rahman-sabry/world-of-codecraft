@@ -7,7 +7,8 @@
 // the district's banner and a parchment scroll with the district and quest. On the right,
 // the waiting-heroes button (click: go to the next one), then the hour plaque. After Heroes, today's raid boss (its HP,
 // slain in gold; a click asks to reset it) and the trophies (bosses slain; the daily streak in its tooltip), the trophies only when the bar
-// has room for them.
+// has room for them. After Fair, the next meeting (agenda.js: the countdown, red from the town bell's 2 minutes before it;
+// a click joins its Google Meet), when the bar has room.
 
 import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
@@ -18,6 +19,7 @@ import { CREATURES } from "./creatures-data.js";
 import { P, DECO, TEXTE, bar, pic, txt, button, mark, banner } from "./ui.js";
 import { DEMO_SPACES } from "./demo.js";
 import { t, detectLang } from "./i18n.js";
+import { suivre, agenda, prochain, enCours, sonnerie, rejoindre, meetSur, PREAVIS } from "./agenda.js";
 
 // Immersive mode lives in the one layout: the big village (place-immersion) and the command panel
 // (commande) are shown, the bottom village (place) hidden, and the terminal (arene) shrinks to 400 px.
@@ -46,6 +48,10 @@ export default class Fronton {
     };
     tick(cx);
     cx.timer.every(60_000, tick);
+    // the calendar (agenda.js), and the meeting plaque's text checked every 15 s: redrawn only when it changes
+    suivre(cx);
+    this.rdvSig = "";
+    cx.timer.every(15_000, (cx) => { const s = this.rdvSignature(Date.now()); if (s !== this.rdvSig) { this.now = new Date(); cx.notify(); } });
     // ctrl-shift-i (KEYS.json): "world-of-codecraft.mode"
     cx.spawn(async (cx) => { for (;;) { if ((await nextCommand()) === "mode") { setMode(!immersive()); cx.notify(); } } });
   }
@@ -105,6 +111,30 @@ export default class Fronton {
       });
   }
 
+  /** What the meeting plaque shows at now (its meeting, minutes, urgency): unchanged = no redraw. */
+  rdvSignature(now) {
+    const e = prochain(now) ?? enCours(now);
+    return e ? `${e.start}:${Math.ceil((e.start - now) / 60e3)}:${e.start - now <= PREAVIS}:${agenda().evts?.length}` : "";
+  }
+
+  /** The next meeting (agenda.js; one going on when none is next): the bell, the countdown ("in 25m", "1h 10m",
+   *  "now"), its title; red from the bell's PREAVIS before it. Its Google Meet, if any, is a click away (the next
+   *  meeting's once the bell rang, else the one going on, else the next one's). Null without one. */
+  reunion() {
+    const now = Date.now(), next = prochain(now), cur = enCours(now), e = next ?? cur;
+    this.rdvSig = this.rdvSignature(now);
+    if (!e) return null;
+    const join = sonnerie(now) ?? (cur?.meet ? cur : null) ?? next;
+    const meet = meetSur(join?.meet);
+    const at = (ms) => hhmm(new Date(ms));
+    const tip = next ? t("meetingTip", next.title, at(next.start), at(next.end), next.calendar, cur ? { title: cur.title, to: at(cur.end) } : null, meet)
+      : t("meetingNowTip", cur.title, at(cur.end), cur.calendar, meet);
+    const m = next ? Math.ceil((next.start - now) / 60e3) : 0;
+    const el = this.plaque("res-reunion", image(`${ART}/cloche.svg`).w(21).h(25).flex_none(), t("meetingIn", m), clip(e.title, 18), tip,
+      Boolean(next && next.start - now <= PREAVIS));
+    return meet ? el.cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => rejoindre(join)) : el;
+  }
+
   /** The boss plaque asking "Reset boss? Yes / No" in place. Yes: today's boss back to full HP and a kill today undone
    *  (kit.js remiseBoss; the village drops its raid and minions when it sees the HP rise). */
   confirmation() {
@@ -146,6 +176,7 @@ export default class Fronton {
     const contexte = this.contexte();
     const tro = trophees(this.now);
     const troTip = t("trophyTip", tro.total, tro.streak);
+    const reunion = this.reunion();
 
     const waiting = blocked.length ? blocked : done;
     let alert = null, alertText = "";
@@ -170,7 +201,9 @@ export default class Fronton {
     const kids = 4 + plaques + (alert ? 1 : 0); // cartouche, plaques, scroll, alert, mode, hour
     const base = (mac ? 84 : 10) + 10 + 284 + plaques * PW + alertW + modeW + 170 + 8 * (kids - 1);
     const fits = (n) => !this.w || base + n * (PW + 8) <= this.w;
-    const room = fits(2);
+    // the meeting first, then the boss, then the trophies
+    const rdv = Boolean(reunion) && fits(1), n0 = rdv ? 1 : 0;
+    const room = fits(n0 + 2);
 
     // the district's banner and the parchment scroll (flat vellum behind the text)
     const scroll = d && h_flex().id("rouleau").tooltip(`${d.titre}${tab ? `\n${t("questTab", tab.name)}` : ""}`).flex_shrink(1).min_w(0).max_w(620).h(44).gap(4).items_center()
@@ -207,7 +240,8 @@ export default class Fronton {
         .child(this.plaque("res-heros", pic("ic-heros", 26, 22), `${busy} / ${all.length}`, t("heroesAtWork"), t("heroesTip", busy, all.length)))
         .when(Boolean(contexte), (el) => el.child(contexte))
         .when(resets.length > 0, (el) => el.child(this.plaque("res-foire", pic("ic-sablier", 22, 28), fair || "—", t("untilFair"), t("fairTip"))))
-        .when(fits(1), (el) => el.child(this.boss(room ? null : troTip)))
+        .when(rdv, (el) => el.child(reunion))
+        .when(fits(n0 + 1), (el) => el.child(this.boss(room ? null : troTip)))
         .when(room, (el) => el.child(this.plaque("res-trophees", svg(`${ART}/blason-coupe.svg`).w(21).h(21).flex_none().text_color(P.goldHi), String(tro.total), t("bossesSlain"), troTip, false, tro.total ? P.goldHi : P.cream)))
         .child(div().flex_1().min_w(0).flex().justify_center().when(Boolean(scroll), (el) => el.child(scroll)))
         .when(Boolean(alert), (el) => el.child(alert))

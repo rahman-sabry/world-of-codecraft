@@ -16,7 +16,8 @@ const boite = ({ at, box: [dx, dy, w, h] }) => [at[0] + dx, at[1] + dy, w, h];
  *  - BUILDINGS: hit boxes [x, y, w, h] and names (in the current language) by building;
  *  - MARCHE: the market's box; BANNIERES: the town hall's standards; SMOKE: chimney tops; GLOWS: live glows;
  *  - ROAD_S: the road's arc length at each point; POSTES: every known walkable point (stroll spots, work spots, the
- *    road inside the world's ends), where a working hero is nudged to when another holds its point. */
+ *    road inside the world's ends), where a working hero is nudged to when another holds its point;
+ *  - for walkable(): BOITES the building boxes, PIEDS the stroll and work spots, EAU_B each water shape's bounding box. */
 function resoudre(c) {
   const B = Object.entries(c.batiments);
   const SPOTS = Object.fromEntries(Object.values(CLASSES).map(({ bat }) => {
@@ -26,7 +27,13 @@ function resoudre(c) {
   const BUILDINGS = Object.fromEntries(B.map(([k, b]) => [k, { get nom() { return t("building")[k]; }, box: boite(b) }]));
   const ROAD_S = c.ROAD.reduce((acc, p, i) => (acc.push(i ? acc[i - 1] + dist(c.ROAD[i - 1], p) : 0), acc), []);
   const POSTES = [...c.FLANE, ...Object.values(SPOTS).flat(), ...c.ROAD.filter(([x]) => x > c.WORLD.x && x < c.WORLD.x + c.WORLD.w)];
+  const EAU_B = c.EAU.map((e) => {
+    if (e.ellipse) { const [cx, cy, rx, ry] = e.ellipse; return [cx - rx, cy - ry, cx + rx, cy + ry]; }
+    const P = e.ligne ?? e.polygone, d = e.ligne ? e.demi : 0, xs = P.map((q) => q[0]), ys = P.map((q) => q[1]);
+    return [Math.min(...xs) - d, Math.min(...ys) - d, Math.max(...xs) + d, Math.max(...ys) + d];
+  });
   return { ...c, SPOTS, BUILDINGS, MARCHE: boite(c.marche),
+    BOITES: Object.values(BUILDINGS).map((b) => b.box), PIEDS: [...c.FLANE, ...Object.values(SPOTS).flat()], EAU_B,
     BANNIERES: B.flatMap(([, b]) => (b.bannieres ?? []).map(plus(b.at))),
     SMOKE: B.flatMap(([, b]) => (b.fumees ?? []).map(plus(b.at))),
     GLOWS: B.flatMap(([, b]) => (b.lueurs ?? []).map((g) => ({ ...g, at: plus(b.at)(g.at) }))),
@@ -81,12 +88,13 @@ const MARCHE = { id: null, m: new Map() }; // the shown map's walkable() answers
 
 function sol(p, L) {
   const [x, y] = p;
-  const { DECK, EAU, ROAD, ROAD_R, BUILDINGS, FLANE, SPOTS, SPOT_R } = L;
+  const { DECK, EAU, EAU_B, ROAD, ROAD_R, BOITES, PIEDS, SPOT_R } = L;
   if (toLine(p, DECK) < 14) return true;
-  if (EAU.some((e) => dansEau(p, e))) return false;
+  // a shape's bounding box first: most points are far from most water
+  if (EAU.some((e, i) => { const [x0, y0, x1, y1] = EAU_B[i]; return x >= x0 && x <= x1 && y >= y0 && y <= y1 && dansEau(p, e); })) return false;
   if (toLine(p, ROAD) < ROAD_R) return true;
-  if (Object.values(BUILDINGS).some(({ box: [bx, by, bw, bh] }) => x > bx && x < bx + bw && y > by && y < by + bh)) return false;
-  return [...FLANE, ...Object.values(SPOTS).flat()].some(([sx, sy]) => Math.hypot(sx - x, sy - y) < SPOT_R);
+  if (BOITES.some(([bx, by, bw, bh]) => x > bx && x < bx + bw && y > by && y < by + bh)) return false;
+  return PIEDS.some(([sx, sy]) => Math.abs(sx - x) < SPOT_R && Math.abs(sy - y) < SPOT_R && Math.hypot(sx - x, sy - y) < SPOT_R);
 }
 
 /** The market's name in the current language. */
