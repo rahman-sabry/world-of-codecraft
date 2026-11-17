@@ -1677,6 +1677,9 @@ function placesSbires(u, sp, side0) {
   let side = side0, pts = at(side0, true);
   if (pts.length < SBIRES) { const o = at(-side0, true); if (o.length > pts.length) { side = -side0; pts = o; } }
   if (pts.length < SBIRES) for (const q of at(side, false)) if (pts.length < SBIRES && pts.every((o) => Math.abs(o[0] - q[0]) >= W || Math.abs(o[1] - q[1]) >= H)) pts.push(q);
+  // a close class's gap can pull PLACES so near each other that fewer than SBIRES are apart: line the rest up further
+  // out, a body apart, so every minion (o.list's k) has a place
+  while (pts.length < SBIRES) { const far = pts.reduce((a, q) => (side * q[0] > side * a[0] ? q : a), [x, y]); pts.push([far[0] + side * W, y]); }
   const xs = pts.map((q) => q[0]), lo = Math.min(...xs) - W / 2, hi = Math.max(...xs) + W / 2;
   return { side, pts, loin: side * ((lo + hi) / 2 - x), large: (hi - lo) / 2 + 25 };
 }
