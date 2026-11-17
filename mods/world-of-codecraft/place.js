@@ -245,8 +245,9 @@ export default class Place {
     this.manual = true;
   }
 
-  /** The Join button over the view's top-right corner (as the chronicle sits top-left): the meeting going on or next
-   *  with a Google Meet link, from 10 min before its start to its end (agenda.js aRejoindre); a click opens it. Null
+  /** The Join button over the view's top-right corner (as the chronicle sits top-left), labelled with the meeting's
+   *  title: the meeting going on or next with a Google Meet link, from 10 min before its start to its end (agenda.js
+   *  aRejoindre); a click opens it. Null
    *  otherwise, in the demo and in a hidden village. */
   joindre(live) {
     const e = live ? aRejoindre() : null;
@@ -254,7 +255,7 @@ export default class Place {
     if (!e) return null;
     const at = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
     return div().absolute().top(8).right(10)
-      .child(button("rejoindre", [image(`${ART}/cloche.svg`).w(14).h(17).flex_none(), txt(tr("join"), 16, P.cream, 800)],
+      .child(button("rejoindre", [image(`${ART}/cloche.svg`).w(14).h(17).flex_none(), txt(clip(e.title, 32), 16, P.cream, 800)],
         () => rejoindre(e), { tip: tr("joinTip", e.title, at(e.start), at(e.end)) }));
   }
 

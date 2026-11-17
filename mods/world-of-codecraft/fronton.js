@@ -19,7 +19,7 @@ import { CREATURES } from "./creatures-data.js";
 import { P, DECO, TEXTE, bar, pic, txt, button, mark, banner } from "./ui.js";
 import { DEMO_SPACES } from "./demo.js";
 import { t, detectLang } from "./i18n.js";
-import { suivre, agenda, prochain, enCours, PREAVIS } from "./agenda.js";
+import { suivre, agenda, prochain, enCours, PREAVIS, meetSur, rejoindre } from "./agenda.js";
 
 // Immersive mode lives in the one layout: the big village (place-immersion) and the command panel
 // (commande) are shown, the bottom village (place) hidden, and the terminal (arene) shrinks to 400 px.
@@ -118,8 +118,8 @@ export default class Fronton {
   }
 
   /** The next meeting (agenda.js; one going on when none is next): the bell, the countdown ("in 25m", "1h 10m",
-   *  "now"), its title; red from the bell's PREAVIS before it. Not clickable: the village's Join button opens its
-   *  Google Meet (place.js). Null without one. */
+   *  "now"), its title; red from the bell's PREAVIS before it. With a valid Google Meet link a click opens it, as the
+   *  village's Join button does (place.js). Null without one. */
   reunion() {
     const now = Date.now(), next = prochain(now), cur = enCours(now), e = next ?? cur;
     this.rdvSig = this.rdvSignature(now);
@@ -127,9 +127,10 @@ export default class Fronton {
     const at = (ms) => hhmm(new Date(ms));
     const tip = next ? t("meetingTip", next.title, at(next.start), at(next.end), next.calendar, cur ? { title: cur.title, to: at(cur.end) } : null)
       : t("meetingNowTip", cur.title, at(cur.end), cur.calendar);
-    const m = next ? Math.ceil((next.start - now) / 60e3) : 0;
-    return this.plaque("res-reunion", image(`${ART}/cloche.svg`).w(21).h(25).flex_none(), t("meetingIn", m), clip(e.title, 18), tip,
-      Boolean(next && next.start - now <= PREAVIS));
+    const m = next ? Math.ceil((next.start - now) / 60e3) : 0, meet = meetSur(e.meet);
+    return this.plaque("res-reunion", image(`${ART}/cloche.svg`).w(21).h(25).flex_none(), t("meetingIn", m), clip(e.title, 18),
+      meet ? `${tip}\n${t("joinLine")}` : tip, Boolean(next && next.start - now <= PREAVIS))
+      .when(Boolean(meet), (el) => el.cursor_pointer().on_click(() => rejoindre(e)));
   }
 
   /** The boss plaque asking "Reset boss? Yes / No" in place. Yes: today's boss back to full HP and a kill today undone
