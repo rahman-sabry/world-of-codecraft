@@ -80,6 +80,9 @@ the clock. The art is original: it imitates no existing game.
 - **Race and name** come from a hash of the terminal address. The races are Elf, Orc,
   Human, Undead and Dwarf.
 - **States:**
+  - **working but waiting** (`act.attend`): Herdr says working, but its own turn is over (`act: "fini"`) with no live
+    subagent (background shells, or subagents parked on their own background work, which the hook drops): it sits in its
+    `rest` pose with a small hourglass (`ic-sablier`) bobbing over its head, instead of swinging `work` at nothing.
   - **working**: the hero plays its `work` animation where it stands when it turns working (mid-walk: at its
     point on the road), with no walk first; when another hero holds or heads for that exact point it is nudged
     to the nearest free walkable point. Every 10 to 20 s (staggered per hero and per stop) it walks to another

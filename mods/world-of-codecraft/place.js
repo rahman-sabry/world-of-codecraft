@@ -508,6 +508,7 @@ export default class Place {
     if (u.leg) name = walkAnim(u.leg.b[0] - u.leg.a[0], u.leg.b[1] - u.leg.a[1]);
     else if ([...this.invocations.values()].some((s) => s.hero === u.a.address && Date.now() - s.t0 < CAST)) name = "work"; // summoning
     else if (this.act.melee(u.a.address)) name = "work"; // fighting the raid boss or its minions
+    else if (u.a.status === "working" && !this.act.anim(u.a.address) && this.act.attend(u.a.address)) name = "rest"; // waiting on background work
     else name = (u.a.status === "working" && this.act.anim(u.a.address)) || (u.a.status === "working" ? "work" : "idle");
     if (name === "work") name = travail(u.key, this.act.face(u)); // facing the foe it fights (the raid boss, minions, a creature)
     // gathered on the town hall square: its back to the viewer, facing the town hall (a walk's first frame, held)
@@ -599,6 +600,11 @@ export default class Place {
       el = el.child(div().absolute().left(20).top(head + 20).size(3).bg("#fff2c0").loop("top", { from: head + 40, to: head + 2, period: 1300 }).loop("opacity", { from: 1, to: 0, period: 1300 }));
     }
     if (!u.leg && !a.guard) el = el.children(this.act.layers(u, head, night, t));
+    // waiting on background work (act.attend): a small hourglass bobbing over its head while it sits
+    if (st === "working" && !u.leg && !a.guard && !this.act.anim(a.address) && this.act.attend(a.address) && !this.act.melee(a.address)) {
+      el = el.child(image(art("ic-sablier")).absolute().left(-7).top(head - 30).w(14).h(18).opacity(1 - 0.4 * night)
+        .loop("top", { from: head - 28, to: head - 34, period: 1600 }));
+    }
     // the champion (its subagent slew today's boss) wears a crown until midnight, above its head, its HP bar and its
     // quest mark
     if (champion() === a.address) {

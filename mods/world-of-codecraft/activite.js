@@ -1266,6 +1266,13 @@ export class Activites {
     return !(recent(s.essai?.t, RESULT) || recent(s.commitT, 4000) || recent(s.pushT, 7000) || (s.errT && (s.err ?? 0) > 0 && recent(s.errT, 1500)));
   }
 
+  /** A working hero whose own turn is over with no live subagent: Herdr still says working because background work
+   *  runs (a shell, or subagents parked on their own background work, which the hook drops). It sits the wait out. */
+  attend(addr) {
+    const s = this.file(addr);
+    return Boolean(s && s.act === "fini" && !this.subagents(s).length);
+  }
+
   /** The anim a scene plays (null = the status default). */
   anim(addr) {
     const sc = this.scene(addr);
