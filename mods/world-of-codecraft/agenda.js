@@ -61,6 +61,13 @@ export const prochain = (now = Date.now()) => etat.evts?.find((e) => !e.allDay &
 export const enCours = (now = Date.now()) => etat.evts?.find((e) => !e.allDay && e.start <= now && e.end > now) ?? null;
 /** The meeting the bell is for: the next one when it starts within PREAVIS, else null. */
 export const sonnerie = (now = Date.now()) => { const e = prochain(now); return e && e.start - now <= PREAVIS ? e : null; };
+/** The meeting the village's Join button opens (place.js): the one going on, else the next one, with a valid Meet
+ *  link, from JOINDRE before its start to its end; null otherwise. */
+export const JOINDRE = 10 * 60_000;
+export function aRejoindre(now = Date.now()) {
+  return [enCours(now), prochain(now)].find((e) => e && meetSur(e.meet) && now >= e.start - JOINDRE && now <= e.end) ?? null;
+}
+
 /** A meeting's key (its start and a hash of its title: nothing readable is stored). */
 export function cle(e) {
   let h = 0;

@@ -17,14 +17,14 @@ import { agents, spaces, run, setAgentOrder, props, layout, shared, setShared } 
 import { UI, C, hash, clip, heroOf, heroTitle, guards, QUEST, sky, stop, selectedAddress, walkAnim, nomBoss, champion, bannieres, bossDuJour, look, monde } from "./kit.js";
 import { HEROES } from "./heros-data.js";
 import { lieux, market, walkable } from "./lieux.js";
-import { art } from "./ui.js";
+import { art, button, txt, P } from "./ui.js";
 import { t as tr, detectLang } from "./i18n.js";
 import { Activites, TRAIL, VOYAGE, PORTAIL, portail, travail, ecart, etoiles, cycleDe, jauge, BLESSE, BLESSE_LENT, BLESSE_PAS } from "./activite.js";
 import { effet, FX, FX_ETAPES } from "./effets.js";
 import { Ambiance, behind } from "./ambiance.js";
 import { DEMO_LOG } from "./demo.js";
 import { commandPanel, MINI_INSET, watchStat, bossDot } from "./commande.js";
-import { suivre, agenda, sonnerie, cle, rejoindre, meetSur } from "./agenda.js";
+import { suivre, agenda, sonnerie, cle, rejoindre, meetSur, aRejoindre } from "./agenda.js";
 
 const ART = "mods/world-of-codecraft/art";
 const MONDE = `${ART}/monde`; // rings and quest marks, only in the summer folder (the world's own images: monde(), the shown look's)
@@ -210,7 +210,11 @@ export default class Place {
     suivre(cx);
     this.rassemble = null; // { k (meeting and map), m (meeting), e, libres, spots: address -> its point on the square } while the bell's meeting comes
     this.branle = null; // { k, t0 }: the bell swinging
-    cx.timer.every(15_000, (cx) => { const e = sonnerie(); if ((e ? cle(e) : "") !== (this.rassemble?.m ?? "")) cx.notify(); });
+    // and the Join button's meeting (its window opens 10 min before)
+    cx.timer.every(15_000, (cx) => {
+      const e = sonnerie(), j = aRejoindre();
+      if ((e ? cle(e) : "") !== (this.rassemble?.m ?? "") || (j ? cle(j) : "") !== (this.joint ?? "")) cx.notify();
+    });
   }
 
   /** The meetings the bell already rang for (keys, the last 20). */
@@ -239,6 +243,19 @@ export default class Place {
     this.camX = bx - vw / 2;
     if (props()?.immersion) this.camY = by - 60 - (this.h ?? lieux().WORLD.h) / 2;
     this.manual = true;
+  }
+
+  /** The Join button over the view's top-right corner (as the chronicle sits top-left): the meeting going on or next
+   *  with a Google Meet link, from 10 min before its start to its end (agenda.js aRejoindre); a click opens it. Null
+   *  otherwise, in the demo and in a hidden village. */
+  joindre(live) {
+    const e = live ? aRejoindre() : null;
+    this.joint = e ? cle(e) : null;
+    if (!e) return null;
+    const at = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+    return div().absolute().top(8).right(10)
+      .child(button("rejoindre", [image(`${ART}/cloche.svg`).w(14).h(17).flex_none(), txt(tr("join"), 16, P.cream, 800)],
+        () => rejoindre(e), { tip: tr("joinTip", e.title, at(e.start), at(e.end)) }));
   }
 
   /** The bell's feet point on the shown map. */
@@ -1161,6 +1178,7 @@ export default class Place {
       .children(this.smoke());
 
     const panel = imm ? null : commandPanel(PANEL, this.minimap(units, vw), sel);
+    const join = this.joindre(live); // the Join button (top right), while a meeting with a Meet link is near
 
     return h_flex().id("place").size_full().bg(C.slate)
       .on_size_change((s, cx) => {
@@ -1197,6 +1215,7 @@ export default class Place {
         .children(this.braises(vw, this.h ?? WORLD.h))
         .children(this.petales(vw, this.h ?? WORLD.h))
         .children(this.sable(vw, this.h ?? WORLD.h))
-        .child(this.chronicle()));
+        .child(this.chronicle())
+        .when(Boolean(join), (el) => el.child(join)));
   }
 }

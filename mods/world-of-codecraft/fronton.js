@@ -8,7 +8,7 @@
 // the waiting-heroes button (click: go to the next one), then the hour plaque. After Heroes, today's raid boss (its HP,
 // slain in gold; a click asks to reset it) and the trophies (bosses slain; the daily streak in its tooltip), the trophies only when the bar
 // has room for them. After Fair, the next meeting (agenda.js: the countdown, red from the town bell's 2 minutes before it;
-// a click joins its Google Meet), when the bar has room.
+// its Google Meet is the village's Join button), when the bar has room.
 
 import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
@@ -19,7 +19,7 @@ import { CREATURES } from "./creatures-data.js";
 import { P, DECO, TEXTE, bar, pic, txt, button, mark, banner } from "./ui.js";
 import { DEMO_SPACES } from "./demo.js";
 import { t, detectLang } from "./i18n.js";
-import { suivre, agenda, prochain, enCours, sonnerie, rejoindre, meetSur, PREAVIS } from "./agenda.js";
+import { suivre, agenda, prochain, enCours, PREAVIS } from "./agenda.js";
 
 // Immersive mode lives in the one layout: the big village (place-immersion) and the command panel
 // (commande) are shown, the bottom village (place) hidden, and the terminal (arene) shrinks to 400 px.
@@ -118,21 +118,18 @@ export default class Fronton {
   }
 
   /** The next meeting (agenda.js; one going on when none is next): the bell, the countdown ("in 25m", "1h 10m",
-   *  "now"), its title; red from the bell's PREAVIS before it. Its Google Meet, if any, is a click away (the next
-   *  meeting's once the bell rang, else the one going on, else the next one's). Null without one. */
+   *  "now"), its title; red from the bell's PREAVIS before it. Not clickable: the village's Join button opens its
+   *  Google Meet (place.js). Null without one. */
   reunion() {
     const now = Date.now(), next = prochain(now), cur = enCours(now), e = next ?? cur;
     this.rdvSig = this.rdvSignature(now);
     if (!e) return null;
-    const join = sonnerie(now) ?? (cur?.meet ? cur : null) ?? next;
-    const meet = meetSur(join?.meet);
     const at = (ms) => hhmm(new Date(ms));
-    const tip = next ? t("meetingTip", next.title, at(next.start), at(next.end), next.calendar, cur ? { title: cur.title, to: at(cur.end) } : null, meet)
-      : t("meetingNowTip", cur.title, at(cur.end), cur.calendar, meet);
+    const tip = next ? t("meetingTip", next.title, at(next.start), at(next.end), next.calendar, cur ? { title: cur.title, to: at(cur.end) } : null)
+      : t("meetingNowTip", cur.title, at(cur.end), cur.calendar);
     const m = next ? Math.ceil((next.start - now) / 60e3) : 0;
-    const el = this.plaque("res-reunion", image(`${ART}/cloche.svg`).w(21).h(25).flex_none(), t("meetingIn", m), clip(e.title, 18), tip,
+    return this.plaque("res-reunion", image(`${ART}/cloche.svg`).w(21).h(25).flex_none(), t("meetingIn", m), clip(e.title, 18), tip,
       Boolean(next && next.start - now <= PREAVIS));
-    return meet ? el.cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => rejoindre(join)) : el;
   }
 
   /** The boss plaque asking "Reset boss? Yes / No" in place. Yes: today's boss back to full HP and a kill today undone

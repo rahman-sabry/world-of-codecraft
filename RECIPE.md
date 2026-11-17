@@ -61,7 +61,8 @@ the clock. The art is original: it imitates no existing game.
   - a market square, a road, a river and a forest;
   - west of the village, farmland: fields with fences and a windmill; east, past a wooden footbridge over
     the river at the village road's end, a lake with a jetty and a rowboat;
-  - in the top-left corner, a chronicle of the last 4 events on dark tags.
+  - in the top-left corner, a chronicle of the last 4 events on dark tags; in the top-right corner, from 10 min before a
+    meeting with a Google Meet link to its end, a "Join" button (see "Calendar").
 
   That layout is the map Valbrume; it has two looks: summer and winter. Winter has snow on the ground and on
   every roof and top, a frozen river and lake, bare oaks, snow-dusted pines, bushes as snowy mounds, slush on the
@@ -462,9 +463,9 @@ the clock. The art is original: it imitates no existing game.
   - **The plaque** (fronton.js `reunion`): the next meeting (the first timed one starting after now; none, but one going
     on: that one, "now" / « maintenant »): the countdown in minutes rounded up, its title (clipped), red from 2 min
     before (`PREAVIS`) until it starts. Tooltip: "Next meeting: <title>", "10:25 - 10:40 · <calendar>", "Now: <title>
-    until 10:30" when one is going on, and "Click: join Google Meet" when the meeting it would join has a Meet link (the
-    next one from its 2 min, else the one going on, else the next one). A 15 s timer redraws it only when its text or
-    urgency changes. Hidden with no meeting in the next 24 h or no data, and by the bar's room rule.
+    until 10:30" when one is going on. Not clickable: the village's Join button opens the meeting. A 15 s timer redraws
+    it only when its text or urgency changes. Hidden with no meeting in the next 24 h or no data, and by the bar's room
+    rule.
   - **The town bell:** from 2 min before a meeting until it starts, in the shown, live village (never the demo or a
     hidden village), a bronze bell (art/cloche.svg, 14 x 17 at 2x) hangs under a small wooden gallows right of the town
     hall's steps (`CLOCHE`: [95, 52] from the town hall's bake point, the same on every map); dimmed at night, a world
@@ -475,7 +476,14 @@ the clock. The art is original: it imitates no existing game.
     meetings rung are kept by key (start and a hash of the title) in localStorage `wocc.cloche` (last 20), so a reload
     or the other village block rings nothing again and moves no camera. Its tooltip names the meeting; with a Meet link
     it is clickable.
-  - **Joining:** a click on the plaque or the bell runs `open <url>` (exec, the URL one argv element, no shell), only
+  - **The Join button** (place.js `joindre`): over the village view's top-right corner (as the chronicle sits top-left;
+    nothing else is there, the minimap being in the panel), in the Workshop strip and the immersive village: the iron
+    button (ui.js `button`) with the bell (14 x 17) and "Join" / « Rejoindre », its tooltip the meeting's title, its
+    time ("10:25 - 10:40") and "Click: join Google Meet". Shown for the meeting going on, else the next one
+    (`aRejoindre` in agenda.js), when it has a valid Meet link and now is from 10 min before its start (`JOINDRE`) to
+    its end; hidden otherwise, in the demo and in a hidden village. It reads the cached answer only; the village's 15 s
+    check redraws when its meeting changes (the window opening or closing).
+  - **Joining:** a click on the Join button or the bell runs `open <url>` (exec, the URL one argv element, no shell), only
     for a URL matching `^https://meet\.google\.com/[a-z0-9-]+(\?[^\s"']*)?$` (`meetSur`; the helper's output is
     checked again on reading: anything else is dropped).
   - **The gathering:** while the bell's meeting comes (its 2 min), every idle hero (status idle, not a guard, not in a
