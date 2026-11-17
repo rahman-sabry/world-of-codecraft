@@ -143,7 +143,7 @@ const S = {
     bossSlain: (name, by) => `${name} is slain by ${by}!`,
     bossesSlain: "raid bosses slain",
     trophyTip: (total, streak) => `Raid bosses slain: ${total}\nDaily streak: ${streak} ${streak === 1 ? "day" : "days"} (consecutive days with a kill)`,
-    resetTip: "Click: reset today's boss to full HP and the slain count to 0",
+    resetTip: "Click: bring today's boss back at full HP (bosses slain stay counted)",
     resetBoss: "Reset boss?", yes: "Yes", no: "No",
     // the calendar (agenda.js): the top bar's countdown, the town bell
     meetingIn: (m) => (m < 1 ? "now" : m < 60 ? `in ${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`),
@@ -254,7 +254,7 @@ const S = {
     bossSlain: (name, by) => `${name} est terrassé par ${by} !`,
     bossesSlain: "boss de raid vaincus",
     trophyTip: (total, streak) => `Boss de raid terrassés : ${total}\nSérie : ${streak} jour${streak > 1 ? "s" : ""} d'affilée avec une victoire`,
-    resetTip: "Clic : rendre au boss du jour tous ses PV et remettre les victoires à 0",
+    resetTip: "Clic : relever le boss du jour avec tous ses PV (les victoires restent comptées)",
     resetBoss: "Relancer le boss ?", yes: "Oui", no: "Non",
     meetingIn: (m) => (m < 1 ? "maintenant" : m < 60 ? `dans ${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`),
     meetingTip: (title, from, to, cal, now) => `Prochaine réunion : ${title}\n${from} - ${to}${cal ? ` · ${cal}` : ""}${now ? `\nEn cours : ${now.title} jusqu'à ${now.to}` : ""}`,

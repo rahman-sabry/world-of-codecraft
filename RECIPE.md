@@ -427,9 +427,8 @@ the clock. The art is original: it imitates no existing game.
     **Reset:** "Yes" on the boss plaque's confirmation (fronton.js, `remiseBoss` in kit.js) writes today's record as a
     fresh one, `{day, hp: BOSS_HP, max: BOSS_HP, slain: false, espece}`, `espece` another species than the one it was
     (the stored one, else the date's), picked at random among the three others, so the plaque, its name and the boss
-    in its lair (the same lair: the date's) change with it, and the trophies go back to nothing:
-    `wocc.trophees` = `{ total: 0, streak: 0, lastDay: null }` (the plaque reads 0, the town hall's standards go and the
-    next boss is no tier). `wocc.boss.vus` stays, so past calls are not counted again. The shown
+    in its lair (the same lair: the date's) change with it. The trophies (`wocc.trophees`) are left as they are: a kill before the reset still
+    counts, and slaying the new boss adds one (the streak is per day, so a second kill the same day keeps it). `wocc.boss.vus` stays, so past calls are not counted again. The shown
     village sees today's HP rise in its next poll (`remise`): the boss (of its new species) stands again on its wander's spot, alive, its
     minions gone; heroes still raiding take slots afresh round it and walk there, heroes home with running subagents
     rejoin by teleport. The crown and the victory standards go with the kill.

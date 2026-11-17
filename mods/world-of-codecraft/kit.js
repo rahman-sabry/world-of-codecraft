@@ -212,11 +212,10 @@ export function bossDuJour(d = new Date()) {
   if (b?.day !== day) return { day, hp: BOSS_HP, max: BOSS_HP, slain: false };
   return !b.slain && b.max < BOSS_HP ? { ...b, hp: BOSS_HP - (b.max - b.hp), max: BOSS_HP } : b;
 }
-/** The reset (the top bar's boss plaque): today's boss back to full HP, not slain, of another species, and the trophies
- *  back to nothing (no boss slain, no streak). */
+/** The reset (the top bar's boss plaque): today's boss back to full HP, not slain, of another species. The trophies
+ *  (bosses slain, the streak) stay as they are: a kill before the reset still counts, and slaying the new one adds one. */
 export function remiseBoss(d = new Date()) {
   const day = jour(d);
-  setShared(TROPHEES, { total: 0, streak: 0, lastDay: null });
   // another species than the one it was, picked at random (espece reads it)
   const autres = ESPECES.filter((x) => x !== espece(day));
   setShared(BOSS, { day, hp: BOSS_HP, max: BOSS_HP, slain: false, espece: autres[Math.floor(Math.random() * autres.length)] });
